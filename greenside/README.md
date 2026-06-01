@@ -81,3 +81,21 @@ limit of 50 lookups/day.
 Each hole shows a satellite aerial of the course (free, via Esri imagery). It's a
 course-level view — true per-hole flyovers need per-hole GPS coordinates, which the
 free data doesn't include. That's a later upgrade.
+
+---
+
+## Scan a scorecard (free, no setup)
+On "Start a round," if a course isn't found, tap **Scan a scorecard**, photograph the
+card, and Cloudflare's built-in AI reads the pars, yardages, and stroke index into the
+editable scorecard for you to confirm. This uses Workers AI (free tier) — already wired
+in via the `AI` binding, nothing to set up.
+
+> First-time note: the vision model may require a one-time acceptance of Meta's model
+> license on your account. If your very first scan errors, open the Cloudflare dashboard →
+> AI → Workers AI, find "llama-3.2-11b-vision-instruct," and accept the license once.
+
+## The course catalog builds itself
+Every course you confirm (whether searched, scanned, or hand-entered) is saved to a shared
+catalog. The next person who searches that course finds it instantly with a **Saved** tag —
+no scan needed. The more rounds people play, the better the coverage gets. This lives in a
+SQLite-backed Durable Object that's created automatically on deploy — no database to set up.

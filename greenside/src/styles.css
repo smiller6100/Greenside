@@ -184,3 +184,13 @@ body { font-family: 'Hanken Grotesk', sans-serif; }
 .aerial-grad { position: absolute; inset: 0; background: linear-gradient(to top, rgba(14,42,31,.7), rgba(14,42,31,0) 55%); }
 .aerial-label { position: absolute; left: 14px; bottom: 11px; color: #f6f0e2; font-family: 'Fraunces', serif; font-size: 20px; font-weight: 600; text-shadow: 0 1px 4px rgba(0,0,0,.4); }
 .aerial-credit { position: absolute; right: 8px; bottom: 6px; color: rgba(255,255,255,.75); font-size: 9px; letter-spacing: .02em; text-shadow: 0 1px 2px rgba(0,0,0,.5); }
+
+/* ---- scan + saved badge ---- */
+.scanbtn { width: 100%; margin-top: 10px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--pine); background: rgba(21,57,42,.05); color: var(--pine); font: inherit; font-size: 14.5px; font-weight: 600; padding: 13px; border-radius: 12px; cursor: pointer; transition: .15s; }
+.scanbtn:active { transform: translateY(1px); } .scanbtn:disabled { opacity: .6; }
+.scanbtn svg { color: var(--brass); }
+.badge { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #fff; background: var(--brass); padding: 3px 7px; border-radius: 6px; margin-left: auto; flex: none; }
+.badge svg { color: #fff; }
+.cc-nameinput { width: 100%; border: none; background: transparent; font: inherit; font-size: 15px; font-weight: 600; color: var(--ink); padding: 0; }
+.cc-nameinput:focus { outline: none; }
+.st-in.dim { color: var(--mut); font-weight: 500; }

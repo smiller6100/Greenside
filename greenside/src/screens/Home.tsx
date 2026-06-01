@@ -1,21 +1,26 @@
 import { useState, useEffect, useRef } from "react";
-import { Flag, Plus, X, Search, Check, MapPin, ChevronDown } from "lucide-react";
+import { Flag, Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark } from "lucide-react";
 import { DEFAULT_COURSE, aerialUrl, type Hole } from "../lib/golf";
 
 const FORMAT_DEFS = [
-  { id: "net", label: "Net" },
-  { id: "gross", label: "Gross" },
-  { id: "stableford", label: "Stableford" },
-  { id: "skins", label: "Skins" },
+  { id: "net", label: "Net" }, { id: "gross", label: "Gross" },
+  { id: "stableford", label: "Stableford" }, { id: "skins", label: "Skins" },
 ] as const;
-
 const HCP_DEFS = [
-  { id: "perHole", label: "Per-hole" },
-  { id: "course", label: "Course" },
-  { id: "gross", label: "Off" },
+  { id: "perHole", label: "Per-hole" }, { id: "course", label: "Course" }, { id: "gross", label: "Off" },
 ] as const;
 
-interface CourseHit { id: number; name: string; where: string; lat: number | null; lng: number | null; }
+interface CourseHit { id: string; name: string; where: string; lat: number | null; lng: number | null; saved?: boolean; }
+
+async function fileToJpeg(file: File, max = 1400, q = 0.82): Promise<Blob> {
+  const img = await createImageBitmap(file);
+  const scale = Math.min(1, max / Math.max(img.width, img.height));
+  const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+  const canvas = document.createElement("canvas");
+  canvas.width = w; canvas.height = h;
+  canvas.getContext("2d")!.drawImage(img, 0, 0, w, h);
+  return await new Promise((res) => canvas.toBlob((b) => res(b!), "image/jpeg", q));
+}
 
 export default function Home() {
   const [mode, setMode] = useState<"create" | "join">("create");
@@ -28,66 +33,90 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
-  // course selection
+  // course
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<CourseHit[]>([]);
   const [searching, setSearching] = useState(false);
-  const [searchMsg, setSearchMsg] = useState("");
+  const [scanning, setScanning] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [scanned, setScanned] = useState(false);
   const [course, setCourse] = useState<Hole[]>(DEFAULT_COURSE);
   const [courseName, setCourseName] = useState("");
-  const [courseLoc, setCourseLoc] = useState<{ lat: number | null; lng: number | null }>({ lat: null, lng: null });
+  const [courseWhere, setCourseWhere] = useState("");
+  const [loc, setLoc] = useState<{ lat: number | null; lng: number | null }>({ lat: null, lng: null });
   const [siEstimated, setSiEstimated] = useState(false);
   const [editing, setEditing] = useState(false);
   const debounce = useRef<ReturnType<typeof setTimeout>>();
+  const fileIn = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     clearTimeout(debounce.current);
     const q = query.trim();
-    if (q.length < 2) { setResults([]); setSearchMsg(""); return; }
+    if (q.length < 2 || loaded) { setResults([]); setMsg(""); return; }
     debounce.current = setTimeout(async () => {
-      setSearching(true); setSearchMsg("");
+      setSearching(true); setMsg("");
       try {
         const r = await fetch(`/api/courses/search?q=${encodeURIComponent(q)}`);
         const data = await r.json();
-        if (data.unconfigured) setSearchMsg("Course search isn't set up yet — the demo course still works.");
-        else if (data.error) setSearchMsg("Search hit a snag. Try again, or use the demo course.");
-        else if (!data.courses?.length) setSearchMsg("No courses found. Try the club's name.");
+        if (data.unconfigured && !data.courses?.length) setMsg("Not finding it? Scan the scorecard instead.");
+        else if (!data.courses?.length) setMsg("No match yet — scan the scorecard to add it.");
         setResults(data.courses || []);
-      } catch { setSearchMsg("Couldn't reach search. Demo course still works."); }
+      } catch { setMsg("Search unavailable. Scan the scorecard or use the demo course."); }
       setSearching(false);
     }, 350);
-  }, [query]);
+  }, [query, loaded]);
 
   async function pickCourse(hit: CourseHit) {
-    setSearching(true); setSearchMsg(""); setResults([]); setQuery("");
+    setSearching(true); setMsg(""); setResults([]); setQuery("");
     try {
       const r = await fetch(`/api/courses/${hit.id}`);
       if (!r.ok) throw new Error();
       const data = await r.json();
       const holes: Hole[] = (data.holes || []).map((h: any) => ({ num: h.num, par: h.par, yards: h.yards, si: h.si }));
-      if (!holes.length) { setSearchMsg("That course had no scorecard data. Pick another."); setSearching(false); return; }
-      setCourse(holes);
-      setCourseName(data.name || hit.name);
-      setCourseLoc({ lat: data.lat ?? hit.lat, lng: data.lng ?? hit.lng });
-      setSiEstimated(!!data.siEstimated);
+      if (!holes.length) { setMsg("That course had no scorecard data. Try another or scan it."); setSearching(false); return; }
+      setCourse(holes); setCourseName(data.name || hit.name); setCourseWhere(data.where || hit.where || "");
+      setLoc({ lat: data.lat ?? hit.lat, lng: data.lng ?? hit.lng });
+      setSiEstimated(!!data.siEstimated); setScanned(false); setLoaded(true);
       if (!nameTouched) setRoundName(data.name || hit.name);
-    } catch { setSearchMsg("Couldn't load that course. Try another."); }
+    } catch { setMsg("Couldn't load that course. Try another or scan it."); }
     setSearching(false);
   }
 
-  function clearCourse() {
-    setCourse(DEFAULT_COURSE); setCourseName(""); setCourseLoc({ lat: null, lng: null }); setSiEstimated(false); setEditing(false);
+  async function onScan(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]; if (!file) return;
+    setScanning(true); setMsg("");
+    try {
+      const blob = await fileToJpeg(file);
+      const r = await fetch("/api/courses/scan", { method: "POST", headers: { "content-type": "image/jpeg" }, body: blob });
+      if (!r.ok) {
+        setMsg("Couldn't read that photo clearly — enter the holes by hand below, or try a flatter, brighter shot.");
+        setCourse(DEFAULT_COURSE.map((h) => ({ ...h, yards: 0, si: 0 }))); setCourseName(""); setCourseWhere("");
+        setLoc({ lat: null, lng: null }); setSiEstimated(false); setScanned(true); setLoaded(true); setEditing(true);
+      } else {
+        const data = await r.json();
+        const holes: Hole[] = (data.holes || []).map((h: any) => ({ num: h.num, par: h.par, yards: h.yards, si: h.si }));
+        setCourse(holes.length ? holes : DEFAULT_COURSE); setCourseName(data.name || ""); setCourseWhere("");
+        setLoc({ lat: null, lng: null }); setSiEstimated(false); setScanned(true); setLoaded(true); setEditing(true);
+        if (!nameTouched && data.name) setRoundName(data.name);
+      }
+    } catch { setMsg("Couldn't process that image."); }
+    setScanning(false);
+    if (fileIn.current) fileIn.current.value = "";
   }
-  const editHole = (i: number, key: "par" | "si", v: string) => {
-    const n = Math.max(0, Math.min(99, parseInt(v) || 0));
+
+  function clearCourse() {
+    setLoaded(false); setScanned(false); setCourse(DEFAULT_COURSE); setCourseName(""); setCourseWhere("");
+    setLoc({ lat: null, lng: null }); setSiEstimated(false); setEditing(false); setMsg("");
+  }
+  const editHole = (i: number, key: "par" | "si" | "yards", v: string) => {
+    const n = Math.max(0, Math.min(999, parseInt(v) || 0));
     setCourse(course.map((h, k) => (k === i ? { ...h, [key]: n } : h)));
   };
 
   const addP = () => players.length < 8 && setPlayers([...players, { name: "", hcp: "12" }]);
   const rmP = (i: number) => setPlayers(players.filter((_, k) => k !== i));
-  const setP = (i: number, key: "name" | "hcp", v: string) =>
-    setPlayers(players.map((p, k) => (k === i ? { ...p, [key]: v } : p)));
-
+  const setP = (i: number, key: "name" | "hcp", v: string) => setPlayers(players.map((p, k) => (k === i ? { ...p, [key]: v } : p)));
   const parTotal = course.reduce((s, h) => s + h.par, 0);
 
   async function create() {
@@ -97,20 +126,18 @@ export default function Home() {
     if (!Object.values(formats).some(Boolean)) { setErr("Pick at least one format."); return; }
     setBusy(true);
     const payload = {
-      name: roundName.trim() || "Round",
-      formats, handicapMode: hcpMode,
-      course, lat: courseLoc.lat, lng: courseLoc.lng,
+      name: roundName.trim() || "Round", formats, handicapMode: hcpMode,
+      course, lat: loc.lat, lng: loc.lng,
+      courseName: loaded ? courseName.trim() : "", courseWhere,
       players: named.map((p, i) => ({ id: `p${i + 1}`, name: p.name.trim(), hcp: Math.max(0, Math.min(54, parseInt(p.hcp) || 0)) })),
     };
     try {
       const r = await fetch("/api/round", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
       const { code } = await r.json();
-      localStorage.setItem(`gs:me:${code}`, "p1");
-      localStorage.setItem(`gs:claimed:${code}`, "1");
+      localStorage.setItem(`gs:me:${code}`, "p1"); localStorage.setItem(`gs:claimed:${code}`, "1");
       location.hash = `#/r/${code}`;
     } catch { setErr("Couldn't create the round. Try again."); setBusy(false); }
   }
-
   function join() {
     const c = joinCode.trim().toUpperCase();
     if (c.length < 3) { setErr("Enter the round code."); return; }
@@ -121,7 +148,6 @@ export default function Home() {
     <div className="gs">
       <div className="frame home">
         <div className="topbar"><div className="mark"><Flag size={15} strokeWidth={2.2} /><span>GREENSIDE</span></div></div>
-
         <header className="hero">
           <div className="eyebrow">Live scoring</div>
           <h1>Keep the<br />card together.</h1>
@@ -137,50 +163,51 @@ export default function Home() {
           <div className="panel">
             <div className="field">
               <span>Course</span>
-              {courseName ? (
-                <div className="coursecard">
-                  {courseLoc.lat != null && courseLoc.lng != null && (
-                    <div className="thumb" style={{ backgroundImage: `url("${aerialUrl(courseLoc.lat, courseLoc.lng, 200, 200)}")` }} />
-                  )}
-                  <div className="cc-info">
-                    <div className="cc-name">{courseName}</div>
-                    <div className="cc-meta">{course.length} holes · Par {parTotal}</div>
-                  </div>
-                  <button className="rm" onClick={clearCourse} aria-label="clear course"><X size={15} /></button>
-                </div>
-              ) : (
-                <div className="searchbox">
-                  <Search size={16} className="si" />
-                  <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search for a course…" />
-                </div>
-              )}
-              {!courseName && (
+              {!loaded ? (
                 <>
+                  <div className="searchbox">
+                    <Search size={16} className="si" />
+                    <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search for a course…" />
+                  </div>
                   {searching && <div className="srow muted">Searching…</div>}
                   {results.map((c) => (
                     <button className="srow" key={c.id} onClick={() => pickCourse(c)}>
                       <MapPin size={14} />
                       <span className="sr-name">{c.name}<em>{c.where}</em></span>
+                      {c.saved && <span className="badge"><Bookmark size={10} /> Saved</span>}
                     </button>
                   ))}
-                  {searchMsg && <div className="srow muted">{searchMsg}</div>}
-                  {!query && !searchMsg && <p className="hint left">Leave blank to use the demo Par 72.</p>}
+                  {msg && <div className="srow muted">{msg}</div>}
+                  <input ref={fileIn} type="file" accept="image/*" capture="environment" onChange={onScan} style={{ display: "none" }} />
+                  <button className="scanbtn" disabled={scanning} onClick={() => fileIn.current?.click()}>
+                    <Camera size={16} /> {scanning ? "Reading scorecard…" : "Scan a scorecard"}
+                  </button>
+                  <p className="hint left">No course? Snap the scorecard and we'll read it — and save it for everyone. Or leave blank for the demo Par 72.</p>
                 </>
-              )}
-
-              {courseName && (
+              ) : (
                 <>
-                  {siEstimated && !editing && <p className="hint left warn">Stroke index was estimated — tap below to fine-tune.</p>}
+                  <div className="coursecard">
+                    {loc.lat != null && loc.lng != null && (
+                      <div className="thumb" style={{ backgroundImage: `url("${aerialUrl(loc.lat, loc.lng, 200, 200)}")` }} />
+                    )}
+                    <div className="cc-info">
+                      <input className="cc-nameinput" value={courseName} onChange={(e) => setCourseName(e.target.value)} placeholder="Course name" />
+                      <div className="cc-meta">{course.length} holes · Par {parTotal}</div>
+                    </div>
+                    <button className="rm" onClick={clearCourse} aria-label="clear course"><X size={15} /></button>
+                  </div>
+                  {scanned && <p className="hint left warn">Scanned — please double-check the values below, especially stroke index.</p>}
+                  {siEstimated && !scanned && <p className="hint left warn">Stroke index was estimated — fine-tune below if needed.</p>}
                   <button className="addp" onClick={() => setEditing(!editing)}>
-                    <ChevronDown size={15} style={{ transform: editing ? "rotate(180deg)" : "none", transition: ".2s" }} /> {editing ? "Hide" : "Edit"} scorecard
+                    <ChevronDown size={15} style={{ transform: editing ? "rotate(180deg)" : "none", transition: ".2s" }} /> {editing ? "Hide" : "Review"} scorecard
                   </button>
                   {editing && (
                     <div className="scoretable">
                       <div className="st-head"><span>Hole</span><span>Yds</span><span>Par</span><span>SI</span></div>
                       {course.map((h, i) => (
-                        <div className="st-row" key={h.num}>
+                        <div className="st-row" key={i}>
                           <span className="st-num">{h.num}</span>
-                          <span className="st-yds">{h.yards || "—"}</span>
+                          <input className="st-in dim" inputMode="numeric" value={h.yards} onChange={(e) => editHole(i, "yards", e.target.value)} />
                           <input className="st-in" inputMode="numeric" value={h.par} onChange={(e) => editHole(i, "par", e.target.value)} />
                           <input className="st-in" inputMode="numeric" value={h.si} onChange={(e) => editHole(i, "si", e.target.value)} />
                         </div>

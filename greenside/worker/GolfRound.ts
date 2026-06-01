@@ -2,8 +2,10 @@
 
 export interface Env {
   GOLF_ROUND: DurableObjectNamespace;
+  COURSE_CATALOG: DurableObjectNamespace;
   ASSETS: Fetcher;
   GOLF_API_KEY?: string;
+  AI: any;
 }
 
 // One instance of this object exists per round code. Every phone in the
