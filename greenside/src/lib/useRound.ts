@@ -50,5 +50,15 @@ export function useRound(code: string) {
     } : s);
   }, []);
 
-  return { state, connected, missing, sendScore };
+  const sendWolfPick = useCallback((hole: number, partner: string | null) => {
+    wsRef.current?.send(JSON.stringify({ type: "wolfPick", hole, partner }));
+    setState((s) => {
+      if (!s) return s;
+      const wolf = { ...(s.wolf || {}) };
+      if (partner === null) delete wolf[hole]; else wolf[hole] = partner;
+      return { ...s, wolf };
+    });
+  }, []);
+
+  return { state, connected, missing, sendScore, sendWolfPick };
 }

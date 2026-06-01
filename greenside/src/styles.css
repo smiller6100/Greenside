@@ -225,3 +225,49 @@ body { font-family: 'Hanken Grotesk', sans-serif; }
 .fcard tbody tr:last-child td, .fcard tbody tr:last-child th { border-bottom: none; }
 .fcard .meRow td, .fcard .meRow th { background: rgba(184,146,74,.07); }
 .fcard .meRow .stik { color: var(--brass); background: #f2e9d4; }
+
+/* ---- stacked full scorecard (front / back / totals) ---- */
+.cardstack { display: flex; flex-direction: column; gap: 12px; }
+.nine { table-layout: fixed; width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.nine th, .nine td { padding: 7px 2px; text-align: center; border-bottom: 1px solid var(--line); }
+.nine tbody tr:last-child th, .nine tbody tr:last-child td { border-bottom: none; }
+.nine thead th { font-weight: 700; color: var(--mut); font-size: 10.5px; }
+.nine .parrow th { color: var(--brass); }
+.nine .stik { width: 78px; text-align: left; padding-left: 11px; font-weight: 600; color: var(--ink); }
+.nine thead .stik { color: var(--mut); }
+.nine .tot { font-weight: 700; color: var(--pine); background: rgba(21,57,42,.05); }
+.nine td.grand { color: var(--pine); }
+.nine td.under { color: var(--under); font-weight: 700; }
+.nine td.over { color: var(--over); }
+.nine .meRow td, .nine .meRow th { background: rgba(184,146,74,.08); }
+.nine .meRow .stik { color: var(--brass); }
+.nine.totals { font-size: 13px; }
+.nine.totals .stik { font-weight: 700; }
+
+/* ---- games ---- */
+.field > span .opt { font-style: normal; font-size: 10px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--mut); margin-left: 6px; }
+.gamewrap { display: flex; flex-direction: column; gap: 12px; }
+.gcard { background: var(--card); border: 1px solid var(--line); border-radius: 15px; padding: 16px; }
+.gcard h3 { font-family: 'Fraunces', serif; font-size: 20px; font-weight: 600; color: var(--pine); margin-bottom: 10px; }
+.grow { display: flex; justify-content: space-between; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 14.5px; }
+.grow:last-of-type { border-bottom: none; }
+.grow span { color: var(--ink); font-weight: 500; }
+.grow span.me { color: var(--brass); font-weight: 700; }
+.grow b { color: var(--pine); font-weight: 700; font-size: 15px; }
+.gsegs { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 7px; }
+.gseg { display: flex; flex-direction: column; }
+.gseg em { font-style: normal; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--brass); }
+.gseg span { font-size: 13.5px; color: var(--ink); margin-top: 1px; }
+.gseg i, .gteams i { font-style: normal; color: var(--mut); font-size: 12px; padding: 0 2px; }
+.gteams { font-size: 13.5px; color: var(--ink); margin-bottom: 10px; font-weight: 500; }
+.ghint { font-size: 12px; color: var(--mut); margin-top: 10px; font-weight: 500; }
+.gnote { text-align: center; color: var(--mut); font-size: 14px; padding: 30px 24px; font-weight: 500; }
+
+/* wolf control */
+.wolfbar { background: linear-gradient(100deg, #16392a, #1f4d38); border-radius: 15px; padding: 13px 15px; margin-bottom: 14px; box-shadow: 0 6px 18px rgba(14,42,31,.22); }
+.wolf-head { color: #f6f0e2; font-size: 13px; font-weight: 500; margin-bottom: 10px; }
+.wolf-head b { font-weight: 700; color: #fff; }
+.wolf-picks { display: flex; flex-wrap: wrap; gap: 6px; }
+.wolf-picks button { flex: 1 1 0; min-width: 64px; border: 1px solid rgba(246,240,226,.3); background: rgba(246,240,226,.08); color: #f6f0e2; font: inherit; font-size: 13px; font-weight: 600; padding: 9px 6px; border-radius: 10px; cursor: pointer; transition: .15s; }
+.wolf-picks button.on { background: var(--brass); border-color: var(--brass); color: #fff; }
+.wolf-picks button.lone { flex-basis: 100%; }

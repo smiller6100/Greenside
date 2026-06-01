@@ -9,6 +9,10 @@ const FORMAT_DEFS = [
 const HCP_DEFS = [
   { id: "perHole", label: "Per-hole" }, { id: "course", label: "Course" }, { id: "gross", label: "Off" },
 ] as const;
+const GAME_DEFS = [
+  { id: "sixes", label: "Sixes" }, { id: "wolf", label: "Wolf" },
+  { id: "vegas", label: "Vegas" }, { id: "nassau", label: "Nassau" },
+] as const;
 
 interface CourseHit { id: string; name: string; where: string; lat: number | null; lng: number | null; saved?: boolean; }
 
@@ -28,6 +32,7 @@ export default function Home() {
   const [nameTouched, setNameTouched] = useState(false);
   const [players, setPlayers] = useState([{ name: "", hcp: "12" }]);
   const [formats, setFormats] = useState<Record<string, boolean>>({ net: true, gross: true, stableford: false, skins: false });
+  const [games, setGames] = useState<Record<string, boolean>>({ sixes: false, wolf: false, vegas: false, nassau: false });
   const [hcpMode, setHcpMode] = useState<"perHole" | "course" | "gross">("perHole");
   const [joinCode, setJoinCode] = useState((location.hash.match(/#\/r\/([A-Za-z0-9]+)/) || [])[1] || "");
   const [busy, setBusy] = useState(false);
@@ -137,7 +142,7 @@ export default function Home() {
     setConfirmNew(false); setBusy(true);
     const named = players.map((p) => ({ name: p.name.trim(), hcp: p.hcp })).filter((p) => p.name);
     const payload = {
-      name: roundName.trim() || "Round", formats, handicapMode: hcpMode,
+      name: roundName.trim() || "Round", formats, games, handicapMode: hcpMode,
       course, lat: loc.lat, lng: loc.lng,
       courseName: loaded ? courseName.trim() : "", courseWhere,
       players: named.map((p, i) => ({ id: `p${i + 1}`, name: p.name.trim(), hcp: Math.max(0, Math.min(54, parseInt(p.hcp) || 0)) })),
@@ -265,6 +270,15 @@ export default function Home() {
               <div className="chips">
                 {FORMAT_DEFS.map((f) => (
                   <button key={f.id} className={`chip ${formats[f.id] ? "on" : ""}`} onClick={() => setFormats({ ...formats, [f.id]: !formats[f.id] })}>{f.label}</button>
+                ))}
+              </div>
+            </div>
+
+            <div className="field">
+              <span>Games <em className="opt">optional · best with 4 players</em></span>
+              <div className="chips">
+                {GAME_DEFS.map((f) => (
+                  <button key={f.id} className={`chip ${games[f.id] ? "on" : ""}`} onClick={() => setGames({ ...games, [f.id]: !games[f.id] })}>{f.label}</button>
                 ))}
               </div>
             </div>

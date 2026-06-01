@@ -27,7 +27,7 @@ export class GolfRound implements DurableObject {
       const cfg = await request.json<any>();
       const existing = await this.ctx.storage.get("state");
       if (!existing) {
-        await this.ctx.storage.put("state", { ...cfg, scores: {}, createdAt: Date.now() });
+        await this.ctx.storage.put("state", { ...cfg, scores: {}, wolf: {}, createdAt: Date.now() });
       }
       return Response.json({ ok: true });
     }
@@ -78,6 +78,16 @@ export class GolfRound implements DurableObject {
         await this.ctx.storage.put("state", state);
         this.broadcast({ type: "state", state });
       }
+    } else if (data.type === "wolfPick") {
+      const hole = Number(data.hole);
+      if (!Number.isInteger(hole) || hole < 1 || hole > 18) return;
+      const partner = data.partner;
+      const valid = partner === null || partner === "lone" || state.players.some((p: any) => p.id === partner);
+      if (!valid) return;
+      state.wolf = state.wolf || {};
+      if (partner === null) delete state.wolf[hole]; else state.wolf[hole] = partner;
+      await this.ctx.storage.put("state", state);
+      this.broadcast({ type: "state", state });
     }
   }
 

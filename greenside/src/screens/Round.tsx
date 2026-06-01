@@ -1,12 +1,12 @@
 import { useState, useMemo, useEffect } from "react";
 import { Flag, Minus, Plus, Crown, ChevronLeft, ChevronRight, Trophy, ClipboardList, Copy, Check, Home } from "lucide-react";
 import { useRound } from "../lib/useRound";
-import { computeStandings, strokesOn, toParClass, fmtToPar, aerialUrl } from "../lib/golf";
+import { computeStandings, computeGames, strokesOn, toParClass, fmtToPar, aerialUrl } from "../lib/golf";
 
-const FORMAT_LABELS: Record<string, string> = { net: "Net", gross: "Gross", stableford: "Stableford", skins: "Skins", card: "Full card" };
+const FORMAT_LABELS: Record<string, string> = { net: "Net", gross: "Gross", stableford: "Stableford", skins: "Skins", card: "Full card", games: "Games" };
 
 export default function Round({ code }: { code: string }) {
-  const { state, connected, missing, sendScore } = useRound(code);
+  const { state, connected, missing, sendScore, sendWolfPick } = useRound(code);
   const [tab, setTab] = useState<"board" | "score">("board");
   const [view, setView] = useState("net"); // a scoring format, or "card"
   const [holeIdx, setHoleIdx] = useState(0);
@@ -30,6 +30,7 @@ export default function Round({ code }: { code: string }) {
   }, [state, code]);
 
   const standings = useMemo(() => (state && view !== "card" ? computeStandings(state, view) : []), [state, view]);
+  const games = useMemo(() => (state ? computeGames(state) : null), [state]);
 
   if (missing) {
     return (
@@ -46,6 +47,59 @@ export default function Round({ code }: { code: string }) {
   const course = state.course;
   const hole = course[holeIdx];
   const useHcp = state.handicapMode !== "gross";
+  const nameOf = (id: string) => state.players.find((p) => p.id === id)?.name || "?";
+  const enabledGames = state.games ? Object.keys(state.games).filter((k) => (state.games as any)[k]) : [];
+
+  const vegasLead = (v: any) => {
+    const d = v.pts[0] - v.pts[1];
+    if (d === 0) return "All even";
+    return d > 0 ? `${v.teams[0].map(nameOf).join(" & ")} lead by ${d}` : `${v.teams[1].map(nameOf).join(" & ")} lead by ${-d}`;
+  };
+
+  const GamesPanel = () => {
+    if (!games?.anyOn) return <p className="foot">No games picked for this round.</p>;
+    if (!games.ready) return <div className="gnote">In-round games need exactly 4 players — this round has {state.players.length}.</div>;
+    const ranked = (pts: Record<string, number>) => [...state.players].sort((a, b) => pts[b.id] - pts[a.id]);
+    return (
+      <div className="gamewrap">
+        {state.games?.sixes && games.sixes && (
+          <div className="gcard">
+            <h3>Sixes</h3>
+            {ranked(games.sixes.points).map((p) => (
+              <div className="grow" key={p.id}><span className={p.id === me ? "me" : ""}>{p.name}</span><b>{games.sixes.points[p.id]} pts</b></div>
+            ))}
+            <div className="gsegs">{games.sixes.segments.map((s: any, i: number) => (
+              <div className="gseg" key={i}><em>{s.label}</em><span>{s.a.map(nameOf).join(" & ")} <i>vs</i> {s.b.map(nameOf).join(" & ")}</span></div>
+            ))}</div>
+          </div>
+        )}
+        {state.games?.wolf && games.wolf && (
+          <div className="gcard">
+            <h3>Wolf</h3>
+            {ranked(games.wolf.points).map((p) => (
+              <div className="grow" key={p.id}><span className={p.id === me ? "me" : ""}>{p.name}</span><b>{games.wolf.points[p.id]} pts</b></div>
+            ))}
+            <p className="ghint">Wolf rotates each hole — set the pick on the Scorecard tab.</p>
+          </div>
+        )}
+        {state.games?.vegas && games.vegas && (
+          <div className="gcard">
+            <h3>Vegas</h3>
+            <div className="grow"><span>{games.vegas.teams[0].map(nameOf).join(" & ")}</span><b>{games.vegas.pts[0]}</b></div>
+            <div className="grow"><span>{games.vegas.teams[1].map(nameOf).join(" & ")}</span><b>{games.vegas.pts[1]}</b></div>
+            <p className="ghint">{vegasLead(games.vegas)}</p>
+          </div>
+        )}
+        {state.games?.nassau && games.nassau && (
+          <div className="gcard">
+            <h3>Nassau</h3>
+            <p className="gteams">{games.nassau.teams[0].map(nameOf).join(" & ")} <i>vs</i> {games.nassau.teams[1].map(nameOf).join(" & ")}</p>
+            {games.nassau.lines.map((l: any, i: number) => (<div className="grow" key={i}><span>{l.label}</span><b>{l.status}</b></div>))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const claim = (id: string | null) => {
     if (id) localStorage.setItem(`gs:me:${code}`, id); else localStorage.removeItem(`gs:me:${code}`);
@@ -75,36 +129,41 @@ export default function Round({ code }: { code: string }) {
   const sumPar = (arr: typeof course) => arr.reduce((s, h) => s + h.par, 0);
   const sumSc = (pid: string, arr: typeof course) => arr.reduce((s, h) => s + (sp(pid, h.num) || 0), 0);
 
+  const nineTable = (holes: typeof course, label: string) => (
+    <table className="nine">
+      <thead>
+        <tr><th className="stik">Hole</th>{holes.map((h) => <th key={h.num}>{h.num}</th>)}<th className="tot">{label}</th></tr>
+        <tr className="parrow"><th className="stik">Par</th>{holes.map((h) => <th key={h.num}>{h.par}</th>)}<th className="tot">{sumPar(holes)}</th></tr>
+      </thead>
+      <tbody>
+        {state.players.map((p) => (
+          <tr key={p.id} className={p.id === me ? "meRow" : ""}>
+            <th className="stik">{p.name}</th>
+            {holes.map((h) => { const v = sp(p.id, h.num); return <td key={h.num} className={v != null ? toParClass(v - h.par) : ""}>{v ?? ""}</td>; })}
+            <td className="tot">{sumSc(p.id, holes) || ""}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+
   const FullCard = () => (
-    <div className="cardwrap">
-      <table className="fcard">
-        <thead>
-          <tr>
-            <th className="stik">Hole</th>
-            {front.map((h) => <th key={h.num}>{h.num}</th>)}<th className="tot">Out</th>
-            {back.length > 0 && <>{back.map((h) => <th key={h.num}>{h.num}</th>)}<th className="tot">In</th></>}
-            <th className="tot">Tot</th>
-          </tr>
-          <tr className="parrow">
-            <th className="stik">Par</th>
-            {front.map((h) => <th key={h.num}>{h.par}</th>)}<th className="tot">{sumPar(front)}</th>
-            {back.length > 0 && <>{back.map((h) => <th key={h.num}>{h.par}</th>)}<th className="tot">{sumPar(back)}</th></>}
-            <th className="tot">{sumPar(course)}</th>
-          </tr>
-        </thead>
+    <div className="cardstack">
+      {nineTable(front, "Out")}
+      {back.length > 0 && nineTable(back, "In")}
+      <table className="nine totals">
+        <thead><tr><th className="stik">Totals</th><th>Out</th>{back.length > 0 && <th>In</th>}<th className="tot">Gross</th></tr></thead>
         <tbody>
           {state.players.map((p) => (
             <tr key={p.id} className={p.id === me ? "meRow" : ""}>
               <th className="stik">{p.name}</th>
-              {front.map((h) => { const v = sp(p.id, h.num); return <td key={h.num} className={v != null ? toParClass(v - h.par) : ""}>{v ?? ""}</td>; })}
-              <td className="tot">{sumSc(p.id, front) || ""}</td>
-              {back.length > 0 && <>{back.map((h) => { const v = sp(p.id, h.num); return <td key={h.num} className={v != null ? toParClass(v - h.par) : ""}>{v ?? ""}</td>; })}<td className="tot">{sumSc(p.id, back) || ""}</td></>}
-              <td className="tot grand">{sumSc(p.id, course) || ""}</td>
+              <td>{sumSc(p.id, front) || "–"}</td>
+              {back.length > 0 && <td>{sumSc(p.id, back) || "–"}</td>}
+              <td className="tot grand">{sumSc(p.id, course) || "–"}</td>
             </tr>
           ))}
         </tbody>
       </table>
-      <p className="foot">Scroll sideways for the back nine</p>
     </div>
   );
 
@@ -130,9 +189,10 @@ export default function Round({ code }: { code: string }) {
                 <button key={f} className={`seg-btn ${view === f ? "on" : ""}`} onClick={() => setView(f)}>{FORMAT_LABELS[f]}</button>
               ))}
               <button className={`seg-btn ${view === "card" ? "on" : ""}`} onClick={() => setView("card")}>Full Card</button>
+              {enabledGames.length > 0 && <button className={`seg-btn ${view === "games" ? "on" : ""}`} onClick={() => setView("games")}>Games</button>}
             </div>
 
-            {view === "card" ? <FullCard /> : (
+            {view === "card" ? <FullCard /> : view === "games" ? <GamesPanel /> : (
               <>
                 <div className="board">
                   {standings.map((r, i) => {
@@ -163,6 +223,22 @@ export default function Round({ code }: { code: string }) {
               <button className="nav" disabled={holeIdx === course.length - 1} onClick={() => setHoleIdx((i) => Math.min(course.length - 1, i + 1))}><ChevronRight size={20} /></button>
             </div>
             <div className="prog"><span style={{ width: `${((holeIdx + 1) / course.length) * 100}%` }} /></div>
+            {state.games?.wolf && state.players.length === 4 && (() => {
+              const wolf = state.players[(hole.num - 1) % 4];
+              const others = state.players.filter((p) => p.id !== wolf.id);
+              const pick = (state.wolf || {})[hole.num];
+              return (
+                <div className="wolfbar">
+                  <div className="wolf-head">Wolf this hole: <b>{wolf.name}</b> — pick a partner or go lone</div>
+                  <div className="wolf-picks">
+                    {others.map((p) => (
+                      <button key={p.id} className={pick === p.id ? "on" : ""} onClick={() => sendWolfPick(hole.num, pick === p.id ? null : p.id)}>{p.name}</button>
+                    ))}
+                    <button className={`lone ${pick === "lone" ? "on" : ""}`} onClick={() => sendWolfPick(hole.num, pick === "lone" ? null : "lone")}>Lone Wolf</button>
+                  </div>
+                </div>
+              );
+            })()}
             <div className="cards">
               {state.players.map((p) => {
                 const rec = useHcp ? strokesOn(p.hcp, hole.si) : 0;
