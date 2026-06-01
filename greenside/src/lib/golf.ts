@@ -13,6 +13,8 @@ export interface RoundState {
   course: Hole[];
   scores: Record<string, Record<string, number>>; // playerId -> holeNum -> strokes
   createdAt: number;
+  lat?: number | null;
+  lng?: number | null;
 }
 
 export interface Standing {
@@ -56,6 +58,14 @@ export const strokesOn = (hcp: number, si: number) =>
 
 export const fmtToPar = (n: number) => (n === 0 ? "E" : n > 0 ? `+${n}` : `${n}`);
 export const toParClass = (n: number) => (n < 0 ? "under" : n > 0 ? "over" : "even");
+
+// Free satellite aerial of a coordinate via Esri World Imagery (no API key).
+export function aerialUrl(lat: number, lng: number, w = 760, h = 360): string {
+  const dLat = 0.011;
+  const dLng = (dLat * (w / h)) / Math.cos((lat * Math.PI) / 180);
+  const bbox = `${lng - dLng},${lat - dLat},${lng + dLng},${lat + dLat}`;
+  return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bbox}&bboxSR=4326&imageSR=4326&size=${w},${h}&format=jpg&f=image`;
+}
 
 export function computeStandings(state: RoundState, format: string): Standing[] {
   const useHcp = state.handicapMode !== "gross";

@@ -59,3 +59,25 @@ No terminal, ever.
 - `worker/index.ts` — routing + creating rounds.
 - `worker/GolfRound.ts` — the live engine (one per round; holds scores, broadcasts updates).
 - `wrangler.jsonc` — tells Cloudflare how to wire it all together.
+
+---
+
+## Course search — one-time key setup
+
+Course search uses GolfCourse API (free). The app still works without it (it falls
+back to the demo Par 72), but to turn search on:
+
+1. Go to https://golfcourseapi.com and sign up with your email — you'll get an API key.
+2. In the Cloudflare dashboard: **Workers & Pages → greenside → Settings → Variables and Secrets**.
+3. Click **Add**, choose type **Secret**, set:
+   - **Name:** `GOLF_API_KEY`
+   - **Value:** the key from step 1
+4. Save. That's it — the key is stored securely on the Worker, never in your code.
+
+The Worker caches every course it looks up, so you'll stay well under the free
+limit of 50 lookups/day.
+
+## Course aerial
+Each hole shows a satellite aerial of the course (free, via Esri imagery). It's a
+course-level view — true per-hole flyovers need per-hole GPS coordinates, which the
+free data doesn't include. That's a later upgrade.
