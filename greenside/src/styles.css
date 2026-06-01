@@ -194,3 +194,34 @@ body { font-family: 'Hanken Grotesk', sans-serif; }
 .cc-nameinput { width: 100%; border: none; background: transparent; font: inherit; font-size: 15px; font-weight: 600; color: var(--ink); padding: 0; }
 .cc-nameinput:focus { outline: none; }
 .st-in.dim { color: var(--mut); font-weight: 500; }
+
+/* ---- home button + leave / resume ---- */
+.homebtn { width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--pine); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: .15s; }
+.homebtn:active { transform: scale(.92); }
+.homebtn svg { color: var(--brass); }
+.resume { display: flex; align-items: center; gap: 11px; margin: 4px 22px 0; padding: 13px 16px; border-radius: 13px; border: 1px solid var(--brass); background: rgba(184,146,74,.09); color: var(--pine); font: inherit; cursor: pointer; text-align: left; width: calc(100% - 44px); }
+.resume:active { transform: translateY(1px); }
+.resume svg { color: var(--brass); flex: none; }
+.rs-txt { display: flex; flex-direction: column; flex: 1; min-width: 0; font-size: 14px; font-weight: 600; line-height: 1.2; }
+.rs-txt em { font-style: normal; font-size: 12px; color: var(--mut); font-weight: 500; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rs-code { font-family: 'Fraunces', serif; font-weight: 600; font-size: 18px; color: var(--brass); letter-spacing: .08em; flex: none; }
+
+/* slider with the extra Full Card button */
+.seg.wrap { flex-wrap: wrap; }
+.seg.wrap .seg-btn { flex: 1 1 28%; min-width: 62px; }
+
+/* ---- full scorecard grid ---- */
+.cardwrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
+.fcard { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+.fcard th, .fcard td { padding: 8px 7px; text-align: center; min-width: 30px; white-space: nowrap; border-bottom: 1px solid var(--line); }
+.fcard thead th { font-weight: 700; color: var(--mut); font-size: 11px; }
+.fcard .parrow th { color: var(--brass); }
+.fcard .stik { position: sticky; left: 0; background: var(--card); text-align: left; font-weight: 600; color: var(--ink); min-width: 92px; padding-left: 12px; box-shadow: 1px 0 0 var(--line); z-index: 1; }
+.fcard thead .stik { color: var(--mut); }
+.fcard .tot { font-weight: 700; color: var(--pine); background: rgba(21,57,42,.045); }
+.fcard td.grand { color: var(--pine); }
+.fcard td.under { color: var(--under); font-weight: 700; }
+.fcard td.over { color: var(--over); }
+.fcard tbody tr:last-child td, .fcard tbody tr:last-child th { border-bottom: none; }
+.fcard .meRow td, .fcard .meRow th { background: rgba(184,146,74,.07); }
+.fcard .meRow .stik { color: var(--brass); background: #f2e9d4; }

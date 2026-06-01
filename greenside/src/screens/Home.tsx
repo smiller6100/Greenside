@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Flag, Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark } from "lucide-react";
+import { Flag, Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw } from "lucide-react";
 import { DEFAULT_COURSE, aerialUrl, type Hole } from "../lib/golf";
 
 const FORMAT_DEFS = [
@@ -32,6 +32,8 @@ export default function Home() {
   const [joinCode, setJoinCode] = useState((location.hash.match(/#\/r\/([A-Za-z0-9]+)/) || [])[1] || "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [last] = useState(() => ({ code: localStorage.getItem("gs:lastRound") || "", name: localStorage.getItem("gs:lastRoundName") || "" }));
+  const [confirmNew, setConfirmNew] = useState(false);
 
   // course
   const [query, setQuery] = useState("");
@@ -119,12 +121,21 @@ export default function Home() {
   const setP = (i: number, key: "name" | "hcp", v: string) => setPlayers(players.map((p, k) => (k === i ? { ...p, [key]: v } : p)));
   const parTotal = course.reduce((s, h) => s + h.par, 0);
 
-  async function create() {
+  function onCreatePress() {
     setErr("");
-    const named = players.map((p) => ({ name: p.name.trim(), hcp: p.hcp })).filter((p) => p.name);
+    const named = players.map((p) => p.name.trim()).filter(Boolean);
     if (!named.length) { setErr("Add at least one player."); return; }
     if (!Object.values(formats).some(Boolean)) { setErr("Pick at least one format."); return; }
-    setBusy(true);
+    if (last.code) { setConfirmNew(true); return; }
+    doCreate();
+  }
+  function deleteOldAndCreate() {
+    localStorage.removeItem("gs:lastRound"); localStorage.removeItem("gs:lastRoundName");
+    setConfirmNew(false); doCreate();
+  }
+  async function doCreate() {
+    setConfirmNew(false); setBusy(true);
+    const named = players.map((p) => ({ name: p.name.trim(), hcp: p.hcp })).filter((p) => p.name);
     const payload = {
       name: roundName.trim() || "Round", formats, handicapMode: hcpMode,
       course, lat: loc.lat, lng: loc.lng,
@@ -135,6 +146,7 @@ export default function Home() {
       const r = await fetch("/api/round", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
       const { code } = await r.json();
       localStorage.setItem(`gs:me:${code}`, "p1"); localStorage.setItem(`gs:claimed:${code}`, "1");
+      localStorage.setItem("gs:lastRound", code); localStorage.setItem("gs:lastRoundName", payload.name);
       location.hash = `#/r/${code}`;
     } catch { setErr("Couldn't create the round. Try again."); setBusy(false); }
   }
@@ -153,6 +165,14 @@ export default function Home() {
           <h1>Keep the<br />card together.</h1>
           <p className="lede">One shared scorecard for your group or your whole outing — every stroke, on every phone, the moment it lands.</p>
         </header>
+
+        {last.code && (
+          <button className="resume" onClick={() => { location.hash = `#/r/${last.code}`; }}>
+            <RotateCcw size={16} />
+            <span className="rs-txt">Resume your round<em>{last.name || last.code}</em></span>
+            <span className="rs-code">{last.code}</span>
+          </button>
+        )}
 
         <div className="seg big">
           <button className={`seg-btn ${mode === "create" ? "on" : ""}`} onClick={() => { setMode("create"); setErr(""); }}>Start a round</button>
@@ -259,7 +279,7 @@ export default function Home() {
             </div>
 
             {err && <p className="err">{err}</p>}
-            <button className="primary" disabled={busy} onClick={create}>{busy ? "Creating…" : "Create round"}</button>
+            <button className="primary" disabled={busy} onClick={onCreatePress}>{busy ? "Creating…" : "Create round"}</button>
             <p className="hint">You'll get a short code to share with the group.</p>
           </div>
         ) : (
@@ -272,6 +292,16 @@ export default function Home() {
             <button className="primary" onClick={join}>Join round</button>
             <p className="hint">Ask whoever started the round for the code.</p>
           </div>
+        )}
+
+        {confirmNew && (
+          <div className="modal"><div className="sheet">
+            <h3>Start a new round?</h3>
+            <p>You've still got <strong>{last.name || last.code}</strong> ({last.code}) going. Delete it and start fresh, or keep it?</p>
+            <button className="primary" onClick={deleteOldAndCreate}>Delete old round &amp; start new</button>
+            <button className="ghostbtn" onClick={() => { setConfirmNew(false); location.hash = `#/r/${last.code}`; }}>Go back to that round</button>
+            <button className="ghostbtn" onClick={() => setConfirmNew(false)}>Cancel</button>
+          </div></div>
         )}
       </div>
     </div>
