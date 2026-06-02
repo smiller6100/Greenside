@@ -297,3 +297,9 @@ body { font-family: 'Libre Franklin', sans-serif; }
 .teepick button span { font-size: 11.5px; font-weight: 600; color: var(--mut); }
 .teepick button.on { border-color: var(--pine); background: rgba(14,59,40,.05); }
 .teepick button.on b { color: var(--pine); }
+
+/* full scorecard: yardage + stroke-index rows + tee caption */
+.cardtee { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--brass); padding: 2px 2px 0; }
+.nine .yardrow th { color: var(--mut); font-weight: 600; font-size: 9.5px; }
+.nine .sirow th { color: var(--mut); font-weight: 600; font-size: 9.5px; }
+.nine .yardrow th.stik, .nine .sirow th.stik { font-weight: 700; }

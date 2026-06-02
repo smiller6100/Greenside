@@ -154,13 +154,16 @@ export default function Round({ code }: { code: string }) {
   const back = course.filter((h) => h.num > 9);
   const sp = (pid: string, n: number) => (state.scores[pid] || {})[n];
   const sumPar = (arr: typeof course) => arr.reduce((s, h) => s + h.par, 0);
+  const sumYards = (arr: typeof course) => arr.reduce((s, h) => s + (h.yards || 0), 0);
   const sumSc = (pid: string, arr: typeof course) => arr.reduce((s, h) => s + (sp(pid, h.num) || 0), 0);
 
   const nineTable = (holes: typeof course, label: string) => (
     <table className="nine">
       <thead>
         <tr><th className="stik">Hole</th>{holes.map((h) => <th key={h.num}>{h.num}</th>)}<th className="tot">{label}</th></tr>
+        <tr className="yardrow"><th className="stik">Yds</th>{holes.map((h) => <th key={h.num}>{h.yards || "–"}</th>)}<th className="tot">{sumYards(holes) || "–"}</th></tr>
         <tr className="parrow"><th className="stik">Par</th>{holes.map((h) => <th key={h.num}>{h.par}</th>)}<th className="tot">{sumPar(holes)}</th></tr>
+        <tr className="sirow"><th className="stik">S.I.</th>{holes.map((h) => <th key={h.num}>{h.si || "–"}</th>)}<th className="tot" /></tr>
       </thead>
       <tbody>
         {state.players.map((p) => (
@@ -176,6 +179,9 @@ export default function Round({ code }: { code: string }) {
 
   const FullCard = () => (
     <div className="cardstack">
+      {((state as any).teeName || sumYards(course) > 0) && (
+        <div className="cardtee">{(state as any).teeName ? `${(state as any).teeName} tees` : "Scorecard"}{sumYards(course) > 0 ? ` · ${sumYards(course).toLocaleString()} yds · Par ${sumPar(course)}` : ""}</div>
+      )}
       {nineTable(front, "Out")}
       {back.length > 0 && nineTable(back, "In")}
       <table className="nine totals">
