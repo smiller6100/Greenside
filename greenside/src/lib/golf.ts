@@ -1,6 +1,6 @@
 // ---- Types ----
 export interface Hole { num: number; par: number; yards: number; si: number }
-export interface Player { id: string; name: string; hcp: number }
+export interface Player { id: string; name: string; hcp: number; group?: string }
 export interface Formats { net: boolean; gross: boolean; stableford: boolean; skins: boolean }
 export interface Games { sixes: boolean; wolf: boolean; vegas: boolean; nassau: boolean }
 export type HcpMode = "perHole" | "course" | "gross";
@@ -10,6 +10,8 @@ export interface RoundState {
   name: string;
   formats: Formats;
   games?: Games;
+  outing?: boolean;
+  groupCount?: number;
   handicapMode: HcpMode;
   players: Player[];
   course: Hole[];
@@ -207,4 +209,27 @@ export function computeGames(state: RoundState): any {
     ] };
   }
   return out;
+}
+
+// ---- Outing team scoring: 2 best net of each foursome per hole ----
+export function computeTeams(state: RoundState): any[] {
+  const useHcp = state.handicapMode !== "gross";
+  const groups: Record<string, Player[]> = {};
+  state.players.forEach((p) => { const g = p.group || "A"; (groups[g] = groups[g] || []).push(p); });
+  const rows = Object.keys(groups).sort().map((g) => {
+    const members = groups[g];
+    let toPar = 0, thru = 0;
+    state.course.forEach((h) => {
+      const nets = members.map((p) => {
+        const v = (state.scores[p.id] || {})[h.num];
+        return v == null ? null : v - (useHcp ? strokesOn(p.hcp, h.si) : 0);
+      }).filter((v): v is number => v != null).sort((a, b) => a - b);
+      if (nets.length < 2) return;
+      toPar += nets[0] + nets[1] - 2 * h.par;
+      thru++;
+    });
+    return { group: g, names: members.map((p) => p.name), toPar, thru, count: members.length };
+  });
+  rows.sort((a, b) => (a.thru === 0 ? 1 : 0) - (b.thru === 0 ? 1 : 0) || a.toPar - b.toPar);
+  return rows;
 }

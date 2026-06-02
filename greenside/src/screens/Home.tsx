@@ -13,6 +13,12 @@ const GAME_DEFS = [
   { id: "sixes", label: "Sixes" }, { id: "wolf", label: "Wolf" },
   { id: "vegas", label: "Vegas" }, { id: "nassau", label: "Nassau" },
 ] as const;
+const GAME_HELP: Record<string, string> = {
+  sixes: "Teams of two, partners rotate every 6 holes. Low team score wins the hole \u2014 1 point per win.",
+  wolf: "A different \u201cwolf\u201d each hole picks a partner after the tee shots, or goes solo for triple. Set the pick on the Scorecard tab.",
+  vegas: "Two fixed teams. Each hole your pair\u2019s two scores make a number (low one first); the lower number wins the difference.",
+  nassau: "Two fixed teams, best-ball match play. Three bets in one: front 9, back 9, and the overall 18.",
+};
 
 interface CourseHit { id: string; name: string; where: string; lat: number | null; lng: number | null; saved?: boolean; }
 
@@ -30,7 +36,9 @@ export default function Home() {
   const [mode, setMode] = useState<"create" | "join">("create");
   const [roundName, setRoundName] = useState("Saturday Round");
   const [nameTouched, setNameTouched] = useState(false);
-  const [players, setPlayers] = useState([{ name: "", hcp: "12" }]);
+  const [players, setPlayers] = useState<{ name: string; hcp: string; group: string }[]>([{ name: "", hcp: "12", group: "A" }]);
+  const [outing, setOuting] = useState(false);
+  const [groupCount, setGroupCount] = useState(4);
   const [formats, setFormats] = useState<Record<string, boolean>>({ net: true, gross: true, stableford: false, skins: false });
   const [games, setGames] = useState<Record<string, boolean>>({ sixes: false, wolf: false, vegas: false, nassau: false });
   const [hcpMode, setHcpMode] = useState<"perHole" | "course" | "gross">("perHole");
@@ -121,9 +129,20 @@ export default function Home() {
     setCourse(course.map((h, k) => (k === i ? { ...h, [key]: n } : h)));
   };
 
-  const addP = () => players.length < 8 && setPlayers([...players, { name: "", hcp: "12" }]);
+  const GL = (n: number) => String.fromCharCode(65 + n);
+  const cap = outing ? 32 : 8;
+  const addP = () => players.length < cap && setPlayers([...players, { name: "", hcp: "12", group: GL(Math.floor(players.length / 4) % Math.max(1, groupCount)) }]);
   const rmP = (i: number) => setPlayers(players.filter((_, k) => k !== i));
   const setP = (i: number, key: "name" | "hcp", v: string) => setPlayers(players.map((p, k) => (k === i ? { ...p, [key]: v } : p)));
+  const cycleGroup = (i: number) => setPlayers(players.map((p, k) => (k === i ? { ...p, group: GL((p.group.charCodeAt(0) - 65 + 1) % Math.max(1, groupCount)) } : p)));
+  const toggleOuting = () => {
+    const on = !outing; setOuting(on);
+    if (on) setPlayers((ps) => ps.map((p, i) => ({ ...p, group: GL(Math.floor(i / 4)) })));
+  };
+  const setGroups = (n: number) => {
+    const gc = Math.max(2, Math.min(8, n)); setGroupCount(gc);
+    setPlayers((ps) => ps.map((p) => ({ ...p, group: p.group.charCodeAt(0) - 65 >= gc ? GL(gc - 1) : p.group })));
+  };
   const parTotal = course.reduce((s, h) => s + h.par, 0);
 
   function onCreatePress() {
@@ -140,12 +159,13 @@ export default function Home() {
   }
   async function doCreate() {
     setConfirmNew(false); setBusy(true);
-    const named = players.map((p) => ({ name: p.name.trim(), hcp: p.hcp })).filter((p) => p.name);
+    const named = players.map((p) => ({ name: p.name.trim(), hcp: p.hcp, group: p.group })).filter((p) => p.name);
     const payload = {
-      name: roundName.trim() || "Round", formats, games, handicapMode: hcpMode,
+      name: roundName.trim() || "Round", formats, games: outing ? { sixes: false, wolf: false, vegas: false, nassau: false } : games,
+      outing, groupCount, handicapMode: hcpMode,
       course, lat: loc.lat, lng: loc.lng,
       courseName: loaded ? courseName.trim() : "", courseWhere,
-      players: named.map((p, i) => ({ id: `p${i + 1}`, name: p.name.trim(), hcp: Math.max(0, Math.min(54, parseInt(p.hcp) || 0)) })),
+      players: named.map((p, i) => ({ id: `p${i + 1}`, name: p.name.trim(), hcp: Math.max(0, Math.min(54, parseInt(p.hcp) || 0)), ...(outing ? { group: p.group } : {}) })),
     };
     try {
       const r = await fetch("/api/round", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
@@ -249,10 +269,28 @@ export default function Home() {
             </label>
 
             <div className="field">
+              <span>Format of play</span>
+              <div className="seg sub">
+                <button className={`seg-btn ${!outing ? "on" : ""}`} onClick={() => { if (outing) toggleOuting(); }}>One group</button>
+                <button className={`seg-btn ${outing ? "on" : ""}`} onClick={() => { if (!outing) toggleOuting(); }}>Outing</button>
+              </div>
+              {outing && (
+                <div className="grpcount">
+                  <span>Foursomes</span>
+                  <div className="steppermini">
+                    <button onClick={() => setGroups(groupCount - 1)} aria-label="fewer">–</button><b>{groupCount}</b><button onClick={() => setGroups(groupCount + 1)} aria-label="more">+</button>
+                  </div>
+                </div>
+              )}
+              {outing && <p className="hint">One code for the whole outing. Tag each player to a group — each foursome enters only their own scores, and the board rolls everyone up.</p>}
+            </div>
+
+            <div className="field">
               <span>Players</span>
               <div className="players">
                 {players.map((p, i) => (
                   <div className="prow" key={i}>
+                    {outing && <button className="grppill" onClick={() => cycleGroup(i)} aria-label="group">{p.group}</button>}
                     <input className="pname" value={p.name} onChange={(e) => setP(i, "name", e.target.value)} placeholder={i === 0 ? "You" : `Player ${i + 1}`} />
                     <div className="hcpbox">
                       <input className="phcp" inputMode="numeric" value={p.hcp} onChange={(e) => setP(i, "hcp", e.target.value.replace(/[^0-9]/g, ""))} />
@@ -262,7 +300,7 @@ export default function Home() {
                   </div>
                 ))}
               </div>
-              {players.length < 8 && <button className="addp" onClick={addP}><Plus size={15} strokeWidth={2.4} /> Add player</button>}
+              {players.length < cap && <button className="addp" onClick={addP}><Plus size={15} strokeWidth={2.4} /> Add player</button>}
             </div>
 
             <div className="field">
@@ -274,6 +312,7 @@ export default function Home() {
               </div>
             </div>
 
+            {!outing && (
             <div className="field">
               <span>Games <em className="opt">optional · best with 4 players</em></span>
               <div className="chips">
@@ -281,7 +320,15 @@ export default function Home() {
                   <button key={f.id} className={`chip ${games[f.id] ? "on" : ""}`} onClick={() => setGames({ ...games, [f.id]: !games[f.id] })}>{f.label}</button>
                 ))}
               </div>
+              {GAME_DEFS.some((f) => games[f.id]) && (
+                <div className="gamehelp">
+                  {GAME_DEFS.filter((f) => games[f.id]).map((f) => (
+                    <div className="gh" key={f.id}><b>{f.label}</b><span>{GAME_HELP[f.id]}</span></div>
+                  ))}
+                </div>
+              )}
             </div>
+            )}
 
             <div className="field">
               <span>Handicaps</span>

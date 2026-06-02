@@ -1,15 +1,16 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Flag, Minus, Plus, Crown, ChevronLeft, ChevronRight, Trophy, ClipboardList, Copy, Check, Home } from "lucide-react";
 import { useRound } from "../lib/useRound";
-import { computeStandings, computeGames, strokesOn, toParClass, fmtToPar, aerialUrl } from "../lib/golf";
+import { computeStandings, computeGames, computeTeams, strokesOn, toParClass, fmtToPar, aerialUrl } from "../lib/golf";
 
-const FORMAT_LABELS: Record<string, string> = { net: "Net", gross: "Gross", stableford: "Stableford", skins: "Skins", card: "Full card", games: "Games" };
+const FORMAT_LABELS: Record<string, string> = { net: "Net", gross: "Gross", stableford: "Stableford", skins: "Skins", card: "Full card", games: "Games", teams: "Teams" };
 
 export default function Round({ code }: { code: string }) {
   const { state, connected, missing, sendScore, sendWolfPick } = useRound(code);
   const [tab, setTab] = useState<"board" | "score">("board");
   const [view, setView] = useState("net"); // a scoring format, or "card"
   const [holeIdx, setHoleIdx] = useState(0);
+  const [grp, setGrp] = useState<string | null>(null);
   const [me, setMe] = useState<string | null>(() => localStorage.getItem(`gs:me:${code}`));
   const [claimed, setClaimed] = useState(() => localStorage.getItem(`gs:claimed:${code}`) === "1");
   const [copied, setCopied] = useState(false);
@@ -20,8 +21,13 @@ export default function Round({ code }: { code: string }) {
     [state]
   );
 
+  const didInit = useRef(false);
   useEffect(() => {
-    if (enabledFormats.length && view !== "card" && !enabledFormats.includes(view)) setView(enabledFormats[0]);
+    if (state && !didInit.current) { didInit.current = true; if (state.outing) setView("teams"); }
+  }, [state]);
+
+  useEffect(() => {
+    if (enabledFormats.length && !["card", "games", "teams"].includes(view) && !enabledFormats.includes(view)) setView(enabledFormats[0]);
   }, [enabledFormats, view]);
 
   // remember this round so Home can offer to resume it
@@ -49,6 +55,27 @@ export default function Round({ code }: { code: string }) {
   const useHcp = state.handicapMode !== "gross";
   const nameOf = (id: string) => state.players.find((p) => p.id === id)?.name || "?";
   const enabledGames = state.games ? Object.keys(state.games).filter((k) => (state.games as any)[k]) : [];
+  const myGroup = state.players.find((p) => p.id === me)?.group;
+  const groups = state.outing ? Array.from(new Set(state.players.map((p) => p.group || "A"))).sort() : [];
+  const effGrp = grp ?? myGroup ?? groups[0] ?? null;
+
+  const TeamsPanel = () => {
+    const rows = computeTeams(state);
+    return (
+      <>
+        <div className="board">
+          {rows.map((t, i) => (
+            <div key={t.group} className={`row ${i === 0 && t.thru > 0 ? "lead" : ""} ${t.group === myGroup ? "self" : ""}`}>
+              <div className="pos">{i === 0 && t.thru > 0 ? <Crown size={16} strokeWidth={2.2} /> : i + 1}</div>
+              <div className="who"><div className="nm">Group {t.group}{t.group === myGroup && <em>You</em>}</div><div className="mt">{t.names.join(", ")}{t.thru ? ` · Thru ${t.thru === 18 ? "F" : t.thru}` : ""}</div></div>
+              <div className={`val ${t.thru ? toParClass(t.toPar) : ""}`}>{t.thru ? fmtToPar(t.toPar) : "–"}</div>
+            </div>
+          ))}
+        </div>
+        <p className="foot">Each foursome’s 2 best net scores per hole</p>
+      </>
+    );
+  };
 
   const vegasLead = (v: any) => {
     const d = v.pts[0] - v.pts[1];
@@ -189,10 +216,11 @@ export default function Round({ code }: { code: string }) {
                 <button key={f} className={`seg-btn ${view === f ? "on" : ""}`} onClick={() => setView(f)}>{FORMAT_LABELS[f]}</button>
               ))}
               <button className={`seg-btn ${view === "card" ? "on" : ""}`} onClick={() => setView("card")}>Full Card</button>
+              {state.outing && <button className={`seg-btn ${view === "teams" ? "on" : ""}`} onClick={() => setView("teams")}>Teams</button>}
               {enabledGames.length > 0 && <button className={`seg-btn ${view === "games" ? "on" : ""}`} onClick={() => setView("games")}>Games</button>}
             </div>
 
-            {view === "card" ? <FullCard /> : view === "games" ? <GamesPanel /> : (
+            {view === "card" ? <FullCard /> : view === "teams" ? <TeamsPanel /> : view === "games" ? <GamesPanel /> : (
               <>
                 <div className="board">
                   {standings.map((r, i) => {
@@ -239,8 +267,15 @@ export default function Round({ code }: { code: string }) {
                 </div>
               );
             })()}
+            {state.outing && groups.length > 1 && (
+              <div className="grpswitch">
+                {groups.map((gname) => (
+                  <button key={gname} className={effGrp === gname ? "on" : ""} onClick={() => setGrp(gname)}>Group {gname}</button>
+                ))}
+              </div>
+            )}
             <div className="cards">
-              {state.players.map((p) => {
+              {state.players.filter((p) => !state.outing || (p.group || "A") === effGrp).map((p) => {
                 const rec = useHcp ? strokesOn(p.hcp, hole.si) : 0;
                 const val = (state.scores[p.id] || {})[hole.num];
                 const rel = val != null ? val - hole.par : null;
@@ -276,8 +311,9 @@ export default function Round({ code }: { code: string }) {
 
         {leaving && (
           <div className="modal"><div className="sheet">
-            <h3>Leave this round?</h3><p>Your scores are saved — you can jump back in anytime, and everything will still be here.</p>
-            <button className="primary" onClick={() => { location.hash = ""; }}>Leave round</button>
+            <h3>Leave or end?</h3><p>Leaving keeps this round on your phone so you can jump back in. Ending it removes it from your Resume when you’re done for the day.</p>
+            <button className="primary" onClick={() => { location.hash = ""; }}>Leave — keep it</button>
+            <button className="dangerbtn" onClick={() => { localStorage.removeItem("gs:lastRound"); localStorage.removeItem("gs:lastRoundName"); location.hash = ""; }}>End round</button>
             <button className="ghostbtn" onClick={() => setLeaving(false)}>Stay</button>
           </div></div>
         )}
