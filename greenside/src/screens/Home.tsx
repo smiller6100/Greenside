@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Flag, Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw } from "lucide-react";
-import { DEFAULT_COURSE, aerialUrl, type Hole } from "../lib/golf";
+import { DEFAULT_COURSE, type Hole } from "../lib/golf";
 
 const FORMAT_DEFS = [
   { id: "net", label: "Net" }, { id: "gross", label: "Gross" },
@@ -57,6 +57,8 @@ export default function Home() {
   const [loaded, setLoaded] = useState(false);
   const [scanned, setScanned] = useState(false);
   const [course, setCourse] = useState<Hole[]>(DEFAULT_COURSE);
+  const [tees, setTees] = useState<{ name: string; total: number; holes: Hole[] }[]>([]);
+  const [teeName, setTeeName] = useState("");
   const [courseName, setCourseName] = useState("");
   const [courseWhere, setCourseWhere] = useState("");
   const [loc, setLoc] = useState<{ lat: number | null; lng: number | null }>({ lat: null, lng: null });
@@ -90,6 +92,8 @@ export default function Home() {
       const data = await r.json();
       const holes: Hole[] = (data.holes || []).map((h: any) => ({ num: h.num, par: h.par, yards: h.yards, si: h.si }));
       if (!holes.length) { setMsg("That course had no scorecard data. Try another or scan it."); setSearching(false); return; }
+      const tlist = (data.tees || []).map((t: any) => ({ name: t.name, total: t.total, holes: (t.holes || []).map((h: any) => ({ num: h.num, par: h.par, yards: h.yards, si: h.si })) }));
+      setTees(tlist); setTeeName(data.defaultTee || tlist[0]?.name || "");
       setCourse(holes); setCourseName(data.name || hit.name); setCourseWhere(data.where || hit.where || "");
       setLoc({ lat: data.lat ?? hit.lat, lng: data.lng ?? hit.lng });
       setSiEstimated(!!data.siEstimated); setScanned(false); setLoaded(true);
@@ -122,8 +126,13 @@ export default function Home() {
 
   function clearCourse() {
     setLoaded(false); setScanned(false); setCourse(DEFAULT_COURSE); setCourseName(""); setCourseWhere("");
+    setTees([]); setTeeName("");
     setLoc({ lat: null, lng: null }); setSiEstimated(false); setEditing(false); setMsg("");
   }
+  const selectTee = (name: string) => {
+    const t = tees.find((x) => x.name === name);
+    if (t) { setCourse(t.holes.map((h) => ({ ...h }))); setTeeName(name); }
+  };
   const editHole = (i: number, key: "par" | "si" | "yards", v: string) => {
     const n = Math.max(0, Math.min(999, parseInt(v) || 0));
     setCourse(course.map((h, k) => (k === i ? { ...h, [key]: n } : h)));
@@ -164,7 +173,7 @@ export default function Home() {
       name: roundName.trim() || "Round", formats, games: outing ? { sixes: false, wolf: false, vegas: false, nassau: false } : games,
       outing, groupCount, handicapMode: hcpMode,
       course, lat: loc.lat, lng: loc.lng,
-      courseName: loaded ? courseName.trim() : "", courseWhere,
+      courseName: loaded ? courseName.trim() : "", courseWhere, teeName: loaded ? teeName : "",
       players: named.map((p, i) => ({ id: `p${i + 1}`, name: p.name.trim(), hcp: Math.max(0, Math.min(54, parseInt(p.hcp) || 0)), ...(outing ? { group: p.group } : {}) })),
     };
     try {
@@ -232,15 +241,21 @@ export default function Home() {
               ) : (
                 <>
                   <div className="coursecard">
-                    {loc.lat != null && loc.lng != null && (
-                      <div className="thumb" style={{ backgroundImage: `url("${aerialUrl(loc.lat, loc.lng, 200, 200)}")` }} />
-                    )}
                     <div className="cc-info">
                       <input className="cc-nameinput" value={courseName} onChange={(e) => setCourseName(e.target.value)} placeholder="Course name" />
-                      <div className="cc-meta">{course.length} holes · Par {parTotal}</div>
+                      <div className="cc-meta">{course.length} holes · Par {parTotal}{teeName ? ` · ${teeName}` : ""}</div>
                     </div>
                     <button className="rm" onClick={clearCourse} aria-label="clear course"><X size={15} /></button>
                   </div>
+                  {tees.length > 1 && (
+                    <div className="teepick">
+                      {tees.map((t) => (
+                        <button key={t.name} className={teeName === t.name ? "on" : ""} onClick={() => selectTee(t.name)}>
+                          <b>{t.name}</b><span>{t.total ? `${t.total.toLocaleString()} yds` : "—"}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   {scanned && <p className="hint left warn">Scanned — please double-check the values below, especially stroke index.</p>}
                   {siEstimated && !scanned && <p className="hint left warn">Stroke index was estimated — fine-tune below if needed.</p>}
                   <button className="addp" onClick={() => setEditing(!editing)}>

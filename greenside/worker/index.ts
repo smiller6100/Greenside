@@ -25,16 +25,33 @@ function simplifyCourse(c: any) {
 function courseToHoles(course: any) {
   const loc = course.location || {};
   const tees = course.tees || {};
-  const teeArr = tees.male && tees.male.length ? tees.male : tees.female && tees.female.length ? tees.female : [];
-  const tee = teeArr[0] || null;
-  let holes: any[] = [];
-  if (tee && Array.isArray(tee.holes) && tee.holes.length) {
-    holes = tee.holes.map((h: any, i: number) => ({ num: i + 1, par: Number(h.par) || 4, yards: Number(h.yardage) || 0, si: Number(h.handicap) || 0 }));
+  const teeArr = (tees.male && tees.male.length ? tees.male : tees.female && tees.female.length ? tees.female : []) as any[];
+
+  const mkHoles = (t: any) => (Array.isArray(t.holes) ? t.holes : []).map((h: any, i: number) => ({ num: i + 1, par: Number(h.par) || 4, yards: Number(h.yardage) || 0, si: Number(h.handicap) || 0 }));
+  const teeData = teeArr.map((t) => ({ name: String(t.tee_name || "Tee"), total: Number(t.total_yards) || 0, holes: mkHoles(t) })).filter((t) => t.holes.length);
+
+  // Shared stroke index across all tees: use a tee with real handicaps, else estimate from the longest tee.
+  const siByNum: Record<number, number> = {};
+  const withHcp = teeData.find((t) => { const u = new Set(t.holes.map((h) => h.si)); return t.holes.some((h) => h.si > 0) && u.size === t.holes.length; });
+  let siEstimated = false;
+  if (withHcp) { withHcp.holes.forEach((h) => { siByNum[h.num] = h.si; }); }
+  else if (teeData.length) {
+    siEstimated = true;
+    const longest = [...teeData].sort((a, b) => b.total - a.total)[0];
+    [...longest.holes].sort((a, b) => b.yards - a.yards).forEach((h, idx) => { siByNum[h.num] = idx + 1; });
   }
-  const uniqueSI = new Set(holes.map((h) => h.si));
-  const siEstimated = holes.length > 0 && (!holes.some((h) => h.si > 0) || uniqueSI.size !== holes.length);
-  if (siEstimated && holes.length) [...holes].sort((a, b) => b.yards - a.yards).forEach((h, idx) => { h.si = idx + 1; });
-  return { name: [course.club_name, course.course_name].filter(Boolean).join(" — "), where: [loc.city, loc.state].filter(Boolean).join(", "), lat: loc.latitude ?? null, lng: loc.longitude ?? null, holes, siEstimated };
+  teeData.forEach((t) => t.holes.forEach((h) => { h.si = siByNum[h.num] || h.si; }));
+
+  const sorted = [...teeData].sort((a, b) => b.total - a.total);
+  const def = sorted[Math.floor(sorted.length / 2)] || teeData[0] || null; // middle tee by distance
+  const holes = def ? def.holes : [];
+
+  return {
+    name: [course.club_name, course.course_name].filter(Boolean).join(" — "),
+    where: [loc.city, loc.state].filter(Boolean).join(", "),
+    lat: loc.latitude ?? null, lng: loc.longitude ?? null,
+    holes, tees: teeData, defaultTee: def ? def.name : "", siEstimated,
+  };
 }
 
 async function cachedJson(cacheUrl: string, ttl: number, produce: () => Promise<Response>): Promise<Response> {
@@ -99,7 +116,7 @@ export default {
       }
       if (/^\d+$/.test(id)) {
         if (!env.GOLF_API_KEY) return new Response("Not configured", { status: 503 });
-        return cachedJson(`https://cache/course/${id}`, 604800, async () => {
+        return cachedJson(`https://cache/course/v2/${id}`, 604800, async () => {
           const r = await fetch(`${GOLF_API}/courses/${id}`, { headers: { Authorization: `Key ${env.GOLF_API_KEY}` } });
           if (!r.ok) return new Response("Course not found", { status: r.status });
           const d: any = await r.json();

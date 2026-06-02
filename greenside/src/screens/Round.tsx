@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Flag, Minus, Plus, Crown, ChevronLeft, ChevronRight, Trophy, ClipboardList, Copy, Check, Home } from "lucide-react";
 import { useRound } from "../lib/useRound";
-import { computeStandings, computeGames, computeTeams, strokesOn, toParClass, fmtToPar, aerialUrl } from "../lib/golf";
+import { computeStandings, computeGames, computeTeams, strokesOn, toParClass, fmtToPar } from "../lib/golf";
 
 const FORMAT_LABELS: Record<string, string> = { net: "Net", gross: "Gross", stableford: "Stableford", skins: "Skins", card: "Full card", games: "Games", teams: "Teams" };
 
@@ -240,11 +240,6 @@ export default function Round({ code }: { code: string }) {
           </main>
         ) : (
           <main className="body">
-            {state.lat != null && state.lng != null && (
-              <div className="aerial" style={{ backgroundImage: `url("${aerialUrl(state.lat, state.lng)}")` }}>
-                <div className="aerial-grad" /><div className="aerial-label">Hole {hole.num} · Par {hole.par}</div><div className="aerial-credit">Imagery © Esri</div>
-              </div>
-            )}
             <div className="holehead">
               <button className="nav" disabled={holeIdx === 0} onClick={() => setHoleIdx((i) => Math.max(0, i - 1))}><ChevronLeft size={20} /></button>
               <div className="holemid"><div className="hnum">Hole {hole.num}</div><div className="hmeta">Par {hole.par} · {hole.yards} yds · SI {hole.si}</div></div>
