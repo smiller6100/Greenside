@@ -10,3 +10,14 @@ export function LogoMark({ size = 22, className = "" }: { size?: number; classNa
     </svg>
   );
 }
+
+// Full brand lockup: mark + wordmark + tagline.
+export function FullLogo() {
+  return (
+    <div className="fulllogo">
+      <LogoMark size={96} className="lk-mark" />
+      <div className="lk-word">Green Side Strokes</div>
+      <div className="lk-tag">Live Golf Scorecard</div>
+    </div>
+  );
+}

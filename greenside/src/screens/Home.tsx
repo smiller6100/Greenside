@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw } from "lucide-react";
-import { LogoMark } from "../components/Logo";
+import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole } from "../lib/golf";
 
 const FORMAT_DEFS = [
@@ -195,10 +195,8 @@ export default function Home() {
   return (
     <div className="gs">
       <div className="frame home">
-        <div className="topbar"><div className="mark"><LogoMark size={22} /><span>GREENSIDE</span></div></div>
-        <header className="hero">
-          <div className="eyebrow">Live scoring</div>
-          <h1>Keep the<br />card together.</h1>
+        <header className="hero logo-hero">
+          <FullLogo />
           <p className="lede">One shared scorecard for your group or your whole outing — every stroke, on every phone, the moment it lands.</p>
         </header>
 
