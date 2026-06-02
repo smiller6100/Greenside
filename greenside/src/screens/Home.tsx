@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { Flag, Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw } from "lucide-react";
+import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw } from "lucide-react";
+import { LogoMark } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole } from "../lib/golf";
 
 const FORMAT_DEFS = [
@@ -10,14 +11,15 @@ const HCP_DEFS = [
   { id: "perHole", label: "Per-hole" }, { id: "course", label: "Course" }, { id: "gross", label: "Off" },
 ] as const;
 const GAME_DEFS = [
-  { id: "sixes", label: "Sixes" }, { id: "wolf", label: "Wolf" },
-  { id: "vegas", label: "Vegas" }, { id: "nassau", label: "Nassau" },
+  { id: "wolf", label: "Wolf" }, { id: "nines", label: "Nines" },
+  { id: "sixes", label: "Sixes" }, { id: "vegas", label: "Vegas" }, { id: "nassau", label: "Nassau" },
 ] as const;
 const GAME_HELP: Record<string, string> = {
-  sixes: "Teams of two, partners rotate every 6 holes. Low team score wins the hole \u2014 1 point per win.",
-  wolf: "A different \u201cwolf\u201d each hole picks a partner after the tee shots, or goes solo for triple. Set the pick on the Scorecard tab.",
-  vegas: "Two fixed teams. Each hole your pair\u2019s two scores make a number (low one first); the lower number wins the difference.",
-  nassau: "Two fixed teams, best-ball match play. Three bets in one: front 9, back 9, and the overall 18.",
+  wolf: "3–4 players. A different \u201cwolf\u201d each hole picks a partner after the tee shots, or goes solo for triple. Set the pick on the Scorecard tab.",
+  nines: "3 players. Each hole splits 9 points: 5 to the low score, 3 to the middle, 1 to the high (ties split). Most points wins.",
+  sixes: "4 players. Teams of two, partners rotate every 6 holes. Low team score wins the hole \u2014 1 point per win.",
+  vegas: "4 players. Two fixed teams. Each hole your pair\u2019s two scores make a number (low one first); the lower number wins the difference.",
+  nassau: "4 players. Two fixed teams, best-ball match play. Three bets in one: front 9, back 9, and the overall 18.",
 };
 
 interface CourseHit { id: string; name: string; where: string; lat: number | null; lng: number | null; saved?: boolean; }
@@ -40,7 +42,7 @@ export default function Home() {
   const [outing, setOuting] = useState(false);
   const [groupCount, setGroupCount] = useState(4);
   const [formats, setFormats] = useState<Record<string, boolean>>({ net: true, gross: true, stableford: false, skins: false });
-  const [games, setGames] = useState<Record<string, boolean>>({ sixes: false, wolf: false, vegas: false, nassau: false });
+  const [games, setGames] = useState<Record<string, boolean>>({ wolf: false, nines: false, sixes: false, vegas: false, nassau: false });
   const [hcpMode, setHcpMode] = useState<"perHole" | "course" | "gross">("perHole");
   const [joinCode, setJoinCode] = useState((location.hash.match(/#\/r\/([A-Za-z0-9]+)/) || [])[1] || "");
   const [busy, setBusy] = useState(false);
@@ -170,7 +172,7 @@ export default function Home() {
     setConfirmNew(false); setBusy(true);
     const named = players.map((p) => ({ name: p.name.trim(), hcp: p.hcp, group: p.group })).filter((p) => p.name);
     const payload = {
-      name: roundName.trim() || "Round", formats, games: outing ? { sixes: false, wolf: false, vegas: false, nassau: false } : games,
+      name: roundName.trim() || "Round", formats, games: outing ? { wolf: false, nines: false, sixes: false, vegas: false, nassau: false } : games,
       outing, groupCount, handicapMode: hcpMode,
       course, lat: loc.lat, lng: loc.lng,
       courseName: loaded ? courseName.trim() : "", courseWhere, teeName: loaded ? teeName : "",
@@ -193,7 +195,7 @@ export default function Home() {
   return (
     <div className="gs">
       <div className="frame home">
-        <div className="topbar"><div className="mark"><Flag size={15} strokeWidth={2.2} /><span>GREENSIDE</span></div></div>
+        <div className="topbar"><div className="mark"><LogoMark size={22} /><span>GREENSIDE</span></div></div>
         <header className="hero">
           <div className="eyebrow">Live scoring</div>
           <h1>Keep the<br />card together.</h1>
@@ -329,7 +331,7 @@ export default function Home() {
 
             {!outing && (
             <div className="field">
-              <span>Games <em className="opt">optional · best with 4 players</em></span>
+              <span>Games <em className="opt">optional</em></span>
               <div className="chips">
                 {GAME_DEFS.map((f) => (
                   <button key={f.id} className={`chip ${games[f.id] ? "on" : ""}`} onClick={() => setGames({ ...games, [f.id]: !games[f.id] })}>{f.label}</button>

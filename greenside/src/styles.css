@@ -303,3 +303,7 @@ body { font-family: 'Libre Franklin', sans-serif; }
 .nine .yardrow th { color: var(--mut); font-weight: 600; font-size: 9.5px; }
 .nine .sirow th { color: var(--mut); font-weight: 600; font-size: 9.5px; }
 .nine .yardrow th.stik, .nine .sirow th.stik { font-weight: 700; }
+
+/* loading logo */
+.loadmark { animation: logopulse 1.5s ease-in-out infinite; }
+@keyframes logopulse { 0%, 100% { transform: scale(1); opacity: .8; } 50% { transform: scale(1.07); opacity: 1; } }

@@ -2,7 +2,7 @@
 export interface Hole { num: number; par: number; yards: number; si: number }
 export interface Player { id: string; name: string; hcp: number; group?: string }
 export interface Formats { net: boolean; gross: boolean; stableford: boolean; skins: boolean }
-export interface Games { sixes: boolean; wolf: boolean; vegas: boolean; nassau: boolean }
+export interface Games { sixes: boolean; wolf: boolean; vegas: boolean; nassau: boolean; nines: boolean }
 export type HcpMode = "perHole" | "course" | "gross";
 
 export interface RoundState {
@@ -128,14 +128,13 @@ function vegasNum(state: RoundState, team: Player[], h: Hole): number | null {
 
 export function computeGames(state: RoundState): any {
   const P = state.players;
-  const ready = P.length === 4;
+  const n = P.length;
   const g = state.games || ({} as any);
-  const out: any = { ready, anyOn: !!(g.sixes || g.wolf || g.vegas || g.nassau) };
-  if (!ready) return out;
+  const out: any = { n, anyOn: !!(g.sixes || g.wolf || g.vegas || g.nassau || g.nines) };
   const course = state.course;
   const t1 = [P[0], P[1]], t2 = [P[2], P[3]];
 
-  if (g.sixes) {
+  if (g.sixes && n === 4) {
     const pts: Record<string, number> = {}; P.forEach((p) => (pts[p.id] = 0));
     const segs = [
       { lo: 1, hi: 6, a: [P[0], P[1]], b: [P[2], P[3]] },
@@ -151,11 +150,11 @@ export function computeGames(state: RoundState): any {
     out.sixes = { points: pts, segments: segs.map((s) => ({ label: `Holes ${s.lo}\u2013${s.hi}`, a: s.a.map((p) => p.id), b: s.b.map((p) => p.id) })) };
   }
 
-  if (g.wolf) {
+  if (g.wolf && (n === 3 || n === 4)) {
     const pts: Record<string, number> = {}; P.forEach((p) => (pts[p.id] = 0));
     const picks = state.wolf || {};
     course.forEach((h) => {
-      const wolf = P[(h.num - 1) % 4];
+      const wolf = P[(h.num - 1) % n];
       const pick = picks[h.num]; if (!pick) return;
       if (pick === "lone") {
         const wn = rawNet(state, wolf, h);
@@ -174,7 +173,25 @@ export function computeGames(state: RoundState): any {
     out.wolf = { points: pts, order: P.map((p) => p.id) };
   }
 
-  if (g.vegas) {
+  if (g.nines && n === 3) {
+    const pts: Record<string, number> = {}; P.forEach((p) => (pts[p.id] = 0));
+    const award = [5, 3, 1];
+    course.forEach((h) => {
+      const arr = P.map((p) => ({ id: p.id, s: rawNet(state, p, h) })).filter((x): x is { id: string; s: number } => x.s != null);
+      if (arr.length < 3) return;
+      arr.sort((a, b) => a.s - b.s);
+      let i = 0;
+      while (i < 3) {
+        let j = i; while (j + 1 < 3 && arr[j + 1].s === arr[i].s) j++;
+        const share = award.slice(i, j + 1).reduce((a, b) => a + b, 0) / (j - i + 1);
+        for (let k = i; k <= j; k++) pts[arr[k].id] += share;
+        i = j + 1;
+      }
+    });
+    out.nines = { points: pts };
+  }
+
+  if (g.vegas && n === 4) {
     let a = 0, b = 0;
     course.forEach((h) => {
       const na = vegasNum(state, t1, h), nb = vegasNum(state, t2, h);
@@ -184,7 +201,7 @@ export function computeGames(state: RoundState): any {
     out.vegas = { teams: [t1.map((p) => p.id), t2.map((p) => p.id)], pts: [a, b] };
   }
 
-  if (g.nassau) {
+  if (g.nassau && n === 4) {
     const seg = (lo: number, hi: number) => {
       let up = 0;
       course.filter((h) => h.num >= lo && h.num <= hi).forEach((h) => {

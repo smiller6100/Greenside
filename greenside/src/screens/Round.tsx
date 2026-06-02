@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Flag, Minus, Plus, Crown, ChevronLeft, ChevronRight, Trophy, ClipboardList, Copy, Check, Home } from "lucide-react";
+import { Minus, Plus, Crown, ChevronLeft, ChevronRight, Trophy, ClipboardList, Copy, Check, Home } from "lucide-react";
+import { LogoMark } from "../components/Logo";
 import { useRound } from "../lib/useRound";
 import { computeStandings, computeGames, computeTeams, strokesOn, toParClass, fmtToPar } from "../lib/golf";
 
@@ -41,13 +42,13 @@ export default function Round({ code }: { code: string }) {
   if (missing) {
     return (
       <Shell>
-        <div className="empty"><Flag size={28} /><h2>Round not found</h2><p>Double-check the code, or start a new round.</p>
+        <div className="empty"><LogoMark size={40} /><h2>Round not found</h2><p>Double-check the code, or start a new round.</p>
           <button className="primary" onClick={() => { location.hash = ""; }}>Back to start</button></div>
       </Shell>
     );
   }
   if (!state) {
-    return <Shell><div className="empty"><div className="spin" /><p>Connecting to {code}…</p></div></Shell>;
+    return <Shell><div className="empty loadwrap"><LogoMark size={88} className="loadmark" /><p>Connecting to {code}…</p></div></Shell>;
   }
 
   const course = state.course;
@@ -85,11 +86,30 @@ export default function Round({ code }: { code: string }) {
 
   const GamesPanel = () => {
     if (!games?.anyOn) return <p className="foot">No games picked for this round.</p>;
-    if (!games.ready) return <div className="gnote">In-round games need exactly 4 players — this round has {state.players.length}.</div>;
     const ranked = (pts: Record<string, number>) => [...state.players].sort((a, b) => pts[b.id] - pts[a.id]);
+    const fmtPts = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(1));
+    const need = (label: string, want: string) => <div className="gnote">{label} needs {want} players — this round has {games.n}.</div>;
     return (
       <div className="gamewrap">
-        {state.games?.sixes && games.sixes && (
+        {state.games?.wolf && (games.wolf ? (
+          <div className="gcard">
+            <h3>Wolf</h3>
+            {ranked(games.wolf.points).map((p) => (
+              <div className="grow" key={p.id}><span className={p.id === me ? "me" : ""}>{p.name}</span><b>{games.wolf.points[p.id]} pts</b></div>
+            ))}
+            <p className="ghint">Wolf rotates each hole — set the pick on the Scorecard tab.</p>
+          </div>
+        ) : need("Wolf", "3 or 4"))}
+        {state.games?.nines && (games.nines ? (
+          <div className="gcard">
+            <h3>Nines</h3>
+            {ranked(games.nines.points).map((p) => (
+              <div className="grow" key={p.id}><span className={p.id === me ? "me" : ""}>{p.name}</span><b>{fmtPts(games.nines.points[p.id])} pts</b></div>
+            ))}
+            <p className="ghint">5 / 3 / 1 points each hole for low / middle / high — ties split.</p>
+          </div>
+        ) : need("Nines", "exactly 3"))}
+        {state.games?.sixes && (games.sixes ? (
           <div className="gcard">
             <h3>Sixes</h3>
             {ranked(games.sixes.points).map((p) => (
@@ -99,31 +119,22 @@ export default function Round({ code }: { code: string }) {
               <div className="gseg" key={i}><em>{s.label}</em><span>{s.a.map(nameOf).join(" & ")} <i>vs</i> {s.b.map(nameOf).join(" & ")}</span></div>
             ))}</div>
           </div>
-        )}
-        {state.games?.wolf && games.wolf && (
-          <div className="gcard">
-            <h3>Wolf</h3>
-            {ranked(games.wolf.points).map((p) => (
-              <div className="grow" key={p.id}><span className={p.id === me ? "me" : ""}>{p.name}</span><b>{games.wolf.points[p.id]} pts</b></div>
-            ))}
-            <p className="ghint">Wolf rotates each hole — set the pick on the Scorecard tab.</p>
-          </div>
-        )}
-        {state.games?.vegas && games.vegas && (
+        ) : need("Sixes", "exactly 4"))}
+        {state.games?.vegas && (games.vegas ? (
           <div className="gcard">
             <h3>Vegas</h3>
             <div className="grow"><span>{games.vegas.teams[0].map(nameOf).join(" & ")}</span><b>{games.vegas.pts[0]}</b></div>
             <div className="grow"><span>{games.vegas.teams[1].map(nameOf).join(" & ")}</span><b>{games.vegas.pts[1]}</b></div>
             <p className="ghint">{vegasLead(games.vegas)}</p>
           </div>
-        )}
-        {state.games?.nassau && games.nassau && (
+        ) : need("Vegas", "exactly 4"))}
+        {state.games?.nassau && (games.nassau ? (
           <div className="gcard">
             <h3>Nassau</h3>
             <p className="gteams">{games.nassau.teams[0].map(nameOf).join(" & ")} <i>vs</i> {games.nassau.teams[1].map(nameOf).join(" & ")}</p>
             {games.nassau.lines.map((l: any, i: number) => (<div className="grow" key={i}><span>{l.label}</span><b>{l.status}</b></div>))}
           </div>
-        )}
+        ) : need("Nassau", "exactly 4"))}
       </div>
     );
   };
@@ -205,7 +216,7 @@ export default function Round({ code }: { code: string }) {
       <div className="frame">
         <div className="topbar">
           <button className="homebtn" onClick={() => setLeaving(true)} aria-label="home"><Home size={17} strokeWidth={2.2} /></button>
-          <div className="mark"><Flag size={15} strokeWidth={2.2} /><span>GREENSIDE</span></div>
+          <div className="mark"><LogoMark size={22} /><span>GREENSIDE</span></div>
           <div className={`live ${connected ? "on" : ""}`}><span className="dot" />{connected ? "LIVE" : "···"}</div>
         </div>
 
@@ -252,8 +263,8 @@ export default function Round({ code }: { code: string }) {
               <button className="nav" disabled={holeIdx === course.length - 1} onClick={() => setHoleIdx((i) => Math.min(course.length - 1, i + 1))}><ChevronRight size={20} /></button>
             </div>
             <div className="prog"><span style={{ width: `${((holeIdx + 1) / course.length) * 100}%` }} /></div>
-            {state.games?.wolf && state.players.length === 4 && (() => {
-              const wolf = state.players[(hole.num - 1) % 4];
+            {state.games?.wolf && (state.players.length === 3 || state.players.length === 4) && (() => {
+              const wolf = state.players[(hole.num - 1) % state.players.length];
               const others = state.players.filter((p) => p.id !== wolf.id);
               const pick = (state.wolf || {})[hole.num];
               return (
@@ -326,7 +337,7 @@ export default function Round({ code }: { code: string }) {
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="gs"><div className="frame">
-      <div className="topbar"><div className="mark"><Flag size={15} strokeWidth={2.2} /><span>GREENSIDE</span></div></div>
+      <div className="topbar"><div className="mark"><LogoMark size={22} /><span>GREENSIDE</span></div></div>
       {children}
     </div></div>
   );
