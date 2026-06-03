@@ -3,6 +3,8 @@ import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw } fro
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole } from "../lib/golf";
 
+const VERSION = "v8";
+
 const FORMAT_DEFS = [
   { id: "net", label: "Net" }, { id: "gross", label: "Gross" },
   { id: "stableford", label: "Stableford" }, { id: "skins", label: "Skins" },
@@ -457,6 +459,8 @@ export default function Home() {
         )}
 
         <button className="adminlink" onClick={() => setAdminOpen(true)}>Admin</button>
+
+        <div className="ver">Greenside {VERSION}</div>
 
         {adminOpen && (
           <div className="modal"><div className="sheet">

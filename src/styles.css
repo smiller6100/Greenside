@@ -351,3 +351,5 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .adminrow-info .dim { color: var(--mut); opacity: .7; }
 .delbtn { flex-shrink: 0; border: none; background: rgba(176,58,46,.1); color: var(--over); font: inherit; font-size: 13px; font-weight: 700; padding: 8px 14px; border-radius: 10px; cursor: pointer; }
 .delbtn:active { background: rgba(176,58,46,.2); }
+
+.ver { text-align: center; font-size: 12px; color: var(--mut); opacity: .8; font-weight: 700; letter-spacing: .04em; margin: 6px 0 18px; }

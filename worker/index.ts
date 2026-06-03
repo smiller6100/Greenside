@@ -5,6 +5,8 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
+const BUILD = "v8";
+
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
   const bytes = crypto.getRandomValues(new Uint8Array(len));
@@ -79,6 +81,9 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
+
+    // Version check: open /api/version in a browser to confirm which build is live.
+    if (path === "/api/version") return Response.json({ version: BUILD });
 
     // Diagnostic: visit /api/diag in a browser to test the AI vision model.
     if (path === "/api/diag" && request.method === "GET") {
