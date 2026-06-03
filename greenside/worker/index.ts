@@ -80,6 +80,19 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
+    // Diagnostic: visit /api/diag in a browser to test the AI vision model.
+    if (path === "/api/diag" && request.method === "GET") {
+      const out: any = { worker: "ok", hasGolfKey: !!env.GOLF_API_KEY, hasAI: !!env.AI };
+      const png = [137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,1,0,0,0,1,8,6,0,0,0,31,21,196,137,0,0,0,13,73,68,65,84,120,156,99,250,207,0,0,0,3,1,1,0,24,221,141,219,0,0,0,0,73,69,78,68,174,66,96,130];
+      try {
+        const v: any = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", { image: png, prompt: "Reply with the word OK.", max_tokens: 5 });
+        out.visionOk = true; out.visionReply = String(v?.response || "").slice(0, 80);
+      } catch (e: any) {
+        out.visionOk = false; out.visionError = String(e?.message || e).slice(0, 400);
+      }
+      return Response.json(out);
+    }
+
     // ---- Search: our catalog first, then the public API ----
     if (path === "/api/courses/search" && request.method === "GET") {
       const q = (url.searchParams.get("q") || "").trim();
@@ -131,16 +144,13 @@ export default {
       try {
         const buf = await request.arrayBuffer();
         const image = [...new Uint8Array(buf)];
-        const messages = [
-          { role: "system", content: "You read golf scorecards from a photo and return STRICT JSON only — no prose, no code fences." },
-          { role: "user", content:
-            'Read this golf scorecard and return JSON exactly in this shape: ' +
-            '{"name":"<course name>","par":[18 numbers],"handicap":[18 numbers],"tees":[{"name":"<tee or color name>","yards":[18 numbers]}]}. ' +
-            'Rules: "par" is the Par for holes 1 to 18 in order. "handicap" is the Handicap / stroke-index row (the 1 to 18 difficulty rank) for each hole in order; if both men and women rows exist use the first. ' +
-            '"tees" must have ONE entry for EACH tee box / colored row on the card (for example Black, Blue, White, Gold, Red, Orange, Teal); "yards" is that tee row yardage for holes 1 to 18 in order. ' +
-            'Use 18 values per array, front nine then back nine; if the card has only 9 holes return 9. Ignore the OUT, IN and TOTAL columns. If a value is unreadable use 0. Return only the JSON.' },
-        ];
-        const out: any = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", { messages, image, max_tokens: 2200 });
+        const prompt =
+          'You read golf scorecards. Look at the scorecard image and return STRICT JSON only — no prose, no code fences — in exactly this shape: ' +
+          '{"name":"<course name>","par":[18 numbers],"handicap":[18 numbers],"tees":[{"name":"<tee or color name>","yards":[18 numbers]}]}. ' +
+          'Rules: "par" is the Par for holes 1 to 18 in order. "handicap" is the Handicap / stroke-index row (the 1 to 18 difficulty rank) for each hole in order; if both men and women rows exist use the first. ' +
+          '"tees" must have ONE entry for EACH tee box / colored row on the card (for example Black, Blue, White, Gold, Red, Orange, Teal); "yards" is that tee row yardage for holes 1 to 18 in order. ' +
+          'Use 18 values per array, front nine then back nine; if the card has only 9 holes return 9. Ignore the OUT, IN and TOTAL columns. If a value is unreadable use 0. Return only the JSON.';
+        const out: any = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", { image, prompt, max_tokens: 2200 });
         const parsed = extractJson(out?.response || "");
         if (!parsed) return Response.json({ error: "unreadable" }, { status: 422 });
 
@@ -179,8 +189,8 @@ export default {
         const sorted = [...teeData].sort((a, b) => b.total - a.total);
         const def = sorted[Math.floor(sorted.length / 2)] || teeData[0];
         return Response.json({ name: typeof parsed.name === "string" ? parsed.name : "", holes: def.holes, tees: teeData, defaultTee: def.name, siEstimated });
-      } catch {
-        return Response.json({ error: "failed" }, { status: 500 });
+      } catch (e: any) {
+        return Response.json({ error: "failed", detail: String(e?.message || e).slice(0, 300) }, { status: 500 });
       }
     }
 
