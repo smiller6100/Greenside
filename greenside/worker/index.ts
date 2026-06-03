@@ -160,55 +160,68 @@ export default {
           '"par" = the Par for holes 1 to 18 in order. "handicap" = the stroke-index / handicap rank (1 to 18) for holes 1 to 18 in order; if men and women rows both exist use the first row. ' +
           '"tees" = ONE entry for EACH tee box / colored row on the card (for example Black, Blue, White, Gold, Red, Orange, Teal); "yards" = that row\'s yardage for holes 1 to 18 in order. ' +
           'Read left to right, front nine then back nine. Ignore the OUT, IN and TOTAL subtotal columns — give only the 18 real hole numbers. If a value is unreadable use 0. Return only the JSON.';
-        const out: any = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", { image, prompt, max_tokens: 2200 });
-        const parsed = extractJson(out?.response || "");
-        if (!parsed) return Response.json({ error: "unreadable" }, { status: 422 });
 
         const numArr = (a: any): number[] => (Array.isArray(a) ? a.map((v) => Number(v) || 0) : []);
-        // Accept either a flat 18-value array or separate front/back arrays, whichever the model returns.
         const flat = (one: any, f: any, b: any): number[] => {
           if (Array.isArray(one) && one.length) return numArr(one);
           return [...numArr(f), ...numArr(b)];
         };
-        // Drop the OUT / IN / TOTAL subtotal numbers by value, then keep the hole values in order.
         const strip = (arr: number[], isTotal: (v: number) => boolean): number[] => arr.filter((v) => !isTotal(v)).slice(0, 18);
-
-        const par = strip(flat(parsed.par, parsed.par_front, parsed.par_back), (v) => v > 7);        // par is 3-6; 36/72 subtotals removed
-        const hcp = strip(flat(parsed.handicap, parsed.hcp_front, parsed.hcp_back), (v) => v > 18);  // stroke index is 1-18
-        let teesIn: any[] = Array.isArray(parsed.tees) ? parsed.tees : [];
-        if (!teesIn.length && Array.isArray(parsed.holes)) { // tolerate a single holes[] shape
-          teesIn = [{ name: "Tees", yards: parsed.holes.map((h: any) => Number(h.yards) || 0) }];
-          parsed.holes.forEach((h: any, i: number) => { if (!par[i]) (par as any)[i] = Number(h.par) || 0; });
-        }
-        const teeYards = (t: any): number[] => strip(flat(t.yards, t.front, t.back), (v) => v >= 800); // no single hole is 800+, so totals are removed
-
-        const n = Math.max(par.length, hcp.length, ...teesIn.map((t) => teeYards(t).length), 0);
-        if (!n) return Response.json({ error: "unreadable" }, { status: 422 });
-
         const clampPar = (p: number) => (p >= 3 && p <= 6 ? p : 4);
-        let teeData = teesIn.map((t) => {
-          const y = teeYards(t);
-          const holes = Array.from({ length: n }, (_, i) => ({ num: i + 1, par: clampPar(par[i]), yards: Math.max(0, Math.min(899, y[i] || 0)), si: 0 }));
-          return { name: (String(t.name || "Tee").trim() || "Tee"), total: holes.reduce((s, h) => s + h.yards, 0), holes };
-        }).filter((t) => t.holes.length);
-        if (!teeData.length) teeData = [{ name: "Scanned", total: 0, holes: Array.from({ length: n }, (_, i) => ({ num: i + 1, par: clampPar(par[i]), yards: 0, si: 0 })) }];
 
-        // shared stroke index from the handicap row, else estimate from the longest tee
-        const siByNum: Record<number, number> = {};
-        const hValid = hcp.filter((x) => x >= 1 && x <= n);
-        const hUnique = hValid.length === n && new Set(hValid).size === n;
-        let siEstimated = false;
-        if (hUnique) { hcp.forEach((v, i) => (siByNum[i + 1] = v)); }
-        else {
-          siEstimated = true;
-          const longest = [...teeData].sort((a, b) => b.total - a.total)[0];
-          [...longest.holes].sort((a, b) => b.yards - a.yards).forEach((h, idx) => (siByNum[h.num] = idx + 1));
+        // Turn one model JSON reply into tee data plus a quality score (or null if nothing usable).
+        const build = (parsed: any) => {
+          if (!parsed) return null;
+          const par = strip(flat(parsed.par, parsed.par_front, parsed.par_back), (v) => v > 7);       // par 3-6; 36/72 subtotals removed
+          const hcp = strip(flat(parsed.handicap, parsed.hcp_front, parsed.hcp_back), (v) => v > 18); // stroke index 1-18
+          let teesIn: any[] = Array.isArray(parsed.tees) ? parsed.tees : [];
+          if (!teesIn.length && Array.isArray(parsed.holes)) {
+            teesIn = [{ name: "Tees", yards: parsed.holes.map((h: any) => Number(h.yards) || 0) }];
+            parsed.holes.forEach((h: any, i: number) => { if (!par[i]) (par as any)[i] = Number(h.par) || 0; });
+          }
+          const teeYards = (t: any): number[] => strip(flat(t.yards, t.front, t.back), (v) => v >= 800); // no single hole is 800+, so totals drop out
+          const n = Math.max(par.length, hcp.length, ...teesIn.map((t) => teeYards(t).length), 0);
+          if (!n) return null;
+          let teeData = teesIn.map((t) => {
+            const y = teeYards(t);
+            const holes = Array.from({ length: n }, (_, i) => ({ num: i + 1, par: clampPar(par[i]), yards: Math.max(0, Math.min(899, y[i] || 0)), si: 0 }));
+            return { name: (String(t.name || "Tee").trim() || "Tee"), total: holes.reduce((s, h) => s + h.yards, 0), holes };
+          }).filter((t) => t.holes.length);
+          if (!teeData.length) teeData = [{ name: "Scanned", total: 0, holes: Array.from({ length: n }, (_, i) => ({ num: i + 1, par: clampPar(par[i]), yards: 0, si: 0 })) }];
+
+          const siByNum: Record<number, number> = {};
+          const hValid = hcp.filter((x) => x >= 1 && x <= n);
+          const hUnique = hValid.length === n && new Set(hValid).size === n;
+          let siEstimated = false;
+          if (hUnique) { hcp.forEach((v, i) => (siByNum[i + 1] = v)); }
+          else {
+            siEstimated = true;
+            const longest = [...teeData].sort((a, b) => b.total - a.total)[0];
+            [...longest.holes].sort((a, b) => b.yards - a.yards).forEach((h, idx) => (siByNum[h.num] = idx + 1));
+          }
+          teeData.forEach((t) => t.holes.forEach((h) => (h.si = siByNum[h.num] || 0)));
+          const sorted = [...teeData].sort((a, b) => b.total - a.total);
+          const def = sorted[Math.floor(sorted.length / 2)] || teeData[0];
+          const teesWithYards = teeData.filter((t) => t.total > 0).length;
+          const filledCells = teeData.reduce((s, t) => s + t.holes.filter((h) => h.yards > 0).length, 0);
+          const score = teesWithYards * 1000 + filledCells; // reward reads that actually have yardages
+          return { score, payload: { name: typeof parsed.name === "string" ? parsed.name : "", holes: def.holes, tees: teeData, defaultTee: def.name, siEstimated } };
+        };
+
+        // The vision model is inconsistent on dense cards — read a few times and keep the best.
+        let best: any = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          let parsed: any = null;
+          try {
+            const out: any = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", { image, prompt, max_tokens: 2200 });
+            parsed = extractJson(out?.response || "");
+          } catch { parsed = null; }
+          const r = build(parsed);
+          if (r && (!best || r.score > best.score)) best = r;
+          if (best && best.score >= 2000) break; // two or more tees with real yardages — good enough
         }
-        teeData.forEach((t) => t.holes.forEach((h) => (h.si = siByNum[h.num] || 0)));
-
-        const sorted = [...teeData].sort((a, b) => b.total - a.total);
-        const def = sorted[Math.floor(sorted.length / 2)] || teeData[0];
-        return Response.json({ name: typeof parsed.name === "string" ? parsed.name : "", holes: def.holes, tees: teeData, defaultTee: def.name, siEstimated });
+        if (!best || best.score === 0) return Response.json({ error: "unreadable" }, { status: 422 });
+        return Response.json(best.payload);
       } catch (e: any) {
         return Response.json({ error: "failed", detail: String(e?.message || e).slice(0, 300) }, { status: 500 });
       }
