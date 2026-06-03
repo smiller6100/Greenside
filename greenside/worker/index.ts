@@ -156,44 +156,38 @@ export default {
         const image = [...new Uint8Array(buf)];
         const prompt =
           'You read golf scorecards. Look at the image and return STRICT JSON only — no prose, no code fences — in exactly this shape: ' +
-          '{"name":"<course name>","par_front":[9 numbers],"par_back":[9 numbers],"hcp_front":[9 numbers],"hcp_back":[9 numbers],"tees":[{"name":"<tee or color name>","front":[9 numbers],"back":[9 numbers]}]}. ' +
-          'The card has a FRONT NINE (holes 1-9) and a BACK NINE (holes 10-18). Between and after the nines there are subtotal columns labeled OUT, IN, and TOTAL (or TOT). ' +
-          'CRITICAL: NEVER include the OUT, IN, or TOTAL subtotal numbers. Return ONLY the 9 real hole values for the front and the 9 real hole values for the back. Every array must contain EXACTLY 9 numbers. ' +
-          'par_front / par_back: the Par for those 9 holes. hcp_front / hcp_back: the Handicap / stroke-index (a rank 1-18) for those 9 holes; if men and women rows both exist, use the first. ' +
-          '"tees": ONE entry for EACH tee box / colored row on the card (for example Black, Blue, White, Gold, Red, Orange, Teal). "front" and "back" are that tee row\'s 9 + 9 hole yardages, never the OUT/IN/TOTAL totals. ' +
-          'If the card is only 9 holes, fill front and leave back as []. If a single value is unreadable use 0. Return only the JSON object.';
+          '{"name":"<course name>","par":[18 numbers],"handicap":[18 numbers],"tees":[{"name":"<tee or color name>","yards":[18 numbers]}]}. ' +
+          '"par" = the Par for holes 1 to 18 in order. "handicap" = the stroke-index / handicap rank (1 to 18) for holes 1 to 18 in order; if men and women rows both exist use the first row. ' +
+          '"tees" = ONE entry for EACH tee box / colored row on the card (for example Black, Blue, White, Gold, Red, Orange, Teal); "yards" = that row\'s yardage for holes 1 to 18 in order. ' +
+          'Read left to right, front nine then back nine. Ignore the OUT, IN and TOTAL subtotal columns — give only the 18 real hole numbers. If a value is unreadable use 0. Return only the JSON.';
         const out: any = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", { image, prompt, max_tokens: 2200 });
         const parsed = extractJson(out?.response || "");
         if (!parsed) return Response.json({ error: "unreadable" }, { status: 422 });
 
-        const numArr = (a: any, cap = 0): number[] => {
-          let x = Array.isArray(a) ? a.map((v) => Number(v) || 0) : [];
-          if (cap) x = x.map((v) => (v >= cap ? 0 : v)); // drop subtotal/total values that slipped in
-          return x.slice(0, 9);
+        const numArr = (a: any): number[] => (Array.isArray(a) ? a.map((v) => Number(v) || 0) : []);
+        // Accept either a flat 18-value array or separate front/back arrays, whichever the model returns.
+        const flat = (one: any, f: any, b: any): number[] => {
+          if (Array.isArray(one) && one.length) return numArr(one);
+          return [...numArr(f), ...numArr(b)];
         };
-        // front + back, each forced to 9, concatenated to 18 (skips any OUT/IN/TOTAL by construction)
-        const join9 = (f: any, b: any, cap = 0): number[] => {
-          const front = numArr(f, cap); while (front.length < 9) front.push(0);
-          const backArr = Array.isArray(b) && b.length ? numArr(b, cap) : [];
-          if (!backArr.length) return front; // 9-hole card
-          while (backArr.length < 9) backArr.push(0);
-          return [...front, ...backArr];
-        };
+        // Drop the OUT / IN / TOTAL subtotal numbers by value, then keep the hole values in order.
+        const strip = (arr: number[], isTotal: (v: number) => boolean): number[] => arr.filter((v) => !isTotal(v)).slice(0, 18);
 
-        let par = join9(parsed.par_front, parsed.par_back);
-        let hcp = join9(parsed.hcp_front, parsed.hcp_back);
+        const par = strip(flat(parsed.par, parsed.par_front, parsed.par_back), (v) => v > 7);        // par is 3-6; 36/72 subtotals removed
+        const hcp = strip(flat(parsed.handicap, parsed.hcp_front, parsed.hcp_back), (v) => v > 18);  // stroke index is 1-18
         let teesIn: any[] = Array.isArray(parsed.tees) ? parsed.tees : [];
-        // tolerate the old flat 18-length shape if the model returns it
-        if (!par.length && Array.isArray(parsed.par)) par = (parsed.par as any[]).map((x) => Number(x) || 0).slice(0, 18);
-        if (!hcp.length && Array.isArray(parsed.handicap)) hcp = (parsed.handicap as any[]).map((x) => Number(x) || 0).slice(0, 18);
+        if (!teesIn.length && Array.isArray(parsed.holes)) { // tolerate a single holes[] shape
+          teesIn = [{ name: "Tees", yards: parsed.holes.map((h: any) => Number(h.yards) || 0) }];
+          parsed.holes.forEach((h: any, i: number) => { if (!par[i]) (par as any)[i] = Number(h.par) || 0; });
+        }
+        const teeYards = (t: any): number[] => strip(flat(t.yards, t.front, t.back), (v) => v >= 800); // no single hole is 800+, so totals are removed
 
-        const teeLens = teesIn.map((t) => join9(t.front, t.back, 900).length);
-        const n = Math.max(par.length, hcp.length, ...teeLens, 0);
+        const n = Math.max(par.length, hcp.length, ...teesIn.map((t) => teeYards(t).length), 0);
         if (!n) return Response.json({ error: "unreadable" }, { status: 422 });
 
         const clampPar = (p: number) => (p >= 3 && p <= 6 ? p : 4);
         let teeData = teesIn.map((t) => {
-          const y = join9(t.front, t.back, 900); // cap 900 = no single hole that long, so totals are dropped
+          const y = teeYards(t);
           const holes = Array.from({ length: n }, (_, i) => ({ num: i + 1, par: clampPar(par[i]), yards: Math.max(0, Math.min(899, y[i] || 0)), si: 0 }));
           return { name: (String(t.name || "Tee").trim() || "Tee"), total: holes.reduce((s, h) => s + h.yards, 0), holes };
         }).filter((t) => t.holes.length);
