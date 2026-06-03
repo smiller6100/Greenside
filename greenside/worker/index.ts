@@ -93,6 +93,16 @@ export default {
       return Response.json(out);
     }
 
+    // One-time: visit /api/agree to accept Meta's license through THIS worker's AI binding.
+    if (path === "/api/agree" && request.method === "GET") {
+      try {
+        const r: any = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", { prompt: "agree", max_tokens: 16 });
+        return Response.json({ accepted: true, reply: String(r?.response || "").slice(0, 200) });
+      } catch (e: any) {
+        return Response.json({ accepted: false, error: String(e?.message || e).slice(0, 400) });
+      }
+    }
+
     // ---- Search: our catalog first, then the public API ----
     if (path === "/api/courses/search" && request.method === "GET") {
       const q = (url.searchParams.get("q") || "").trim();
