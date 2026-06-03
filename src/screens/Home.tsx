@@ -49,6 +49,11 @@ export default function Home() {
   const [err, setErr] = useState("");
   const [last] = useState(() => ({ code: localStorage.getItem("gs:lastRound") || "", name: localStorage.getItem("gs:lastRoundName") || "" }));
   const [confirmNew, setConfirmNew] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
+  const [adminKey, setAdminKey] = useState("");
+  const [adminAuthed, setAdminAuthed] = useState(false);
+  const [adminCourses, setAdminCourses] = useState<{ id: string; name: string; where: string; plays: number }[]>([]);
+  const [adminMsg, setAdminMsg] = useState("");
 
   // course
   const [query, setQuery] = useState("");
@@ -179,6 +184,31 @@ export default function Home() {
     const gc = Math.max(2, Math.min(8, n)); setGroupCount(gc);
     setPlayers((ps) => ps.map((p) => ({ ...p, group: p.group.charCodeAt(0) - 65 >= gc ? GL(gc - 1) : p.group })));
   };
+  const adminLogin = async () => {
+    setAdminMsg("");
+    try {
+      const r = await fetch("/api/admin/check", { method: "POST", headers: { "x-admin-key": adminKey } });
+      const d: any = await r.json();
+      if (d.ok) { setAdminAuthed(true); loadAdminCourses(); }
+      else setAdminMsg(d.configured === false ? "Admin isn't set up yet — add the ADMIN_KEY secret in Cloudflare." : "Wrong password.");
+    } catch { setAdminMsg("Couldn't reach the server."); }
+  };
+  const loadAdminCourses = async () => {
+    try {
+      const r = await fetch("/api/admin/courses", { headers: { "x-admin-key": adminKey } });
+      const d: any = await r.json();
+      setAdminCourses(d.courses || []);
+    } catch { setAdminMsg("Couldn't load courses."); }
+  };
+  const deleteAdminCourse = async (id: string) => {
+    try {
+      const r = await fetch("/api/admin/courses/delete", { method: "POST", headers: { "x-admin-key": adminKey, "content-type": "application/json" }, body: JSON.stringify({ id }) });
+      const d: any = await r.json();
+      if (d.ok) setAdminCourses((cs) => cs.filter((c) => c.id !== id));
+    } catch { setAdminMsg("Delete failed."); }
+  };
+  const closeAdmin = () => { setAdminOpen(false); setAdminAuthed(false); setAdminKey(""); setAdminCourses([]); setAdminMsg(""); };
+
   const parTotal = course.reduce((s, h) => s + h.par, 0);
   const selTee = tees.find((t) => t.name === teeName) || tees[0];
 
@@ -423,6 +453,40 @@ export default function Home() {
             <button className="primary" onClick={deleteOldAndCreate}>Delete old round &amp; start new</button>
             <button className="ghostbtn" onClick={() => { setConfirmNew(false); location.hash = `#/r/${last.code}`; }}>Go back to that round</button>
             <button className="ghostbtn" onClick={() => setConfirmNew(false)}>Cancel</button>
+          </div></div>
+        )}
+
+        <button className="adminlink" onClick={() => setAdminOpen(true)}>Admin</button>
+
+        {adminOpen && (
+          <div className="modal"><div className="sheet">
+            {!adminAuthed ? (
+              <>
+                <h3>Admin</h3>
+                <p>Enter the admin password to manage saved courses.</p>
+                <input className="admin-pw" type="password" placeholder="Password" value={adminKey}
+                  onChange={(e) => setAdminKey(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") adminLogin(); }} />
+                {adminMsg && <p className="err">{adminMsg}</p>}
+                <button className="primary" onClick={adminLogin}>Log in</button>
+                <button className="ghostbtn" onClick={closeAdmin}>Cancel</button>
+              </>
+            ) : (
+              <>
+                <h3>Manage courses</h3>
+                <p className="hint left">Tap Delete to remove a bad saved card. This can't be undone.</p>
+                {adminMsg && <p className="err">{adminMsg}</p>}
+                <div className="adminlist">
+                  {adminCourses.length === 0 && <p className="hint left">No saved courses.</p>}
+                  {adminCourses.map((c) => (
+                    <div className="adminrow" key={c.id}>
+                      <div className="adminrow-info"><b>{c.name}</b>{c.where ? <span> · {c.where}</span> : null}<span className="dim"> · {c.plays}×</span></div>
+                      <button className="delbtn" onClick={() => deleteAdminCourse(c.id)}>Delete</button>
+                    </div>
+                  ))}
+                </div>
+                <button className="ghostbtn" onClick={closeAdmin}>Done</button>
+              </>
+            )}
           </div></div>
         )}
       </div>

@@ -261,6 +261,26 @@ export default {
       }
     }
 
+    // ---- Admin (gated by the ADMIN_KEY secret set in the Cloudflare dashboard) ----
+    if (path.startsWith("/api/admin/")) {
+      const key = request.headers.get("x-admin-key") || "";
+      const ok = !!env.ADMIN_KEY && key === env.ADMIN_KEY;
+      if (path === "/api/admin/check" && request.method === "POST") {
+        return Response.json({ ok, configured: !!env.ADMIN_KEY });
+      }
+      if (!ok) return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
+      if (path === "/api/admin/courses" && request.method === "GET") {
+        const r = await catalog(env).fetch("https://do/list");
+        return new Response(await r.text(), { headers: { "content-type": "application/json" } });
+      }
+      if (path === "/api/admin/courses/delete" && request.method === "POST") {
+        const body = await request.text();
+        const r = await catalog(env).fetch("https://do/delete", { method: "POST", headers: { "content-type": "application/json" }, body });
+        return new Response(await r.text(), { headers: { "content-type": "application/json" } });
+      }
+      return new Response("Not found", { status: 404 });
+    }
+
     // ---- Create a round (and save its course to the catalog) ----
     if (path === "/api/round" && request.method === "POST") {
       const cfg = await request.json<any>();
