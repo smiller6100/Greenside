@@ -5,6 +5,8 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
+const BUILD = "v8";
+
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
   const bytes = crypto.getRandomValues(new Uint8Array(len));
@@ -80,6 +82,9 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
+    // Version check: open /api/version in a browser to confirm which build is live.
+    if (path === "/api/version") return Response.json({ version: BUILD });
+
     // Diagnostic: visit /api/diag in a browser to test the AI vision model.
     if (path === "/api/diag" && request.method === "GET") {
       const out: any = { worker: "ok", hasGolfKey: !!env.GOLF_API_KEY, hasAI: !!env.AI };
@@ -95,12 +100,20 @@ export default {
 
     // One-time: visit /api/agree to accept Meta's license through THIS worker's AI binding.
     if (path === "/api/agree" && request.method === "GET") {
-      try {
-        const r: any = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", { prompt: "agree", max_tokens: 16 });
-        return Response.json({ accepted: true, reply: String(r?.response || "").slice(0, 200) });
-      } catch (e: any) {
-        return Response.json({ accepted: false, error: String(e?.message || e).slice(0, 400) });
+      const out: any = {};
+      const models: [string, string][] = [
+        ["vision", "@cf/meta/llama-3.2-11b-vision-instruct"],
+        ["scout", "@cf/meta/llama-4-scout-17b-16e-instruct"],
+      ];
+      for (const [key, model] of models) {
+        try {
+          const r: any = await env.AI.run(model, { prompt: "agree", max_tokens: 16 });
+          out[key] = { accepted: true, reply: String(r?.response || "").slice(0, 160) };
+        } catch (e: any) {
+          out[key] = { accepted: false, error: String(e?.message || e).slice(0, 240) };
+        }
       }
+      return Response.json(out);
     }
 
     // ---- Search: our catalog first, then the public API ----
@@ -153,7 +166,10 @@ export default {
     if (path === "/api/courses/scan" && request.method === "POST") {
       try {
         const buf = await request.arrayBuffer();
-        const image = [...new Uint8Array(buf)];
+        const bytes = new Uint8Array(buf);
+        const image = [...bytes]; // byte array for the small vision model
+        let bin = ""; for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+        const dataUrl = `data:image/jpeg;base64,${btoa(bin)}`; // data URL for Llama 4 Scout
         const prompt =
           'You read golf scorecards. Look at the image and return STRICT JSON only — no prose, no code fences — in exactly this shape: ' +
           '{"name":"<course name>","par":[18 numbers],"handicap":[18 numbers],"tees":[{"name":"<tee or color name>","yards":[18 numbers]}]}. ' +
@@ -209,14 +225,37 @@ export default {
         };
 
         // The vision model is inconsistent on dense cards — read a few times and keep the best.
+        // Structured-output schema so the strong model returns clean, parseable JSON.
+        const schema = {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            par: { type: "array", items: { type: "number" } },
+            handicap: { type: "array", items: { type: "number" } },
+            tees: { type: "array", items: { type: "object", properties: { name: { type: "string" }, yards: { type: "array", items: { type: "number" } } }, required: ["name", "yards"] } },
+          },
+          required: ["par", "tees"],
+        };
+        const asText = (resp: any) => (typeof resp === "string" ? resp : resp ? JSON.stringify(resp) : "");
+        // Primary: Llama 4 Scout (far stronger vision). Fallback: the small vision model.
+        const runScout = async () => {
+          const out: any = await env.AI.run("@cf/meta/llama-4-scout-17b-16e-instruct", {
+            messages: [{ role: "user", content: [{ type: "text", text: prompt }, { type: "image_url", image_url: { url: dataUrl } }] }],
+            max_tokens: 2400, temperature: 0.1, guided_json: schema,
+          });
+          return asText(out?.response);
+        };
+        const runSmall = async () => {
+          const out: any = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", { image, prompt, max_tokens: 2200 });
+          return asText(out?.response);
+        };
+
         let best: any = null;
-        for (let attempt = 0; attempt < 3; attempt++) {
-          let parsed: any = null;
-          try {
-            const out: any = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", { image, prompt, max_tokens: 2200 });
-            parsed = extractJson(out?.response || "");
-          } catch { parsed = null; }
-          const r = build(parsed);
+        const attempts = [runScout, runScout, runSmall]; // strong model twice, then fall back
+        for (const run of attempts) {
+          let text = "";
+          try { text = await run(); } catch { continue; }
+          const r = build(extractJson(text));
           if (r && (!best || r.score > best.score)) best = r;
           if (best && best.score >= 2000) break; // two or more tees with real yardages — good enough
         }
@@ -225,6 +264,26 @@ export default {
       } catch (e: any) {
         return Response.json({ error: "failed", detail: String(e?.message || e).slice(0, 300) }, { status: 500 });
       }
+    }
+
+    // ---- Admin (gated by the ADMIN_KEY secret set in the Cloudflare dashboard) ----
+    if (path.startsWith("/api/admin/")) {
+      const key = request.headers.get("x-admin-key") || "";
+      const ok = !!env.ADMIN_KEY && key === env.ADMIN_KEY;
+      if (path === "/api/admin/check" && request.method === "POST") {
+        return Response.json({ ok, configured: !!env.ADMIN_KEY });
+      }
+      if (!ok) return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
+      if (path === "/api/admin/courses" && request.method === "GET") {
+        const r = await catalog(env).fetch("https://do/list");
+        return new Response(await r.text(), { headers: { "content-type": "application/json" } });
+      }
+      if (path === "/api/admin/courses/delete" && request.method === "POST") {
+        const body = await request.text();
+        const r = await catalog(env).fetch("https://do/delete", { method: "POST", headers: { "content-type": "application/json" }, body });
+        return new Response(await r.text(), { headers: { "content-type": "application/json" } });
+      }
+      return new Response("Not found", { status: 404 });
     }
 
     // ---- Create a round (and save its course to the catalog) ----

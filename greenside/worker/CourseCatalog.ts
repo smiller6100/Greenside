@@ -75,6 +75,18 @@ export class CourseCatalog implements DurableObject {
       return Response.json({ id });
     }
 
+    if (url.pathname.endsWith("/list")) {
+      const rows = sql.exec("SELECT id,name,where_txt,plays FROM courses ORDER BY lower(name)").toArray();
+      return Response.json({ courses: rows.map((r: any) => ({ id: r.id, name: r.name, where: r.where_txt, plays: r.plays })) });
+    }
+
+    if (url.pathname.endsWith("/delete") && request.method === "POST") {
+      const { id } = await request.json<any>();
+      if (!id) return Response.json({ ok: false });
+      sql.exec("DELETE FROM courses WHERE id = ?", id);
+      return Response.json({ ok: true });
+    }
+
     return new Response("Bad request", { status: 400 });
   }
 }

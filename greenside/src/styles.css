@@ -337,3 +337,19 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .cg .cg-tee.on input.dim { color: var(--pine); font-weight: 700; }
 .cg .dot { display: none; }
 .cg .cg-tee.on .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #fff; margin-right: 6px; vertical-align: middle; }
+
+/* Admin */
+.adminlink { display: block; margin: 22px auto 6px; background: none; border: none; color: var(--mut); font: inherit; font-size: 12px; font-weight: 600; opacity: .55; cursor: pointer; letter-spacing: .03em; }
+.adminlink:active { opacity: 1; }
+.admin-pw { width: 100%; border: 1.5px solid var(--line); background: #fff; font: inherit; font-size: 16px; color: var(--ink); padding: 13px 14px; border-radius: 12px; margin-bottom: 14px; }
+.admin-pw:focus { outline: none; border-color: var(--pine); }
+.adminlist { max-height: 46vh; overflow-y: auto; margin: 4px 0 16px; display: flex; flex-direction: column; gap: 8px; }
+.adminrow { display: flex; align-items: center; gap: 10px; padding: 11px 13px; background: #fff; border: 1px solid var(--line); border-radius: 12px; }
+.adminrow-info { flex: 1; min-width: 0; font-size: 13.5px; color: var(--ink); }
+.adminrow-info b { font-weight: 700; }
+.adminrow-info span { color: var(--mut); font-weight: 500; }
+.adminrow-info .dim { color: var(--mut); opacity: .7; }
+.delbtn { flex-shrink: 0; border: none; background: rgba(176,58,46,.1); color: var(--over); font: inherit; font-size: 13px; font-weight: 700; padding: 8px 14px; border-radius: 10px; cursor: pointer; }
+.delbtn:active { background: rgba(176,58,46,.2); }
+
+.ver { text-align: center; font-size: 12px; color: var(--mut); opacity: .8; font-weight: 700; letter-spacing: .04em; margin: 6px 0 18px; }
