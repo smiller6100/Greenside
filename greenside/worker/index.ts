@@ -132,21 +132,53 @@ export default {
         const buf = await request.arrayBuffer();
         const image = [...new Uint8Array(buf)];
         const messages = [
-          { role: "system", content: "You read golf scorecards from photos and return strict JSON only. No prose, no code fences." },
-          { role: "user", content: "From this scorecard, extract the course name and every hole. Return JSON exactly like {\"name\":\"Course Name\",\"holes\":[{\"num\":1,\"par\":4,\"yards\":380,\"si\":5}]}. 'par' is the hole's par, 'yards' is a typical (middle) tee yardage, 'si' is the stroke index / handicap number (1-18) for that hole. Include all holes (9 or 18). If a value is unreadable use 0. Return only the JSON." },
+          { role: "system", content: "You read golf scorecards from a photo and return STRICT JSON only — no prose, no code fences." },
+          { role: "user", content:
+            'Read this golf scorecard and return JSON exactly in this shape: ' +
+            '{"name":"<course name>","par":[18 numbers],"handicap":[18 numbers],"tees":[{"name":"<tee or color name>","yards":[18 numbers]}]}. ' +
+            'Rules: "par" is the Par for holes 1 to 18 in order. "handicap" is the Handicap / stroke-index row (the 1 to 18 difficulty rank) for each hole in order; if both men and women rows exist use the first. ' +
+            '"tees" must have ONE entry for EACH tee box / colored row on the card (for example Black, Blue, White, Gold, Red, Orange, Teal); "yards" is that tee row yardage for holes 1 to 18 in order. ' +
+            'Use 18 values per array, front nine then back nine; if the card has only 9 holes return 9. Ignore the OUT, IN and TOTAL columns. If a value is unreadable use 0. Return only the JSON.' },
         ];
-        const out: any = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", { messages, image, max_tokens: 1200 });
+        const out: any = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", { messages, image, max_tokens: 2200 });
         const parsed = extractJson(out?.response || "");
-        if (!parsed || !Array.isArray(parsed.holes) || !parsed.holes.length) {
-          return Response.json({ error: "unreadable" }, { status: 422 });
+        if (!parsed) return Response.json({ error: "unreadable" }, { status: 422 });
+
+        const numArr = (a: any): number[] => (Array.isArray(a) ? a.map((x) => Number(x) || 0) : []);
+        const par = numArr(parsed.par);
+        const hcp = numArr(parsed.handicap);
+        let teesIn: any[] = Array.isArray(parsed.tees) ? parsed.tees : [];
+        if (!teesIn.length && Array.isArray(parsed.holes)) { // tolerate old single-list shape
+          teesIn = [{ name: "Tees", yards: parsed.holes.map((h: any) => Number(h.yards) || 0) }];
+          parsed.holes.forEach((h: any, i: number) => { if (!par[i]) par[i] = Number(h.par) || 0; if (!hcp[i]) hcp[i] = Number(h.si) || 0; });
         }
-        const holes = parsed.holes.map((h: any, i: number) => ({
-          num: Number(h.num) || i + 1,
-          par: Math.max(3, Math.min(6, Number(h.par) || 4)),
-          yards: Math.max(0, Number(h.yards) || 0),
-          si: Math.max(0, Math.min(18, Number(h.si) || 0)),
-        }));
-        return Response.json({ name: typeof parsed.name === "string" ? parsed.name : "", holes });
+        const n = Math.max(par.length, hcp.length, ...teesIn.map((t) => numArr(t.yards).length), 0);
+        if (!n) return Response.json({ error: "unreadable" }, { status: 422 });
+
+        const clampPar = (p: number) => (p >= 3 && p <= 6 ? p : 4);
+        let teeData = teesIn.map((t) => {
+          const y = numArr(t.yards);
+          const holes = Array.from({ length: n }, (_, i) => ({ num: i + 1, par: clampPar(par[i]), yards: Math.max(0, y[i] || 0), si: 0 }));
+          return { name: (String(t.name || "Tee").trim() || "Tee"), total: holes.reduce((s, h) => s + h.yards, 0), holes };
+        }).filter((t) => t.holes.length);
+        if (!teeData.length) teeData = [{ name: "Scanned", total: 0, holes: Array.from({ length: n }, (_, i) => ({ num: i + 1, par: clampPar(par[i]), yards: 0, si: 0 })) }];
+
+        // shared stroke index from the handicap row, else estimate from the longest tee
+        const siByNum: Record<number, number> = {};
+        const hValid = hcp.filter((x) => x >= 1 && x <= n);
+        const hUnique = hValid.length === n && new Set(hValid).size === n;
+        let siEstimated = false;
+        if (hUnique) { hcp.forEach((v, i) => (siByNum[i + 1] = v)); }
+        else {
+          siEstimated = true;
+          const longest = [...teeData].sort((a, b) => b.total - a.total)[0];
+          [...longest.holes].sort((a, b) => b.yards - a.yards).forEach((h, idx) => (siByNum[h.num] = idx + 1));
+        }
+        teeData.forEach((t) => t.holes.forEach((h) => (h.si = siByNum[h.num] || 0)));
+
+        const sorted = [...teeData].sort((a, b) => b.total - a.total);
+        const def = sorted[Math.floor(sorted.length / 2)] || teeData[0];
+        return Response.json({ name: typeof parsed.name === "string" ? parsed.name : "", holes: def.holes, tees: teeData, defaultTee: def.name, siEstimated });
       } catch {
         return Response.json({ error: "failed" }, { status: 500 });
       }

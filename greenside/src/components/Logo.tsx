@@ -16,7 +16,10 @@ export function FullLogo() {
   return (
     <div className="fulllogo">
       <LogoMark size={96} className="lk-mark" />
-      <div className="lk-word">Green Side Strokes</div>
+      <div className="lk-word">
+        <span className="lk-green">Green Side</span>
+        <span className="lk-strokes">Strokes</span>
+      </div>
       <div className="lk-tag">Live Golf Scorecard</div>
     </div>
   );

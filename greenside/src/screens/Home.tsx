@@ -112,13 +112,16 @@ export default function Home() {
       const r = await fetch("/api/courses/scan", { method: "POST", headers: { "content-type": "image/jpeg" }, body: blob });
       if (!r.ok) {
         setMsg("Couldn't read that photo clearly — enter the holes by hand below, or try a flatter, brighter shot.");
+        setTees([]); setTeeName("");
         setCourse(DEFAULT_COURSE.map((h) => ({ ...h, yards: 0, si: 0 }))); setCourseName(""); setCourseWhere("");
         setLoc({ lat: null, lng: null }); setSiEstimated(false); setScanned(true); setLoaded(true); setEditing(true);
       } else {
         const data = await r.json();
         const holes: Hole[] = (data.holes || []).map((h: any) => ({ num: h.num, par: h.par, yards: h.yards, si: h.si }));
+        const tlist = (data.tees || []).map((t: any) => ({ name: t.name, total: t.total, holes: (t.holes || []).map((h: any) => ({ num: h.num, par: h.par, yards: h.yards, si: h.si })) }));
+        setTees(tlist); setTeeName(data.defaultTee || tlist[0]?.name || "");
         setCourse(holes.length ? holes : DEFAULT_COURSE); setCourseName(data.name || ""); setCourseWhere("");
-        setLoc({ lat: null, lng: null }); setSiEstimated(false); setScanned(true); setLoaded(true); setEditing(true);
+        setLoc({ lat: null, lng: null }); setSiEstimated(!!data.siEstimated); setScanned(true); setLoaded(true); setEditing(true);
         if (!nameTouched && data.name) setRoundName(data.name);
       }
     } catch { setMsg("Couldn't process that image."); }
