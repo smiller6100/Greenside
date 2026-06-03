@@ -11,11 +11,19 @@ export function useRound(code: string) {
     let alive = true;
     let retry: ReturnType<typeof setTimeout>;
 
+    // Try the current host first; if the socket can't connect (e.g. the custom domain
+    // is briefly not carrying WebSockets after a deploy), fall back to the worker's
+    // always-on address so the round never hangs on "Connecting…".
+    const FALLBACK_HOST = "greenside.smiller6100.workers.dev";
+    const hosts = location.host === FALLBACK_HOST ? [location.host] : [location.host, FALLBACK_HOST];
+    let hostIdx = 0;
+    let fails = 0;
+
     const connect = () => {
       const proto = location.protocol === "https:" ? "wss" : "ws";
-      const sock = new WebSocket(`${proto}://${location.host}/api/round/${code}/connect`);
+      const sock = new WebSocket(`${proto}://${hosts[hostIdx]}/api/round/${code}/connect`);
       wsRef.current = sock;
-      sock.onopen = () => { if (alive) setConnected(true); };
+      sock.onopen = () => { if (alive) { fails = 0; setConnected(true); } };
       sock.onmessage = (e) => {
         try {
           const d = JSON.parse(e.data);
@@ -26,7 +34,9 @@ export function useRound(code: string) {
         if (!alive) return;
         setConnected(false);
         if (e.code === 4404) { setMissing(true); return; }
-        retry = setTimeout(connect, 1500);
+        fails++;
+        if (fails >= 3 && hosts.length > 1) { hostIdx = (hostIdx + 1) % hosts.length; fails = 0; } // switch hosts
+        retry = setTimeout(connect, 1200);
       };
       sock.onerror = () => { try { sock.close(); } catch { /* */ } };
     };

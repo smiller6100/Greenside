@@ -2,7 +2,6 @@
 import { GolfRound } from "./GolfRound";
 import { CourseCatalog } from "./CourseCatalog";
 import type { Env } from "./GolfRound";
-import { SEED_COURSES, buildSeedEntry } from "./seed";
 
 export { GolfRound, CourseCatalog };
 
@@ -260,24 +259,6 @@ export default {
       } catch (e: any) {
         return Response.json({ error: "failed", detail: String(e?.message || e).slice(0, 300) }, { status: 500 });
       }
-    }
-
-    // One-time: load the preloaded Legend courses into the catalog. Visit /api/seed once.
-    if (path === "/api/seed" && request.method === "GET") {
-      const results: any[] = [];
-      for (const c of SEED_COURSES) {
-        try {
-          const entry = buildSeedEntry(c);
-          const r = await catalog(env).fetch("https://do/upsert", {
-            method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(entry),
-          });
-          const j: any = await r.json();
-          results.push({ name: c.name, id: j.id, tees: entry.tees.length });
-        } catch (e: any) {
-          results.push({ name: c.name, error: String(e?.message || e).slice(0, 200) });
-        }
-      }
-      return Response.json({ seeded: results.length, courses: results });
     }
 
     // ---- Create a round (and save its course to the catalog) ----
