@@ -318,3 +318,22 @@ body { font-family: 'Libre Franklin', sans-serif; }
 .fulllogo .lk-strokes { font-family: 'Libre Franklin', sans-serif; font-weight: 300; font-size: 16px; letter-spacing: .30em; text-transform: uppercase; color: var(--pine); padding-left: .30em; }
 .fulllogo .lk-tag { display: flex; align-items: center; gap: 10px; color: #7eb15a; font-size: 10.5px; font-weight: 700; letter-spacing: .22em; text-transform: uppercase; }
 .fulllogo .lk-tag::before, .fulllogo .lk-tag::after { content: ""; display: block; width: 22px; height: 1.5px; background: #7eb15a; }
+
+/* Editable scorecard grid (course setup) */
+.cardgrid { display: flex; flex-direction: column; gap: 14px; margin-top: 10px; }
+.cg-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--line); border-radius: 12px; }
+table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
+.cg th, .cg td { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: center; padding: 0; }
+.cg tr:last-child th, .cg tr:last-child td { border-bottom: none; }
+.cg th:last-child, .cg td:last-child { border-right: none; }
+.cg thead th { background: var(--pine); color: #fff; font-weight: 700; font-size: 11px; padding: 6px 0; }
+.cg .cg-rl { position: sticky; left: 0; z-index: 1; text-align: left; white-space: nowrap; padding: 0 8px; font-weight: 700; font-size: 11.5px; color: var(--ink); background: rgba(21,57,42,.06); min-width: 52px; }
+.cg thead .cg-rl { background: var(--pine); color: #fff; }
+.cg input { width: 100%; min-width: 30px; border: none; background: transparent; text-align: center; font: inherit; font-size: 13.5px; font-weight: 600; color: var(--ink); padding: 8px 2px; }
+.cg input:focus { outline: none; background: rgba(169,118,15,.14); }
+.cg input.dim { color: var(--mut); font-weight: 500; }
+.cg .cg-tee .cg-rl.tee { cursor: pointer; }
+.cg .cg-tee.on .cg-rl.tee { background: var(--pine); color: #fff; }
+.cg .cg-tee.on input.dim { color: var(--pine); font-weight: 700; }
+.cg .dot { display: none; }
+.cg .cg-tee.on .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #fff; margin-right: 6px; vertical-align: middle; }

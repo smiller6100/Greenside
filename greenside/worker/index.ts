@@ -155,30 +155,46 @@ export default {
         const buf = await request.arrayBuffer();
         const image = [...new Uint8Array(buf)];
         const prompt =
-          'You read golf scorecards. Look at the scorecard image and return STRICT JSON only — no prose, no code fences — in exactly this shape: ' +
-          '{"name":"<course name>","par":[18 numbers],"handicap":[18 numbers],"tees":[{"name":"<tee or color name>","yards":[18 numbers]}]}. ' +
-          'Rules: "par" is the Par for holes 1 to 18 in order. "handicap" is the Handicap / stroke-index row (the 1 to 18 difficulty rank) for each hole in order; if both men and women rows exist use the first. ' +
-          '"tees" must have ONE entry for EACH tee box / colored row on the card (for example Black, Blue, White, Gold, Red, Orange, Teal); "yards" is that tee row yardage for holes 1 to 18 in order. ' +
-          'Use 18 values per array, front nine then back nine; if the card has only 9 holes return 9. Ignore the OUT, IN and TOTAL columns. If a value is unreadable use 0. Return only the JSON.';
+          'You read golf scorecards. Look at the image and return STRICT JSON only — no prose, no code fences — in exactly this shape: ' +
+          '{"name":"<course name>","par_front":[9 numbers],"par_back":[9 numbers],"hcp_front":[9 numbers],"hcp_back":[9 numbers],"tees":[{"name":"<tee or color name>","front":[9 numbers],"back":[9 numbers]}]}. ' +
+          'The card has a FRONT NINE (holes 1-9) and a BACK NINE (holes 10-18). Between and after the nines there are subtotal columns labeled OUT, IN, and TOTAL (or TOT). ' +
+          'CRITICAL: NEVER include the OUT, IN, or TOTAL subtotal numbers. Return ONLY the 9 real hole values for the front and the 9 real hole values for the back. Every array must contain EXACTLY 9 numbers. ' +
+          'par_front / par_back: the Par for those 9 holes. hcp_front / hcp_back: the Handicap / stroke-index (a rank 1-18) for those 9 holes; if men and women rows both exist, use the first. ' +
+          '"tees": ONE entry for EACH tee box / colored row on the card (for example Black, Blue, White, Gold, Red, Orange, Teal). "front" and "back" are that tee row\'s 9 + 9 hole yardages, never the OUT/IN/TOTAL totals. ' +
+          'If the card is only 9 holes, fill front and leave back as []. If a single value is unreadable use 0. Return only the JSON object.';
         const out: any = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", { image, prompt, max_tokens: 2200 });
         const parsed = extractJson(out?.response || "");
         if (!parsed) return Response.json({ error: "unreadable" }, { status: 422 });
 
-        const numArr = (a: any): number[] => (Array.isArray(a) ? a.map((x) => Number(x) || 0) : []);
-        const par = numArr(parsed.par);
-        const hcp = numArr(parsed.handicap);
+        const numArr = (a: any, cap = 0): number[] => {
+          let x = Array.isArray(a) ? a.map((v) => Number(v) || 0) : [];
+          if (cap) x = x.map((v) => (v >= cap ? 0 : v)); // drop subtotal/total values that slipped in
+          return x.slice(0, 9);
+        };
+        // front + back, each forced to 9, concatenated to 18 (skips any OUT/IN/TOTAL by construction)
+        const join9 = (f: any, b: any, cap = 0): number[] => {
+          const front = numArr(f, cap); while (front.length < 9) front.push(0);
+          const backArr = Array.isArray(b) && b.length ? numArr(b, cap) : [];
+          if (!backArr.length) return front; // 9-hole card
+          while (backArr.length < 9) backArr.push(0);
+          return [...front, ...backArr];
+        };
+
+        let par = join9(parsed.par_front, parsed.par_back);
+        let hcp = join9(parsed.hcp_front, parsed.hcp_back);
         let teesIn: any[] = Array.isArray(parsed.tees) ? parsed.tees : [];
-        if (!teesIn.length && Array.isArray(parsed.holes)) { // tolerate old single-list shape
-          teesIn = [{ name: "Tees", yards: parsed.holes.map((h: any) => Number(h.yards) || 0) }];
-          parsed.holes.forEach((h: any, i: number) => { if (!par[i]) par[i] = Number(h.par) || 0; if (!hcp[i]) hcp[i] = Number(h.si) || 0; });
-        }
-        const n = Math.max(par.length, hcp.length, ...teesIn.map((t) => numArr(t.yards).length), 0);
+        // tolerate the old flat 18-length shape if the model returns it
+        if (!par.length && Array.isArray(parsed.par)) par = (parsed.par as any[]).map((x) => Number(x) || 0).slice(0, 18);
+        if (!hcp.length && Array.isArray(parsed.handicap)) hcp = (parsed.handicap as any[]).map((x) => Number(x) || 0).slice(0, 18);
+
+        const teeLens = teesIn.map((t) => join9(t.front, t.back, 900).length);
+        const n = Math.max(par.length, hcp.length, ...teeLens, 0);
         if (!n) return Response.json({ error: "unreadable" }, { status: 422 });
 
         const clampPar = (p: number) => (p >= 3 && p <= 6 ? p : 4);
         let teeData = teesIn.map((t) => {
-          const y = numArr(t.yards);
-          const holes = Array.from({ length: n }, (_, i) => ({ num: i + 1, par: clampPar(par[i]), yards: Math.max(0, y[i] || 0), si: 0 }));
+          const y = join9(t.front, t.back, 900); // cap 900 = no single hole that long, so totals are dropped
+          const holes = Array.from({ length: n }, (_, i) => ({ num: i + 1, par: clampPar(par[i]), yards: Math.max(0, Math.min(899, y[i] || 0)), si: 0 }));
           return { name: (String(t.name || "Tee").trim() || "Tee"), total: holes.reduce((s, h) => s + h.yards, 0), holes };
         }).filter((t) => t.holes.length);
         if (!teeData.length) teeData = [{ name: "Scanned", total: 0, holes: Array.from({ length: n }, (_, i) => ({ num: i + 1, par: clampPar(par[i]), yards: 0, si: 0 })) }];
@@ -213,7 +229,7 @@ export default {
       if (cfg.courseName && Array.isArray(cfg.course) && cfg.course.length) {
         try {
           await catalog(env).fetch("https://do/upsert", { method: "POST", headers: { "content-type": "application/json" },
-            body: JSON.stringify({ name: cfg.courseName, where: cfg.courseWhere || "", lat: cfg.lat ?? null, lng: cfg.lng ?? null, holes: cfg.course }) });
+            body: JSON.stringify({ name: cfg.courseName, where: cfg.courseWhere || "", lat: cfg.lat ?? null, lng: cfg.lng ?? null, holes: cfg.course, tees: cfg.tees || null, defaultTee: cfg.teeName || cfg.defaultTee || null }) });
         } catch { /* non-fatal */ }
       }
       return Response.json({ code });

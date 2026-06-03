@@ -95,7 +95,8 @@ export default function Home() {
       const holes: Hole[] = (data.holes || []).map((h: any) => ({ num: h.num, par: h.par, yards: h.yards, si: h.si }));
       if (!holes.length) { setMsg("That course had no scorecard data. Try another or scan it."); setSearching(false); return; }
       const tlist = (data.tees || []).map((t: any) => ({ name: t.name, total: t.total, holes: (t.holes || []).map((h: any) => ({ num: h.num, par: h.par, yards: h.yards, si: h.si })) }));
-      setTees(tlist); setTeeName(data.defaultTee || tlist[0]?.name || "");
+      const tfinal = tlist.length ? tlist : [{ name: "Tees", total: holes.reduce((s: number, h: Hole) => s + (h.yards || 0), 0), holes }];
+      setTees(tfinal); setTeeName(data.defaultTee || tfinal[0]?.name || "");
       setCourse(holes); setCourseName(data.name || hit.name); setCourseWhere(data.where || hit.where || "");
       setLoc({ lat: data.lat ?? hit.lat, lng: data.lng ?? hit.lng });
       setSiEstimated(!!data.siEstimated); setScanned(false); setLoaded(true);
@@ -112,15 +113,18 @@ export default function Home() {
       const r = await fetch("/api/courses/scan", { method: "POST", headers: { "content-type": "image/jpeg" }, body: blob });
       if (!r.ok) {
         setMsg("Couldn't read that photo clearly — enter the holes by hand below, or try a flatter, brighter shot.");
-        setTees([]); setTeeName("");
-        setCourse(DEFAULT_COURSE.map((h) => ({ ...h, yards: 0, si: 0 }))); setCourseName(""); setCourseWhere("");
+        const blank = DEFAULT_COURSE.map((h) => ({ ...h, yards: 0, si: 0 }));
+        setTees([{ name: "Tees", total: 0, holes: blank }]); setTeeName("Tees");
+        setCourse(blank); setCourseName(""); setCourseWhere("");
         setLoc({ lat: null, lng: null }); setSiEstimated(false); setScanned(true); setLoaded(true); setEditing(true);
       } else {
         const data = await r.json();
         const holes: Hole[] = (data.holes || []).map((h: any) => ({ num: h.num, par: h.par, yards: h.yards, si: h.si }));
         const tlist = (data.tees || []).map((t: any) => ({ name: t.name, total: t.total, holes: (t.holes || []).map((h: any) => ({ num: h.num, par: h.par, yards: h.yards, si: h.si })) }));
-        setTees(tlist); setTeeName(data.defaultTee || tlist[0]?.name || "");
-        setCourse(holes.length ? holes : DEFAULT_COURSE); setCourseName(data.name || ""); setCourseWhere("");
+        const base = holes.length ? holes : DEFAULT_COURSE;
+        const tfinal = tlist.length ? tlist : [{ name: "Tees", total: base.reduce((s: number, h: Hole) => s + (h.yards || 0), 0), holes: base }];
+        setTees(tfinal); setTeeName(data.defaultTee || tfinal[0]?.name || "");
+        setCourse(base); setCourseName(data.name || ""); setCourseWhere("");
         setLoc({ lat: null, lng: null }); setSiEstimated(!!data.siEstimated); setScanned(true); setLoaded(true); setEditing(true);
         if (!nameTouched && data.name) setRoundName(data.name);
       }
@@ -134,13 +138,31 @@ export default function Home() {
     setTees([]); setTeeName("");
     setLoc({ lat: null, lng: null }); setSiEstimated(false); setEditing(false); setMsg("");
   }
-  const selectTee = (name: string) => {
-    const t = tees.find((x) => x.name === name);
-    if (t) { setCourse(t.holes.map((h) => ({ ...h }))); setTeeName(name); }
+  // The selected tee always feeds the round's course (par/SI are shared across tees).
+  useEffect(() => {
+    if (!tees.length) return;
+    const t = tees.find((x) => x.name === teeName) || tees[0];
+    if (t) setCourse(t.holes.map((h) => ({ ...h })));
+  }, [tees, teeName]);
+
+  const selectTee = (name: string) => setTeeName(name);
+
+  // Par and S.I. are shared by every tee; yards belong to one tee.
+  const editPar = (i: number, v: string) => {
+    const n = Math.max(0, Math.min(7, parseInt(v) || 0));
+    setTees((ts) => ts.map((t) => ({ ...t, holes: t.holes.map((h, k) => (k === i ? { ...h, par: n } : h)) })));
   };
-  const editHole = (i: number, key: "par" | "si" | "yards", v: string) => {
+  const editSI = (i: number, v: string) => {
+    const n = Math.max(0, Math.min(18, parseInt(v) || 0));
+    setTees((ts) => ts.map((t) => ({ ...t, holes: t.holes.map((h, k) => (k === i ? { ...h, si: n } : h)) })));
+  };
+  const editYards = (teeIdx: number, i: number, v: string) => {
     const n = Math.max(0, Math.min(999, parseInt(v) || 0));
-    setCourse(course.map((h, k) => (k === i ? { ...h, [key]: n } : h)));
+    setTees((ts) => ts.map((t, ti) => {
+      if (ti !== teeIdx) return t;
+      const holes = t.holes.map((h, k) => (k === i ? { ...h, yards: n } : h));
+      return { ...t, holes, total: holes.reduce((s, h) => s + (h.yards || 0), 0) };
+    }));
   };
 
   const GL = (n: number) => String.fromCharCode(65 + n);
@@ -158,6 +180,7 @@ export default function Home() {
     setPlayers((ps) => ps.map((p) => ({ ...p, group: p.group.charCodeAt(0) - 65 >= gc ? GL(gc - 1) : p.group })));
   };
   const parTotal = course.reduce((s, h) => s + h.par, 0);
+  const selTee = tees.find((t) => t.name === teeName) || tees[0];
 
   function onCreatePress() {
     setErr("");
@@ -179,6 +202,7 @@ export default function Home() {
       outing, groupCount, handicapMode: hcpMode,
       course, lat: loc.lat, lng: loc.lng,
       courseName: loaded ? courseName.trim() : "", courseWhere, teeName: loaded ? teeName : "",
+      tees: loaded && tees.length ? tees : null, defaultTee: loaded ? teeName : "",
       players: named.map((p, i) => ({ id: `p${i + 1}`, name: p.name.trim(), hcp: Math.max(0, Math.min(54, parseInt(p.hcp) || 0)), ...(outing ? { group: p.group } : {}) })),
     };
     try {
@@ -246,35 +270,54 @@ export default function Home() {
                   <div className="coursecard">
                     <div className="cc-info">
                       <input className="cc-nameinput" value={courseName} onChange={(e) => setCourseName(e.target.value)} placeholder="Course name" />
-                      <div className="cc-meta">{course.length} holes · Par {parTotal}{teeName ? ` · ${teeName}` : ""}</div>
+                      <div className="cc-meta">{course.length} holes · Par {parTotal}{teeName ? ` · ${teeName}` : ""}{selTee?.total ? ` · ${selTee.total.toLocaleString()} yds` : ""}</div>
                     </div>
                     <button className="rm" onClick={clearCourse} aria-label="clear course"><X size={15} /></button>
                   </div>
-                  {tees.length > 1 && (
-                    <div className="teepick">
-                      {tees.map((t) => (
-                        <button key={t.name} className={teeName === t.name ? "on" : ""} onClick={() => selectTee(t.name)}>
-                          <b>{t.name}</b><span>{t.total ? `${t.total.toLocaleString()} yds` : "—"}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {scanned && <p className="hint left warn">Scanned — please double-check the values below, especially stroke index.</p>}
+                  {scanned && <p className="hint left warn">Scanned — tap a tee name to use it, and double-check the numbers (especially the S.I. row).</p>}
                   {siEstimated && !scanned && <p className="hint left warn">Stroke index was estimated — fine-tune below if needed.</p>}
                   <button className="addp" onClick={() => setEditing(!editing)}>
-                    <ChevronDown size={15} style={{ transform: editing ? "rotate(180deg)" : "none", transition: ".2s" }} /> {editing ? "Hide" : "Review"} scorecard
+                    <ChevronDown size={15} style={{ transform: editing ? "rotate(180deg)" : "none", transition: ".2s" }} /> {editing ? "Hide" : "Review / edit"} scorecard
                   </button>
                   {editing && (
-                    <div className="scoretable">
-                      <div className="st-head"><span>Hole</span><span>Yds</span><span>Par</span><span>SI</span></div>
-                      {course.map((h, i) => (
-                        <div className="st-row" key={i}>
-                          <span className="st-num">{h.num}</span>
-                          <input className="st-in dim" inputMode="numeric" value={h.yards} onChange={(e) => editHole(i, "yards", e.target.value)} />
-                          <input className="st-in" inputMode="numeric" value={h.par} onChange={(e) => editHole(i, "par", e.target.value)} />
-                          <input className="st-in" inputMode="numeric" value={h.si} onChange={(e) => editHole(i, "si", e.target.value)} />
+                    <div className="cardgrid">
+                      {(course.length > 9 ? [[0, 9], [9, course.length]] : [[0, course.length]]).map(([from, to], seg) => (
+                        <div className="cg-wrap" key={seg}>
+                          <table className="cg">
+                            <thead>
+                              <tr>
+                                <th className="cg-rl">Hole</th>
+                                {course.slice(from, to).map((h) => (<th key={h.num}>{h.num}</th>))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr>
+                                <th className="cg-rl">Par</th>
+                                {course.slice(from, to).map((h, k) => (
+                                  <td key={h.num}><input inputMode="numeric" value={h.par || ""} onChange={(e) => editPar(from + k, e.target.value)} /></td>
+                                ))}
+                              </tr>
+                              <tr>
+                                <th className="cg-rl">S.I.</th>
+                                {course.slice(from, to).map((h, k) => (
+                                  <td key={h.num}><input inputMode="numeric" value={h.si || ""} onChange={(e) => editSI(from + k, e.target.value)} /></td>
+                                ))}
+                              </tr>
+                              {tees.map((t, ti) => (
+                                <tr key={t.name + ti} className={teeName === t.name ? "cg-tee on" : "cg-tee"}>
+                                  <th className="cg-rl tee" onClick={() => selectTee(t.name)} title="Use this tee for the round">
+                                    <span className="dot" />{t.name}
+                                  </th>
+                                  {Array.from({ length: to - from }).map((_, k) => (
+                                    <td key={k}><input className="dim" inputMode="numeric" value={t.holes[from + k]?.yards || ""} onChange={(e) => editYards(ti, from + k, e.target.value)} /></td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
                       ))}
+                      <p className="hint left">Tap a tee name to use it for this round. Tap any number to fix it — Par and S.I. apply to every tee.</p>
                     </div>
                   )}
                 </>

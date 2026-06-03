@@ -23,6 +23,9 @@ export class CourseCatalog implements DurableObject {
           created INTEGER
         )`
       );
+      // migrations for older tables — ignore if the column already exists
+      try { this.ctx.storage.sql.exec("ALTER TABLE courses ADD COLUMN tees TEXT"); } catch {}
+      try { this.ctx.storage.sql.exec("ALTER TABLE courses ADD COLUMN default_tee TEXT"); } catch {}
     });
   }
 
@@ -49,7 +52,8 @@ export class CourseCatalog implements DurableObject {
       if (!rows.length) return new Response("Not found", { status: 404 });
       const r: any = rows[0];
       sql.exec("UPDATE courses SET plays = plays + 1 WHERE id = ?", id);
-      return Response.json({ name: r.name, where: r.where_txt, lat: r.lat, lng: r.lng, holes: JSON.parse(r.holes) });
+      let tees = null; try { tees = r.tees ? JSON.parse(r.tees) : null; } catch {}
+      return Response.json({ name: r.name, where: r.where_txt, lat: r.lat, lng: r.lng, holes: JSON.parse(r.holes), tees, defaultTee: r.default_tee || null });
     }
 
     if (url.pathname.endsWith("/upsert") && request.method === "POST") {
@@ -57,15 +61,17 @@ export class CourseCatalog implements DurableObject {
       if (!c?.name || !Array.isArray(c.holes) || !c.holes.length) return Response.json({ ok: false });
       const key = (c.name + "|" + (c.where || "")).toLowerCase().replace(/[^a-z0-9]/g, "");
       const holes = JSON.stringify(c.holes);
+      const teesJson = c.tees && Array.isArray(c.tees) && c.tees.length ? JSON.stringify(c.tees) : null;
+      const defTee = c.defaultTee || null;
       const existing = sql.exec("SELECT id FROM courses WHERE key = ?", key).toArray();
       if (existing.length) {
         const id = (existing[0] as any).id;
-        sql.exec("UPDATE courses SET name=?,where_txt=?,lat=?,lng=?,holes=? WHERE id=?", c.name, c.where || "", c.lat ?? null, c.lng ?? null, holes, id);
+        sql.exec("UPDATE courses SET name=?,where_txt=?,lat=?,lng=?,holes=?,tees=?,default_tee=? WHERE id=?", c.name, c.where || "", c.lat ?? null, c.lng ?? null, holes, teesJson, defTee, id);
         return Response.json({ id });
       }
       const id = "c_" + crypto.randomUUID().slice(0, 8);
-      sql.exec("INSERT INTO courses (id,key,name,where_txt,lat,lng,holes,plays,created) VALUES (?,?,?,?,?,?,?,0,?)",
-        id, key, c.name, c.where || "", c.lat ?? null, c.lng ?? null, holes, Date.now());
+      sql.exec("INSERT INTO courses (id,key,name,where_txt,lat,lng,holes,tees,default_tee,plays,created) VALUES (?,?,?,?,?,?,?,?,?,0,?)",
+        id, key, c.name, c.where || "", c.lat ?? null, c.lng ?? null, holes, teesJson, defTee, Date.now());
       return Response.json({ id });
     }
 
