@@ -3,7 +3,7 @@ import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw } fro
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole } from "../lib/golf";
 
-const VERSION = "v8";
+const VERSION = "v9";
 
 const FORMAT_DEFS = [
   { id: "net", label: "Net" }, { id: "gross", label: "Gross" },
@@ -291,7 +291,7 @@ export default function Home() {
                     </button>
                   ))}
                   {msg && <div className="srow muted">{msg}</div>}
-                  <input ref={fileIn} type="file" accept="image/*" capture="environment" onChange={onScan} style={{ display: "none" }} />
+                  <input ref={fileIn} type="file" accept="image/*" onChange={onScan} style={{ display: "none" }} />
                   <button className="scanbtn" disabled={scanning} onClick={() => fileIn.current?.click()}>
                     <Camera size={16} /> {scanning ? "Reading scorecard…" : "Scan a scorecard"}
                   </button>
@@ -309,7 +309,7 @@ export default function Home() {
                   {scanned && <p className="hint left warn">Scanned — tap a tee name to use it, and double-check the numbers (especially the S.I. row).</p>}
                   {siEstimated && !scanned && <p className="hint left warn">Stroke index was estimated — fine-tune below if needed.</p>}
                   <button className="addp" onClick={() => setEditing(!editing)}>
-                    <ChevronDown size={15} style={{ transform: editing ? "rotate(180deg)" : "none", transition: ".2s" }} /> {editing ? "Hide" : "Review / edit"} scorecard
+                    <ChevronDown size={15} style={{ transform: editing ? "rotate(180deg)" : "none", transition: ".2s" }} /> {editing ? "Hide scorecard" : "Select Tee / Edit Scorecard"}
                   </button>
                   {editing && (
                     <div className="cardgrid">
