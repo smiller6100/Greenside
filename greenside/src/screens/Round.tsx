@@ -4,10 +4,10 @@ import { LogoMark } from "../components/Logo";
 import { useRound } from "../lib/useRound";
 import { computeStandings, computeGames, computeTeams, strokesOn, toParClass, fmtToPar } from "../lib/golf";
 
-const FORMAT_LABELS: Record<string, string> = { net: "Net", gross: "Gross", stableford: "Stableford", skins: "Skins", card: "Full card", games: "Games", teams: "Teams" };
+const FORMAT_LABELS: Record<string, string> = { net: "Net", gross: "Gross", stableford: "Stableford", chicago: "Chicago", skins: "Skins", card: "Full card", games: "Games", teams: "Teams" };
 
 export default function Round({ code }: { code: string }) {
-  const { state, connected, missing, sendScore, sendWolfPick } = useRound(code);
+  const { state, connected, missing, sendScore, sendWolfPick, sendBbb } = useRound(code);
   const [tab, setTab] = useState<"board" | "score">("board");
   const [view, setView] = useState("net"); // a scoring format, or "card"
   const [holeIdx, setHoleIdx] = useState(0);
@@ -135,6 +135,15 @@ export default function Round({ code }: { code: string }) {
             {games.nassau.lines.map((l: any, i: number) => (<div className="grow" key={i}><span>{l.label}</span><b>{l.status}</b></div>))}
           </div>
         ) : need("Nassau", "exactly 4"))}
+        {state.games?.bbb && games.bbb && (
+          <div className="gcard">
+            <h3>Bingo Bango Bongo</h3>
+            {ranked(games.bbb.points).map((p) => (
+              <div className="grow" key={p.id}><span className={p.id === me ? "me" : ""}>{p.name}</span><b>{games.bbb.points[p.id]} pts</b></div>
+            ))}
+            <p className="ghint">3 points per hole — Bingo (first on green), Bango (closest once all are on), Bongo (first in the hole). Award them on the Scorecard tab.</p>
+          </div>
+        )}
       </div>
     );
   };
@@ -157,6 +166,7 @@ export default function Round({ code }: { code: string }) {
     if (view === "net") return { txt: fmtToPar(r.toParNet), cls: toParClass(r.toParNet), unit: "" };
     if (view === "gross") return { txt: fmtToPar(r.toParGross), cls: toParClass(r.toParGross), unit: "" };
     if (view === "stableford") return { txt: `${r.points}`, cls: "pts", unit: "pts" };
+    if (view === "chicago") return { txt: `${r.chicago > 0 ? "+" : ""}${r.chicago}`, cls: "pts", unit: "pts" };
     return { txt: `${r.skins}`, cls: "pts", unit: "skins" };
   };
 
@@ -276,6 +286,30 @@ export default function Round({ code }: { code: string }) {
                     ))}
                     <button className={`lone ${pick === "lone" ? "on" : ""}`} onClick={() => sendWolfPick(hole.num, pick === "lone" ? null : "lone")}>Lone Wolf</button>
                   </div>
+                </div>
+              );
+            })()}
+            {state.games?.bbb && (() => {
+              const cur = (state.bbb || {})[hole.num] || {};
+              const rows: { key: "bingo" | "bango" | "bongo"; label: string; note: string }[] = [
+                { key: "bingo", label: "Bingo", note: "first on green" },
+                { key: "bango", label: "Bango", note: "closest once all on" },
+                { key: "bongo", label: "Bongo", note: "first in the hole" },
+              ];
+              return (
+                <div className="bbbbar">
+                  <div className="wolf-head">Bingo Bango Bongo — tap who won each on hole {hole.num}</div>
+                  {rows.map((r) => (
+                    <div className="bbbrow" key={r.key}>
+                      <div className="bbblabel">{r.label} <em>{r.note}</em></div>
+                      <div className="wolf-picks">
+                        {state.players.map((p) => (
+                          <button key={p.id} className={cur[r.key] === p.id ? "on" : ""}
+                            onClick={() => sendBbb(hole.num, r.key, cur[r.key] === p.id ? null : p.id)}>{p.name}</button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               );
             })()}

@@ -70,5 +70,17 @@ export function useRound(code: string) {
     });
   }, []);
 
-  return { state, connected, missing, sendScore, sendWolfPick };
+  const sendBbb = useCallback((hole: number, which: "bingo" | "bango" | "bongo", player: string | null) => {
+    wsRef.current?.send(JSON.stringify({ type: "bbbPick", hole, which, player }));
+    setState((s) => {
+      if (!s) return s;
+      const bbb = { ...(s.bbb || {}) };
+      const cur = { ...(bbb[hole] || {}) };
+      if (player === null) delete cur[which]; else cur[which] = player;
+      bbb[hole] = cur;
+      return { ...s, bbb };
+    });
+  }, []);
+
+  return { state, connected, missing, sendScore, sendWolfPick, sendBbb };
 }

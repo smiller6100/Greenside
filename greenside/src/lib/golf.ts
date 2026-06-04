@@ -1,8 +1,8 @@
 // ---- Types ----
 export interface Hole { num: number; par: number; yards: number; si: number }
 export interface Player { id: string; name: string; hcp: number; group?: string }
-export interface Formats { net: boolean; gross: boolean; stableford: boolean; skins: boolean }
-export interface Games { sixes: boolean; wolf: boolean; vegas: boolean; nassau: boolean; nines: boolean }
+export interface Formats { net: boolean; gross: boolean; stableford: boolean; chicago: boolean; skins: boolean }
+export interface Games { sixes: boolean; wolf: boolean; vegas: boolean; nassau: boolean; nines: boolean; bbb: boolean }
 export type HcpMode = "perHole" | "course" | "gross";
 
 export interface RoundState {
@@ -17,6 +17,7 @@ export interface RoundState {
   course: Hole[];
   scores: Record<string, Record<string, number>>; // playerId -> holeNum -> strokes
   wolf?: Record<string, string>;                   // holeNum -> partnerId | "lone"
+  bbb?: Record<string, { bingo?: string; bango?: string; bongo?: string }>; // holeNum -> winners
   createdAt: number;
   lat?: number | null;
   lng?: number | null;
@@ -32,6 +33,7 @@ export interface Standing {
   toParGross: number;
   toParNet: number;
   points: number;
+  chicago: number;
   skins: number;
 }
 
@@ -64,6 +66,15 @@ export const strokesOn = (hcp: number, si: number) =>
 export const fmtToPar = (n: number) => (n === 0 ? "E" : n > 0 ? `+${n}` : `${n}`);
 export const toParClass = (n: number) => (n < 0 ? "under" : n > 0 ? "over" : "even");
 
+// Chicago (Quota) per-hole points off GROSS score vs par: dbl+ 0, bogey 1, par 2, birdie 4, eagle+ 8
+function chicagoPts(toPar: number): number {
+  if (toPar <= -2) return 8;
+  if (toPar === -1) return 4;
+  if (toPar === 0) return 2;
+  if (toPar === 1) return 1;
+  return 0;
+}
+
 
 export function computeStandings(state: RoundState, format: string): Standing[] {
   const useHcp = state.handicapMode !== "gross";
@@ -72,16 +83,18 @@ export function computeStandings(state: RoundState, format: string): Standing[] 
   const rows: Standing[] = state.players.map((p) => {
     const sc = state.scores[p.id] || {};
     const played = course.filter((h) => sc[h.num] != null);
-    let gross = 0, net = 0, par = 0, points = 0;
+    let gross = 0, net = 0, par = 0, points = 0, chi = 0;
     played.forEach((h) => {
       const g = sc[h.num];
       const rec = useHcp ? strokesOn(p.hcp, h.si) : 0;
       gross += g; par += h.par; net += g - rec;
       points += Math.max(0, 2 - (g - rec - h.par));
+      chi += chicagoPts(g - h.par);
     });
     return {
       id: p.id, name: p.name, hcp: p.hcp, thru: played.length,
-      gross, net, toParGross: gross - par, toParNet: net - par, points, skins: 0,
+      gross, net, toParGross: gross - par, toParNet: net - par, points,
+      chicago: p.hcp - 39 + chi, skins: 0,
     };
   });
 
@@ -102,8 +115,8 @@ export function computeStandings(state: RoundState, format: string): Standing[] 
     }
   });
 
-  const key = ({ net: "toParNet", gross: "toParGross", stableford: "points", skins: "skins" } as const)[
-    format as "net" | "gross" | "stableford" | "skins"
+  const key = ({ net: "toParNet", gross: "toParGross", stableford: "points", chicago: "chicago", skins: "skins" } as const)[
+    format as "net" | "gross" | "stableford" | "chicago" | "skins"
   ] || "toParNet";
   const asc = format === "net" || format === "gross";
   return [...rows].sort((a: any, b: any) => (asc ? a[key] - b[key] : b[key] - a[key]));
@@ -130,7 +143,7 @@ export function computeGames(state: RoundState): any {
   const P = state.players;
   const n = P.length;
   const g = state.games || ({} as any);
-  const out: any = { n, anyOn: !!(g.sixes || g.wolf || g.vegas || g.nassau || g.nines) };
+  const out: any = { n, anyOn: !!(g.sixes || g.wolf || g.vegas || g.nassau || g.nines || g.bbb) };
   const course = state.course;
   const t1 = [P[0], P[1]], t2 = [P[2], P[3]];
 
@@ -218,6 +231,18 @@ export function computeGames(state: RoundState): any {
       { label: "Overall", status: fmt(seg(1, 18)) },
     ] };
   }
+  if (g.bbb) {
+    const pts: Record<string, number> = {}; P.forEach((p) => (pts[p.id] = 0));
+    const picks = state.bbb || {};
+    course.forEach((h) => {
+      const hp = picks[h.num]; if (!hp) return;
+      (["bingo", "bango", "bongo"] as const).forEach((w) => {
+        const id = hp[w]; if (id && pts[id] != null) pts[id]++;
+      });
+    });
+    out.bbb = { points: pts };
+  }
+
   return out;
 }
 

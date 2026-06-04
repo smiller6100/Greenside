@@ -3,11 +3,11 @@ import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw } fro
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole } from "../lib/golf";
 
-const VERSION = "v9";
+const VERSION = "v10";
 
 const FORMAT_DEFS = [
   { id: "net", label: "Net" }, { id: "gross", label: "Gross" },
-  { id: "stableford", label: "Stableford" }, { id: "skins", label: "Skins" },
+  { id: "stableford", label: "Stableford" }, { id: "chicago", label: "Chicago" }, { id: "skins", label: "Skins" },
 ] as const;
 const HCP_DEFS = [
   { id: "perHole", label: "Per-hole" }, { id: "course", label: "Course" }, { id: "gross", label: "Off" },
@@ -15,13 +15,15 @@ const HCP_DEFS = [
 const GAME_DEFS = [
   { id: "wolf", label: "Wolf" }, { id: "nines", label: "Nines" },
   { id: "sixes", label: "Sixes" }, { id: "vegas", label: "Vegas" }, { id: "nassau", label: "Nassau" },
+  { id: "bbb", label: "Bingo Bango Bongo" },
 ] as const;
 const GAME_HELP: Record<string, string> = {
-  wolf: "3–4 players. A different \u201cwolf\u201d each hole picks a partner after the tee shots, or goes solo for triple. Set the pick on the Scorecard tab.",
+  wolf: "3\u20134 players. A different \u201cwolf\u201d each hole picks a partner after the tee shots, or goes solo for triple. Set the pick on the Scorecard tab.",
   nines: "3 players. Each hole splits 9 points: 5 to the low score, 3 to the middle, 1 to the high (ties split). Most points wins.",
   sixes: "4 players. Teams of two, partners rotate every 6 holes. Low team score wins the hole \u2014 1 point per win.",
   vegas: "4 players. Two fixed teams. Each hole your pair\u2019s two scores make a number (low one first); the lower number wins the difference.",
   nassau: "4 players. Two fixed teams, best-ball match play. Three bets in one: front 9, back 9, and the overall 18.",
+  bbb: "Any size. 3 points a hole \u2014 Bingo (first on the green), Bango (closest once everyone\u2019s on), Bongo (first in the hole). You award them on the Scorecard tab. Most points wins.",
 };
 
 interface CourseHit { id: string; name: string; where: string; lat: number | null; lng: number | null; saved?: boolean; }
@@ -43,8 +45,8 @@ export default function Home() {
   const [players, setPlayers] = useState<{ name: string; hcp: string; group: string }[]>([{ name: "", hcp: "12", group: "A" }]);
   const [outing, setOuting] = useState(false);
   const [groupCount, setGroupCount] = useState(4);
-  const [formats, setFormats] = useState<Record<string, boolean>>({ net: true, gross: true, stableford: false, skins: false });
-  const [games, setGames] = useState<Record<string, boolean>>({ wolf: false, nines: false, sixes: false, vegas: false, nassau: false });
+  const [formats, setFormats] = useState<Record<string, boolean>>({ net: true, gross: true, stableford: false, chicago: false, skins: false });
+  const [games, setGames] = useState<Record<string, boolean>>({ wolf: false, nines: false, sixes: false, vegas: false, nassau: false, bbb: false });
   const [hcpMode, setHcpMode] = useState<"perHole" | "course" | "gross">("perHole");
   const [joinCode, setJoinCode] = useState((location.hash.match(/#\/r\/([A-Za-z0-9]+)/) || [])[1] || "");
   const [busy, setBusy] = useState(false);
@@ -230,7 +232,7 @@ export default function Home() {
     setConfirmNew(false); setBusy(true);
     const named = players.map((p) => ({ name: p.name.trim(), hcp: p.hcp, group: p.group })).filter((p) => p.name);
     const payload = {
-      name: roundName.trim() || "Round", formats, games: outing ? { wolf: false, nines: false, sixes: false, vegas: false, nassau: false } : games,
+      name: roundName.trim() || "Round", formats, games: outing ? { wolf: false, nines: false, sixes: false, vegas: false, nassau: false, bbb: false } : games,
       outing, groupCount, handicapMode: hcpMode,
       course, lat: loc.lat, lng: loc.lng,
       courseName: loaded ? courseName.trim() : "", courseWhere, teeName: loaded ? teeName : "",

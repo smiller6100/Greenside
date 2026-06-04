@@ -89,6 +89,19 @@ export class GolfRound implements DurableObject {
       if (partner === null) delete state.wolf[hole]; else state.wolf[hole] = partner;
       await this.ctx.storage.put("state", state);
       this.broadcast({ type: "state", state });
+    } else if (data.type === "bbbPick") {
+      const hole = Number(data.hole);
+      if (!Number.isInteger(hole) || hole < 1 || hole > 18) return;
+      const which = data.which;
+      if (which !== "bingo" && which !== "bango" && which !== "bongo") return;
+      const player = data.player;
+      const valid = player === null || state.players.some((p: any) => p.id === player);
+      if (!valid) return;
+      state.bbb = state.bbb || {};
+      state.bbb[hole] = state.bbb[hole] || {};
+      if (player === null) delete state.bbb[hole][which]; else state.bbb[hole][which] = player;
+      await this.ctx.storage.put("state", state);
+      this.broadcast({ type: "state", state });
     }
   }
 
