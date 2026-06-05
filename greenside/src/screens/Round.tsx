@@ -84,6 +84,13 @@ export default function Round({ code }: { code: string }) {
     return d > 0 ? `${v.teams[0].map(nameOf).join(" & ")} lead by ${d}` : `${v.teams[1].map(nameOf).join(" & ")} lead by ${-d}`;
   };
 
+  const bestBallLead = (v: any) => {
+    if (v.a.thru === 0 && v.b.thru === 0) return "No scores yet.";
+    const d = v.a.toPar - v.b.toPar; // lower is better
+    if (d === 0) return "All even.";
+    return d < 0 ? `${v.teams[0].map(nameOf).join(" & ")} lead by ${-d}` : `${v.teams[1].map(nameOf).join(" & ")} lead by ${d}`;
+  };
+
   const GamesPanel = () => {
     if (!games?.anyOn) return <p className="foot">No games picked for this round.</p>;
     const ranked = (pts: Record<string, number>) => [...state.players].sort((a, b) => pts[b.id] - pts[a.id]);
@@ -135,6 +142,14 @@ export default function Round({ code }: { code: string }) {
             {games.nassau.lines.map((l: any, i: number) => (<div className="grow" key={i}><span>{l.label}</span><b>{l.status}</b></div>))}
           </div>
         ) : need("Nassau", "exactly 4"))}
+        {state.games?.bestball && (games.bestball ? (
+          <div className="gcard">
+            <h3>Best Ball</h3>
+            <div className="grow"><span>{games.bestball.teams[0].map(nameOf).join(" & ")}</span><b>{fmtToPar(games.bestball.a.toPar)}</b></div>
+            <div className="grow"><span>{games.bestball.teams[1].map(nameOf).join(" & ")}</span><b>{fmtToPar(games.bestball.b.toPar)}</b></div>
+            <p className="ghint">{bestBallLead(games.bestball)}</p>
+          </div>
+        ) : need("Best Ball", "exactly 4"))}
         {state.games?.bbb && games.bbb && (
           <div className="gcard">
             <h3>Bingo Bango Bongo</h3>

@@ -2,7 +2,7 @@
 export interface Hole { num: number; par: number; yards: number; si: number }
 export interface Player { id: string; name: string; hcp: number; group?: string }
 export interface Formats { net: boolean; gross: boolean; stableford: boolean; chicago: boolean; skins: boolean }
-export interface Games { sixes: boolean; wolf: boolean; vegas: boolean; nassau: boolean; nines: boolean; bbb: boolean }
+export interface Games { sixes: boolean; wolf: boolean; vegas: boolean; nassau: boolean; nines: boolean; bbb: boolean; bestball: boolean }
 export type HcpMode = "perHole" | "course" | "gross";
 
 export interface RoundState {
@@ -143,7 +143,7 @@ export function computeGames(state: RoundState): any {
   const P = state.players;
   const n = P.length;
   const g = state.games || ({} as any);
-  const out: any = { n, anyOn: !!(g.sixes || g.wolf || g.vegas || g.nassau || g.nines || g.bbb) };
+  const out: any = { n, anyOn: !!(g.sixes || g.wolf || g.vegas || g.nassau || g.nines || g.bbb || g.bestball) };
   const course = state.course;
   const t1 = [P[0], P[1]], t2 = [P[2], P[3]];
 
@@ -231,6 +231,19 @@ export function computeGames(state: RoundState): any {
       { label: "Overall", status: fmt(seg(1, 18)) },
     ] };
   }
+  if (g.bestball && n === 4) {
+    const tally = (team: Player[]) => {
+      let toPar = 0, thru = 0;
+      course.forEach((h) => {
+        const b = teamBest(state, team, h);
+        if (b == null) return;
+        toPar += b - h.par; thru++;
+      });
+      return { toPar, thru };
+    };
+    out.bestball = { teams: [t1.map((p) => p.id), t2.map((p) => p.id)], a: tally(t1), b: tally(t2) };
+  }
+
   if (g.bbb) {
     const pts: Record<string, number> = {}; P.forEach((p) => (pts[p.id] = 0));
     const picks = state.bbb || {};
