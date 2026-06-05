@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Minus, Plus, Crown, ChevronLeft, ChevronRight, Trophy, ClipboardList, Copy, Check, Home } from "lucide-react";
+import { Minus, Plus, Crown, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Trophy, ClipboardList, Copy, Check, Home } from "lucide-react";
 import { LogoMark } from "../components/Logo";
 import { useRound } from "../lib/useRound";
 import { computeStandings, computeGames, computeTeams, strokesOn, toParClass, fmtToPar } from "../lib/golf";
@@ -356,9 +356,18 @@ export default function Round({ code }: { code: string }) {
                 const rec = useHcp ? strokesOn(p.hcp, hole.si) : 0;
                 const val = (state.scores[p.id] || {})[hole.num];
                 const rel = val != null ? val - hole.par : null;
+                const sc = state.scores[p.id] || {};
+                const ppPlayed = course.filter((h) => sc[h.num] != null);
+                const toPar = ppPlayed.reduce((s, h) => s + (sc[h.num] - h.par), 0);
                 return (
                   <div key={p.id} className={`pcard ${p.id === me ? "self" : ""}`}>
-                    <div className="pinfo"><div className="pn">{p.name}{p.id === me && <em>You</em>}</div>
+                    <div className="pinfo"><div className="pn">{p.name}{p.id === me && <em>You</em>}
+                      {ppPlayed.length > 0 && (
+                        <span className={`tpar ${toParClass(toPar)}`}>
+                          {toPar > 0 ? <ChevronUp size={13} strokeWidth={2.8} /> : toPar < 0 ? <ChevronDown size={13} strokeWidth={2.8} /> : null}
+                          {fmtToPar(toPar)}
+                        </span>
+                      )}</div>
                       <div className="dots">{Array.from({ length: rec }).map((_, k) => <i key={k} />)}<span className="ph">{rec ? `${rec} stroke${rec > 1 ? "s" : ""}` : (useHcp ? "scratch here" : "gross")}</span></div></div>
                     <div className="stepper">
                       <button onClick={() => adjust(p.id, -1)} aria-label="minus"><Minus size={18} strokeWidth={2.4} /></button>
