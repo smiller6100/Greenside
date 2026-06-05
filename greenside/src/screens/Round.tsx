@@ -9,7 +9,8 @@ const FORMAT_LABELS: Record<string, string> = { net: "Net", gross: "Gross", stab
 export default function Round({ code }: { code: string }) {
   const { state, connected, missing, sendScore, sendWolfPick, sendBbb } = useRound(code);
   const [tab, setTab] = useState<"board" | "score">("board");
-  const [view, setView] = useState("net"); // a scoring format, or "card"
+  const [view, setView] = useState("net"); // a scoring format (leaderboard side)
+  const [scView, setScView] = useState<"hole" | "card" | "games">("hole"); // scorecard side
   const [holeIdx, setHoleIdx] = useState(0);
   const [grp, setGrp] = useState<string | null>(null);
   const [me, setMe] = useState<string | null>(() => localStorage.getItem(`gs:me:${code}`));
@@ -28,7 +29,7 @@ export default function Round({ code }: { code: string }) {
   }, [state]);
 
   useEffect(() => {
-    if (enabledFormats.length && !["card", "games", "teams"].includes(view) && !enabledFormats.includes(view)) setView(enabledFormats[0]);
+    if (enabledFormats.length && view !== "teams" && !enabledFormats.includes(view)) setView(enabledFormats[0]);
   }, [enabledFormats, view]);
 
   // remember this round so Home can offer to resume it
@@ -205,7 +206,16 @@ export default function Round({ code }: { code: string }) {
         {state.players.map((p) => (
           <tr key={p.id} className={p.id === me ? "meRow" : ""}>
             <th className="stik">{p.name}</th>
-            {holes.map((h) => { const v = sp(p.id, h.num); return <td key={h.num} className={v != null ? toParClass(v - h.par) : ""}>{v ?? ""}</td>; })}
+            {holes.map((h) => {
+              const v = sp(p.id, h.num);
+              const pops = useHcp ? strokesOn(p.hcp, h.si) : 0;
+              return (
+                <td key={h.num} className={`popcell ${v != null ? toParClass(v - h.par) : ""}`}>
+                  {pops > 0 && <span className="pops">{Array.from({ length: pops }).map((_, i) => <i key={i} />)}</span>}
+                  {v ?? ""}
+                </td>
+              );
+            })}
             <td className="tot">{sumSc(p.id, holes) || ""}</td>
           </tr>
         ))}
@@ -233,6 +243,7 @@ export default function Round({ code }: { code: string }) {
           ))}
         </tbody>
       </table>
+      {useHcp && <p className="foot dotlegend"><span className="popdemo"><i /></span> a dot marks a hole where that player gets a handicap stroke</p>}
     </div>
   );
 
@@ -257,12 +268,10 @@ export default function Round({ code }: { code: string }) {
               {enabledFormats.map((f) => (
                 <button key={f} className={`seg-btn ${view === f ? "on" : ""}`} onClick={() => setView(f)}>{FORMAT_LABELS[f]}</button>
               ))}
-              <button className={`seg-btn ${view === "card" ? "on" : ""}`} onClick={() => setView("card")}>Full Card</button>
               {state.outing && <button className={`seg-btn ${view === "teams" ? "on" : ""}`} onClick={() => setView("teams")}>Teams</button>}
-              {enabledGames.length > 0 && <button className={`seg-btn ${view === "games" ? "on" : ""}`} onClick={() => setView("games")}>Games</button>}
             </div>
 
-            {view === "card" ? <FullCard /> : view === "teams" ? <TeamsPanel /> : view === "games" ? <GamesPanel /> : (
+            {view === "teams" ? <TeamsPanel /> : (
               <>
                 <div className="board">
                   {standings.map((r, i) => {
@@ -282,6 +291,13 @@ export default function Round({ code }: { code: string }) {
           </main>
         ) : (
           <main className="body">
+            <div className="seg wrap">
+              <button className={`seg-btn ${scView === "hole" ? "on" : ""}`} onClick={() => setScView("hole")}>Hole</button>
+              <button className={`seg-btn ${scView === "card" ? "on" : ""}`} onClick={() => setScView("card")}>Full Card</button>
+              {enabledGames.length > 0 && <button className={`seg-btn ${scView === "games" ? "on" : ""}`} onClick={() => setScView("games")}>Games</button>}
+            </div>
+            {scView === "card" ? <FullCard /> : scView === "games" ? <GamesPanel /> : (
+              <>
             <div className="holehead">
               <button className="nav" disabled={holeIdx === 0} onClick={() => setHoleIdx((i) => Math.max(0, i - 1))}><ChevronLeft size={20} /></button>
               <div className="holemid"><div className="hnum">Hole {hole.num}</div><div className="hmeta">Par {hole.par} · {hole.yards} yds · SI {hole.si}</div></div>
@@ -354,6 +370,8 @@ export default function Round({ code }: { code: string }) {
               })}
             </div>
             <p className="foot">Tap the number to log par · everyone sees it immediately</p>
+              </>
+            )}
           </main>
         )}
 

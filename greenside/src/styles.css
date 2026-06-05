@@ -361,3 +361,10 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .bbblabel em { font-weight: 500; font-style: normal; opacity: .8; font-size: 12px; }
 .bbbbar .wolf-picks button { flex: 1 1 0; min-width: 60px; border: 1px solid rgba(246,240,226,.3); background: rgba(246,240,226,.08); color: #f5f7f6; font: inherit; font-size: 13px; font-weight: 600; padding: 9px 6px; border-radius: 10px; cursor: pointer; transition: .15s; }
 .bbbbar .wolf-picks button.on { background: var(--brass); border-color: var(--brass); color: #fff; }
+
+/* Full Card handicap pop dots */
+.nine td.popcell { position: relative; }
+.nine .pops { position: absolute; top: 2px; left: 0; right: 0; display: flex; justify-content: center; gap: 2px; pointer-events: none; }
+.nine .pops i { width: 3.5px; height: 3.5px; border-radius: 50%; background: var(--brass); display: block; }
+.dotlegend { display: flex; align-items: center; gap: 6px; justify-content: center; }
+.popdemo i { width: 4px; height: 4px; border-radius: 50%; background: var(--brass); display: inline-block; }
