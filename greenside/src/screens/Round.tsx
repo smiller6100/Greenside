@@ -247,20 +247,16 @@ export default function Round({ code }: { code: string }) {
     </div>
   );
 
+  const _np = (state.name || "Round").split(" — ");
+  const roundTitle = _np.length === 2 && _np[0].trim() === _np[1].trim() ? _np[0].trim() : (state.name || "Round");
+
   return (
     <div className="gs">
       <div className="frame">
         <div className="topbar">
-          <button className="homebtn" onClick={() => setLeaving(true)} aria-label="home"><Home size={17} strokeWidth={2.2} /></button>
           <div className="mark"><LogoMark size={22} /><span>GREENSIDE</span></div>
           <div className={`live ${connected ? "on" : ""}`}><span className="dot" />{connected ? "LIVE" : "···"}</div>
         </div>
-
-        <header className="head">
-          <div className="eyebrow">{tab === "score" ? "Scorecard" : FORMAT_LABELS[view]} · Round</div>
-          <h1>{state.name}</h1>
-          <button className="codepill" onClick={copyCode}>{copied ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Code {code}</>}</button>
-        </header>
 
         {tab === "board" ? (
           <main className="body">
@@ -385,8 +381,9 @@ export default function Round({ code }: { code: string }) {
         )}
 
         <nav className="tabs">
-          <button className={tab === "board" ? "on" : ""} onClick={() => setTab("board")}><Trophy size={18} /><span>Leaderboard</span></button>
-          <button className={tab === "score" ? "on" : ""} onClick={() => setTab("score")}><ClipboardList size={18} /><span>Scorecard</span></button>
+          <button onClick={() => setLeaving(true)}><Home size={17} /><span>Home</span></button>
+          <button className={tab === "board" ? "on" : ""} onClick={() => setTab("board")}><Trophy size={17} /><span>Leaderboard</span></button>
+          <button className={tab === "score" ? "on" : ""} onClick={() => setTab("score")}><ClipboardList size={17} /><span>Scorecard</span></button>
         </nav>
 
         {!claimed && (
@@ -399,7 +396,9 @@ export default function Round({ code }: { code: string }) {
 
         {leaving && (
           <div className="modal"><div className="sheet">
-            <h3>Leave or end?</h3><p>Leaving keeps this round on your phone so you can jump back in. Ending it removes it from your Resume when you’re done for the day.</p>
+            <h3>{roundTitle}</h3>
+            <button className="codepill sheetcode" onClick={copyCode}>{copied ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Code {code}</>}</button>
+            <p>Leaving keeps this round on your phone so you can jump back in. Ending it removes it from your Resume when you’re done for the day.</p>
             <button className="primary" onClick={() => { location.hash = ""; }}>Leave — keep it</button>
             <button className="dangerbtn" onClick={() => { localStorage.removeItem("gs:lastRound"); localStorage.removeItem("gs:lastRoundName"); location.hash = ""; }}>End round</button>
             <button className="ghostbtn" onClick={() => setLeaving(false)}>Stay</button>
