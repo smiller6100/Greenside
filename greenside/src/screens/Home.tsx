@@ -3,7 +3,7 @@ import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw } fro
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole } from "../lib/golf";
 
-const VERSION = "v49";
+const VERSION = "v50";
 
 const FORMAT_DEFS = [
   { id: "net", label: "Net" }, { id: "gross", label: "Gross" },
@@ -557,7 +557,7 @@ export default function Home() {
                             {!ok && c.geo && (c.geo.tried || c.geo.overpass) && (
                               <span className="dim cov-dbg">
                                 {(c.geo.tried || []).map((t: any) => `"${t.q}" → ${t.status != null ? t.status : (t.n + " hits" + (t.types && t.types.length ? " [" + t.types.join(", ") + "]" : ""))}`).join("  ·  ")}
-                                {c.geo.overpass && `  ·  OSM town ${typeof c.geo.overpass.town === "string" ? c.geo.overpass.town : "ok"}, named course ${c.geo.overpass.named ? "found" : "none"}`}
+                                {c.geo.overpass && `  ·  town ${typeof c.geo.overpass.town === "string" ? c.geo.overpass.town : "ok"}${c.geo.overpass.pick ? `, matched "${c.geo.overpass.pick}"` : `, nearby: ${(c.geo.overpass.nearby || []).join("; ") || "none"}`}`}
                               </span>
                             )}
                           </div>

@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v49";
+const BUILD = "v50";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -122,16 +122,28 @@ async function geocodeWithDebug(env: any, name: string, where: string): Promise<
       if (cr.ok) { const a = (((await cr.json()) as any) || [])[0]; if (a) { clat = parseFloat(a.lat); clng = parseFloat(a.lon); } }
     } catch { /* */ }
     if (isFinite(clat) && isFinite(clng)) {
-      const rx = cleaned.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const oq = `[out:json][timeout:25];(way["leisure"="golf_course"]["name"~"${rx}",i](around:16000,${clat},${clng});relation["leisure"="golf_course"]["name"~"${rx}",i](around:16000,${clat},${clng}););out center 1;`;
+      // Pull every golf course near the town and match by distinctive word overlap with the
+      // catalog name — robust to "The Legend at X" vs "The Legends at X" style differences.
+      const oq = `[out:json][timeout:25];(way["leisure"="golf_course"](around:18000,${clat},${clng});relation["leisure"="golf_course"](around:18000,${clat},${clng}););out center tags;`;
       const od = await overpassJson(oq);
-      const el = od && od.elements && od.elements[0];
-      const ctr = el ? (el.center || (el.lat != null ? { lat: el.lat, lon: el.lon } : null)) : null;
-      debug.overpass = { town: [+clat.toFixed(3), +clng.toFixed(3)], named: !!ctr };
-      if (ctr && isFinite(ctr.lat) && isFinite(ctr.lon)) {
-        const coords = { lat: ctr.lat, lng: ctr.lon };
+      const els: any[] = (od && od.elements) || [];
+      const stop = new Set(["the", "of", "at", "and", "a", "golf", "course", "courses", "club", "country", "links", "national", "resort", "gc", "cc"]);
+      const toks = (s: string) => (s || "").toLowerCase().split(/[^a-z0-9]+/).filter((x) => x && !stop.has(x));
+      const want = toks(cleaned);
+      const near = els.map((e) => { const c = e.center || (e.lat != null ? { lat: e.lat, lon: e.lon } : null); return c ? { name: (e.tags && e.tags.name) || "", c } : null; }).filter(Boolean) as any[];
+      let best: any = null, bestScore = 0, bestLen = 0;
+      for (const co of near) {
+        const have = new Set(toks(co.name));
+        const shared = want.filter((t) => have.has(t));
+        const len = shared.reduce((m, t) => Math.max(m, t.length), 0);
+        if (shared.length > bestScore || (shared.length === bestScore && len > bestLen)) { bestScore = shared.length; bestLen = len; best = co; }
+      }
+      const good = best && (bestScore >= 2 || bestLen >= 6); // need 2 shared words, or one distinctive one
+      debug.overpass = { town: [+clat.toFixed(3), +clng.toFixed(3)], nearby: near.map((n) => n.name).filter(Boolean).slice(0, 8), pick: good ? best.name : null };
+      if (good && isFinite(best.c.lat) && isFinite(best.c.lon)) {
+        const coords = { lat: best.c.lat, lng: best.c.lon };
         try { await cache.put(cacheKey, Response.json({ ...coords }, { headers: { "cache-control": "max-age=2592000" } })); } catch { /* */ }
-        return { coords, debug: { ...debug, hit: "overpass-name" } };
+        return { coords, debug: { ...debug, hit: "overpass-match" } };
       }
     } else debug.overpass = { town: "not-found" };
   }
