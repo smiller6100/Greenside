@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v37";
+const BUILD = "v38";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -202,6 +202,9 @@ function parseHoleMap(data: any, qLat: number, qLng: number, wantHoles: number) 
   if (!holeWays.length) return { available: false, counts };
 
   const nearest = (c: number[], arr: any[]) => { let best: any = null, bd = 1e12; for (const a of arr) { const d = hmHav(c, a.c); if (d < bd) { bd = d; best = a; } } return { best, bd }; };
+  // Each tee box belongs to the hole whose tee it sits nearest to — stops one hole's box
+  // (e.g. an adjacent hole's tee that happens to be close) being grabbed by its neighbour.
+  const holeStarts = holeWays.map((w: any) => hmRing(w.geometry)[0]);
 
   let holes = holeWays.map((w: any) => {
     const line = hmRing(w.geometry);
@@ -221,10 +224,17 @@ function parseHoleMap(data: any, qLat: number, qLng: number, wantHoles: number) 
     }
     let holeFairways = fairways.filter((f: any) => lineSamples.some((p) => hmInside(p, f.poly))).map((f: any) => f.poly);
     if (!holeFairways.length) { const fw = nearest(mid, fairways); if (fw.best && fw.bd < 100) holeFairways = [fw.best.poly]; }
-    // Rough: same line-sampling idea (a course-wide rough becomes a green backdrop for the hole).
-    const holeRough = rough.filter((r: any) => lineSamples.some((p) => hmInside(p, r.poly))).map((r: any) => r.poly);
-    // Tee boxes: the golf=tee polygons clustered around this hole's tee point.
-    const holeTees = tees.filter((t: any) => hmHav(t.c, tee) < 55).map((t: any) => t.poly);
+    // Rough: pieces the play line runs through, but skip any sitting well behind the tee
+    // (a stray between-holes patch behind the box rather than the hole's own rough).
+    const holeRough = rough.filter((r: any) => lineSamples.some((p) => hmInside(p, r.poly)) && hmAlong(r.c, tee, gEnd) > -45).map((r: any) => r.poly);
+    // Tee boxes: a golf=tee polygon belongs here only if THIS hole's tee is the closest of all
+    // holes (within a generous cap that still reaches the forward tees ahead of the back tee).
+    const holeTees = tees.filter((t: any) => {
+      const dMine = hmHav(t.c, tee);
+      if (dMine > 95) return false;
+      let dBest = 1e12; for (const s of holeStarts) { const d = hmHav(t.c, s); if (d < dBest) dBest = d; }
+      return dMine <= dBest + 0.5;
+    }).map((t: any) => t.poly);
     // Bunkers attach only if close to the tee->green corridor AND well past the tee
     // (drops a neighbouring hole's greenside sand that merely sits beside this tee).
     const teeToGreenM = hmHav(tee, greenC);
@@ -473,7 +483,7 @@ export default {
       const lng = parseFloat(url.searchParams.get("lng") || "");
       const wantHoles = parseInt(url.searchParams.get("holes") || "0") || 0;
       if (!isFinite(lat) || !isFinite(lng)) return Response.json({ available: false, error: "no-location" });
-      return cachedJson(`https://cache/holemap/v8/${lat.toFixed(4)},${lng.toFixed(4)},${wantHoles}`, 7 * 86400, async () => {
+      return cachedJson(`https://cache/holemap/v9/${lat.toFixed(4)},${lng.toFixed(4)},${wantHoles}`, 7 * 86400, async () => {
         const q = `[out:json][timeout:25];(way["golf"](around:1600,${lat},${lng});relation["golf"](around:1600,${lat},${lng});way["leisure"="golf_course"](around:1600,${lat},${lng});relation["leisure"="golf_course"](around:1600,${lat},${lng}););out geom;`;
         // overpass-api.de has been returning 406 to programmatic requests since ~Apr 2026; try mirrors first.
         const servers = [
