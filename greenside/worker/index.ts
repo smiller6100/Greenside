@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v48";
+const BUILD = "v49";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -43,6 +43,18 @@ async function holeMapFor(lat: number, lng: number, wantHoles: number): Promise<
     }
     return new Response(JSON.stringify({ available: false, error: lastErr }), { status: 503, headers: { "content-type": "application/json" } });
   });
+}
+
+const GS_UA = "GreenSideStrokes/1.0 (+https://greensidestrokes.com; golf hole maps)";
+const OVERPASS_EPS = ["https://overpass.private.coffee/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass-api.de/api/interpreter"];
+async function overpassJson(q: string): Promise<any | null> {
+  for (const ep of OVERPASS_EPS) {
+    try {
+      const r = await fetch(ep, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded", "accept": "application/json", "user-agent": GS_UA }, body: "data=" + encodeURIComponent(q) });
+      if (r.ok) return await r.json();
+    } catch { /* next mirror */ }
+  }
+  return null;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -98,6 +110,30 @@ async function geocodeWithDebug(env: any, name: string, where: string): Promise<
         }
       }
     } catch { debug.tried.push({ q, status: "fetch-failed" }); }
+  }
+
+  // Final fallback: Nominatim text search can't see this course, but its geometry is in OSM.
+  // Find the town centre, then ask Overpass directly for a golf_course named like this nearby.
+  if (w) {
+    await sleep(1100);
+    let clat = NaN, clng = NaN;
+    try {
+      const cr = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(w)}`, { headers: { "user-agent": GS_UA, "accept": "application/json" } });
+      if (cr.ok) { const a = (((await cr.json()) as any) || [])[0]; if (a) { clat = parseFloat(a.lat); clng = parseFloat(a.lon); } }
+    } catch { /* */ }
+    if (isFinite(clat) && isFinite(clng)) {
+      const rx = cleaned.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const oq = `[out:json][timeout:25];(way["leisure"="golf_course"]["name"~"${rx}",i](around:16000,${clat},${clng});relation["leisure"="golf_course"]["name"~"${rx}",i](around:16000,${clat},${clng}););out center 1;`;
+      const od = await overpassJson(oq);
+      const el = od && od.elements && od.elements[0];
+      const ctr = el ? (el.center || (el.lat != null ? { lat: el.lat, lon: el.lon } : null)) : null;
+      debug.overpass = { town: [+clat.toFixed(3), +clng.toFixed(3)], named: !!ctr };
+      if (ctr && isFinite(ctr.lat) && isFinite(ctr.lon)) {
+        const coords = { lat: ctr.lat, lng: ctr.lon };
+        try { await cache.put(cacheKey, Response.json({ ...coords }, { headers: { "cache-control": "max-age=2592000" } })); } catch { /* */ }
+        return { coords, debug: { ...debug, hit: "overpass-name" } };
+      }
+    } else debug.overpass = { town: "not-found" };
   }
   return { coords: null, debug };
 }

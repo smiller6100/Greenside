@@ -3,7 +3,7 @@ import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw } fro
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole } from "../lib/golf";
 
-const VERSION = "v48";
+const VERSION = "v49";
 
 const FORMAT_DEFS = [
   { id: "net", label: "Net" }, { id: "gross", label: "Gross" },
@@ -554,8 +554,11 @@ export default function Home() {
                           <div className="adminrow-info"><b>{c.name}</b>{c.where ? <span> · {c.where}</span> : null}
                             <span className={ok ? "cov-ok" : "cov-no"}> · {status}</span>
                             {c.source === "geocoded" && <span className="dim"> · geocoded</span>}
-                            {!ok && c.geo && c.geo.tried && (
-                              <span className="dim cov-dbg">{c.geo.tried.map((t: any, j: number) => `"${t.q}" → ${t.status != null ? t.status : (t.n + " hits" + (t.types && t.types.length ? " [" + t.types.join(", ") + "]" : ""))}`).join("  ·  ")}</span>
+                            {!ok && c.geo && (c.geo.tried || c.geo.overpass) && (
+                              <span className="dim cov-dbg">
+                                {(c.geo.tried || []).map((t: any) => `"${t.q}" → ${t.status != null ? t.status : (t.n + " hits" + (t.types && t.types.length ? " [" + t.types.join(", ") + "]" : ""))}`).join("  ·  ")}
+                                {c.geo.overpass && `  ·  OSM town ${typeof c.geo.overpass.town === "string" ? c.geo.overpass.town : "ok"}, named course ${c.geo.overpass.named ? "found" : "none"}`}
+                              </span>
                             )}
                           </div>
                         </div>
