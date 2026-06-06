@@ -36,7 +36,8 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
     hmFetched.current = true;
     const lat = (state as any).lat, lng = (state as any).lng;
     if (lat == null || lng == null) { setHoleMap({ available: false, counts: null }); return; }
-    fetch(`/api/holemap?lat=${lat}&lng=${lng}`, { cache: "no-store" })
+    const nHoles = Array.isArray((state as any).course) ? (state as any).course.length : 0;
+    fetch(`/api/holemap?lat=${lat}&lng=${lng}&holes=${nHoles}`, { cache: "no-store" })
       .then((r) => r.json())
       .then(setHoleMap)
       .catch(() => setHoleMap({ available: false, error: "fetch" }));

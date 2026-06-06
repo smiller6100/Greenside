@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v30";
+const BUILD = "v31";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -98,7 +98,7 @@ function hmInside(pt: number[], ring: number[][]): boolean {
   return inside;
 }
 
-function parseHoleMap(data: any, qLat: number, qLng: number) {
+function parseHoleMap(data: any, qLat: number, qLng: number, wantHoles: number) {
   const els = (data && data.elements) || [];
   const ways = els.filter((e: any) => e.type === "way" && Array.isArray(e.geometry) && e.geometry.length);
   const g = (v: string) => ways.filter((w: any) => w.tags && w.tags.golf === v);
@@ -121,23 +121,33 @@ function parseHoleMap(data: any, qLat: number, qLng: number) {
     }
   });
 
-  // Pick the boundary for THIS course: prefer one containing the round's location with the most holes;
-  // else the boundary nearest the location that actually has holes.
+  // Pick the course for THIS round. Several courses can share one clubhouse, so prefer the one
+  // whose hole count matches the round's, then the biggest/nearest.
   const q = [qLat, qLng];
   const teeOf = (w: any) => [w.geometry[0].lat, w.geometry[0].lon];
-  const holesInside = (ring: number[][]) => holeWays.filter((w: any) => hmInside(teeOf(w), ring)).length;
-  let chosen: number[][] | null = null;
-  const containing = boundaries.filter((r) => hmInside(q, r));
-  if (containing.length) {
-    chosen = containing.reduce((best, r) => (holesInside(r) > (best ? holesInside(best) : -1) ? r : best), null as number[][] | null);
-  } else if (boundaries.length) {
-    let bd = Infinity;
-    for (const r of boundaries) { if (!holesInside(r)) continue; const d = hmHav(q, hmCentroid(r.map((p) => ({ lat: p[0], lon: p[1] })))); if (d < bd) { bd = d; chosen = r; } }
+  const ringArea = (ring: number[][]) => { let a = 0; for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) a += ring[j][1] * ring[i][0] - ring[i][1] * ring[j][0]; return Math.abs(a / 2); };
+  // Each hole belongs to the SMALLEST boundary containing its tee (handles a small course nested in a big one).
+  const ownerOf = (w: any) => { let best: number[][] | null = null, ba = Infinity; for (const r of boundaries) { if (hmInside(teeOf(w), r)) { const a = ringArea(r); if (a < ba) { ba = a; best = r; } } } return best; };
+  const groups = new Map<number[][], any[]>();
+  for (const w of holeWays) { const o = ownerOf(w); if (!o) continue; const arr = groups.get(o) || []; arr.push(w); groups.set(o, arr); }
+  const courses = [...groups.entries()].map(([ring, holes]) => ({ ring, holes }));
+  let chosen: { ring: number[][]; holes: any[] } | null = null;
+  if (courses.length) {
+    const distToCourse = (c: any) => Math.min(...c.holes.map((w: any) => hmHav(q, teeOf(w))));
+    let relevant = courses.filter((c) => hmInside(q, c.ring) || distToCourse(c) < 400);
+    if (!relevant.length) relevant = courses;
+    let bestScore = -Infinity;
+    for (const c of relevant) {
+      const countMatch = wantHoles ? -Math.abs(c.holes.length - wantHoles) : 0; // 0 = exact match
+      const contains = hmInside(q, c.ring) ? 1 : 0;
+      const score = countMatch * 100 + c.holes.length + contains * 5 - distToCourse(c) / 1000;
+      if (score > bestScore) { bestScore = score; chosen = c; }
+    }
   }
 
   if (chosen) {
-    const ring = chosen;
-    holeWays = holeWays.filter((w: any) => hmInside(teeOf(w), ring));
+    const ring = chosen.ring;
+    holeWays = chosen.holes;
     greens = greens.filter((x: any) => hmInside(x.c, ring));
     fairways = fairways.filter((x: any) => hmInside(x.c, ring));
     bunkers = bunkers.filter((x: any) => hmInside(x.c, ring));
@@ -401,8 +411,9 @@ export default {
     if (path === "/api/holemap" && request.method === "GET") {
       const lat = parseFloat(url.searchParams.get("lat") || "");
       const lng = parseFloat(url.searchParams.get("lng") || "");
+      const wantHoles = parseInt(url.searchParams.get("holes") || "0") || 0;
       if (!isFinite(lat) || !isFinite(lng)) return Response.json({ available: false, error: "no-location" });
-      return cachedJson(`https://cache/holemap/v3/${lat.toFixed(4)},${lng.toFixed(4)}`, 7 * 86400, async () => {
+      return cachedJson(`https://cache/holemap/v4/${lat.toFixed(4)},${lng.toFixed(4)},${wantHoles}`, 7 * 86400, async () => {
         const q = `[out:json][timeout:25];(way["golf"](around:1600,${lat},${lng});relation["golf"](around:1600,${lat},${lng});way["leisure"="golf_course"](around:1600,${lat},${lng});relation["leisure"="golf_course"](around:1600,${lat},${lng}););out geom;`;
         // overpass-api.de has been returning 406 to programmatic requests since ~Apr 2026; try mirrors first.
         const servers = [
@@ -425,7 +436,7 @@ export default {
             });
             if (!r.ok) { lastErr = "overpass-" + r.status + "@" + host; continue; }
             const data = await r.json();
-            return Response.json(parseHoleMap(data, lat, lng)); // 200 → cached (incl. legit "not mapped")
+            return Response.json(parseHoleMap(data, lat, lng, wantHoles)); // 200 → cached (incl. legit "not mapped")
           } catch {
             lastErr = "fetch-failed@" + host;
           }
