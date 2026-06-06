@@ -3,7 +3,7 @@ import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw } fro
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole } from "../lib/golf";
 
-const VERSION = "v42";
+const VERSION = "v43";
 
 const FORMAT_DEFS = [
   { id: "net", label: "Net" }, { id: "gross", label: "Gross" },
@@ -60,6 +60,8 @@ export default function Home() {
   const [adminAuthed, setAdminAuthed] = useState(false);
   const [adminCourses, setAdminCourses] = useState<{ id: string; name: string; where: string; plays: number }[]>([]);
   const [adminMsg, setAdminMsg] = useState("");
+  const [coverage, setCoverage] = useState<any[] | null>(null);
+  const [covRunning, setCovRunning] = useState(false);
 
   // course
   const [query, setQuery] = useState("");
@@ -213,7 +215,22 @@ export default function Home() {
       if (d.ok) setAdminCourses((cs) => cs.filter((c) => c.id !== id));
     } catch { setAdminMsg("Delete failed."); }
   };
-  const closeAdmin = () => { setAdminOpen(false); setAdminAuthed(false); setAdminKey(""); setAdminCourses([]); setAdminMsg(""); };
+  const runCoverage = async () => {
+    setCovRunning(true); setCoverage([]); setAdminMsg("");
+    try {
+      let offset = 0; const acc: any[] = [];
+      for (let page = 0; page < 12; page++) {
+        const r = await fetch(`/api/admin/coverage?offset=${offset}&limit=25`, { headers: { "x-admin-key": adminKey } });
+        const d: any = await r.json();
+        acc.push(...(d.courses || []));
+        setCoverage([...acc]);
+        if (d.nextOffset == null) break;
+        offset = d.nextOffset;
+      }
+    } catch { setAdminMsg("Coverage check failed — try again."); }
+    setCovRunning(false);
+  };
+  const closeAdmin = () => { setAdminOpen(false); setAdminAuthed(false); setAdminKey(""); setAdminCourses([]); setAdminMsg(""); setCoverage(null); setCovRunning(false); };
 
   const parTotal = course.reduce((s, h) => s + h.par, 0);
   const selTee = tees.find((t) => t.name === teeName) || tees[0];
@@ -494,6 +511,26 @@ export default function Home() {
                     </div>
                   ))}
                 </div>
+                <button className="ghostbtn" onClick={runCoverage} disabled={covRunning}>{covRunning ? "Checking coverage…" : "Check hole-map coverage"}</button>
+                {coverage && (
+                  <div className="adminlist">
+                    {coverage.length === 0 && !covRunning && <p className="hint left">No courses.</p>}
+                    {coverage.map((c) => {
+                      const ok = c.holesMapped > 0;
+                      const status = ok ? `✓ ${c.holesMapped}/${c.holesExpected} holes mapped`
+                        : c.source === "no-coords" ? "no location found"
+                        : "not in OpenStreetMap";
+                      return (
+                        <div className="adminrow" key={c.id}>
+                          <div className="adminrow-info"><b>{c.name}</b>{c.where ? <span> · {c.where}</span> : null}
+                            <span className={ok ? "cov-ok" : "cov-no"}> · {status}</span>
+                            {c.source === "geocoded" && <span className="dim"> · geocoded</span>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
                 <button className="ghostbtn" onClick={closeAdmin}>Done</button>
               </>
             )}
