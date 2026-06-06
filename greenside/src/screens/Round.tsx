@@ -53,7 +53,7 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
     return (
       <Shell>
         <div className="empty"><LogoMark size={40} /><h2>Round not found</h2><p>Double-check the code, or start a new round.</p>
-          <button className="primary" onClick={() => { location.hash = ""; }}>Back to start</button></div>
+          <button className="primary" onClick={() => { location.replace(location.pathname + location.search); }}>Back to start</button></div>
       </Shell>
     );
   }
@@ -632,8 +632,8 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
               </div>
             )}
             <p>Leaving keeps this round on your phone so you can jump back in. Ending it removes it from your Resume when you’re done for the day.</p>
-            <button className="primary" onClick={() => { location.hash = ""; }}>Leave — keep it</button>
-            <button className="dangerbtn" onClick={() => { localStorage.removeItem("gs:lastRound"); localStorage.removeItem("gs:lastRoundName"); location.hash = ""; }}>End round</button>
+            <button className="primary" onClick={() => { location.replace(location.pathname + location.search); }}>Leave — keep it</button>
+            <button className="dangerbtn" onClick={() => { localStorage.removeItem("gs:lastRound"); localStorage.removeItem("gs:lastRoundName"); location.replace(location.pathname + location.search); }}>End round</button>
             <button className="ghostbtn" onClick={() => setLeaving(false)}>Stay</button>
           </div></div>
         )}
