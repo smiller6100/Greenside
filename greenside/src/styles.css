@@ -412,3 +412,14 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .modetoggle { display: inline-flex; gap: 3px; background: rgba(15,58,40,.07); padding: 3px; border-radius: 10px; }
 .modetoggle button { border: none; background: transparent; color: var(--mut); font: inherit; font-size: 12px; font-weight: 700; padding: 5px 12px; border-radius: 8px; cursor: pointer; transition: .15s; }
 .modetoggle button.on { background: var(--pine); color: #fff; box-shadow: 0 2px 6px rgba(14,42,31,.22); }
+
+/* Self-join form + organizer group links (outings) */
+.joinrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 14px; font-weight: 600; color: var(--ink); margin-bottom: 12px; }
+.hcpin { border: 1.5px solid var(--line); background: #fff; font: inherit; font-size: 16px; color: var(--ink); padding: 10px 12px; border-radius: 11px; min-width: 110px; }
+.grouplink { margin: 14px 0 4px; padding: 14px; border: 1px solid var(--line); border-radius: 13px; background: rgba(15,58,40,.04); }
+.gl-label { display: block; font-size: 12.5px; font-weight: 700; color: var(--mut); letter-spacing: .02em; margin-bottom: 9px; }
+.gl-row { display: flex; align-items: center; gap: 10px; }
+.gl-row > button { width: 38px; height: 38px; border-radius: 11px; border: none; background: rgba(15,58,40,.08); color: var(--pine); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.gl-row b { font-size: 15px; color: var(--pine); min-width: 76px; text-align: center; }
+.glcopy { margin-left: auto; border: none; background: var(--pine); color: #fff; font: inherit; font-size: 13px; font-weight: 700; padding: 10px 16px; border-radius: 11px; cursor: pointer; }
+.gl-hint { font-size: 12px; color: var(--mut); margin-top: 9px; }

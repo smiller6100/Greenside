@@ -62,7 +62,19 @@ export class GolfRound implements DurableObject {
     const state = await this.ctx.storage.get<any>("state");
     if (!state) return;
 
-    if (data.type === "score") {
+    if (data.type === "addPlayer") {
+      const id = String(data.id || "");
+      const name = String(data.name || "").trim().slice(0, 24);
+      const grp = data.group != null ? String(data.group) : undefined;
+      if (!id || !name) return;
+      if (state.players.length >= 200) return; // 36 foursomes ceiling, with headroom
+      const hcp = Math.max(0, Math.min(54, parseInt(data.hcp) || 0));
+      if (!state.players.some((p: any) => p.id === id)) {
+        state.players.push({ id, name, hcp, ...(grp ? { group: grp } : {}) });
+        await this.ctx.storage.put("state", state);
+        this.broadcast({ type: "state", state });
+      }
+    } else if (data.type === "score") {
       const hole = Number(data.hole);
       const strokes = Number(data.strokes);
       if (!Number.isInteger(hole) || hole < 1 || hole > 18) return;

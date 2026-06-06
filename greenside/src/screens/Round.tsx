@@ -6,8 +6,8 @@ import { computeStandings, computeGames, computeTeams, strokesOn, toParClass, fm
 
 const FORMAT_LABELS: Record<string, string> = { net: "Net", gross: "Gross", stableford: "Stableford", chicago: "Chicago", skins: "Skins", card: "Full card", games: "Games", teams: "Teams" };
 
-export default function Round({ code }: { code: string }) {
-  const { state, connected, missing, sendScore, sendWolfPick, sendBbb, sendPress, sendSixesMode } = useRound(code);
+export default function Round({ code, joinGroup }: { code: string; joinGroup?: string | null }) {
+  const { state, connected, missing, sendScore, sendWolfPick, sendBbb, sendPress, sendSixesMode, sendAddPlayer } = useRound(code);
   const [tab, setTab] = useState<"board" | "score">("board");
   const [view, setView] = useState("net"); // a scoring format (leaderboard side)
   const [scView, setScView] = useState<"hole" | "card" | "games">("hole"); // scorecard side
@@ -15,8 +15,15 @@ export default function Round({ code }: { code: string }) {
   const [grp, setGrp] = useState<string | null>(null);
   const [me, setMe] = useState<string | null>(() => localStorage.getItem(`gs:me:${code}`));
   const [claimed, setClaimed] = useState(() => localStorage.getItem(`gs:claimed:${code}`) === "1");
+  const isCreator = localStorage.getItem(`gs:creator:${code}`) === "1";
   const [copied, setCopied] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  // self-join (outings)
+  const [joinName, setJoinName] = useState("");
+  const [joinHcp, setJoinHcp] = useState("12");
+  const [pickGroup, setPickGroup] = useState<string>(joinGroup || "1");
+  const [shareGrp, setShareGrp] = useState(1);
+  const [gCopied, setGCopied] = useState(false);
 
   const enabledFormats = useMemo(
     () => (state ? Object.keys(state.formats).filter((k) => state.formats[k as keyof typeof state.formats]) : []),
@@ -58,8 +65,8 @@ export default function Round({ code }: { code: string }) {
   const nameOf = (id: string) => state.players.find((p) => p.id === id)?.name || "?";
   const enabledGames = state.games ? Object.keys(state.games).filter((k) => (state.games as any)[k]) : [];
   const myGroup = state.players.find((p) => p.id === me)?.group;
-  const groups = state.outing ? Array.from(new Set(state.players.map((p) => p.group || "A"))).sort() : [];
-  const effGrp = grp ?? myGroup ?? groups[0] ?? null;
+  const groups = state.outing ? Array.from(new Set(state.players.map((p) => p.group || "1"))).sort((a, b) => (parseInt(a) || 0) - (parseInt(b) || 0) || a.localeCompare(b)) : [];
+  const effGrp = grp ?? myGroup ?? joinGroup ?? groups[0] ?? null;
 
   const TeamsPanel = () => {
     const rows = computeTeams(state);
@@ -181,6 +188,18 @@ export default function Round({ code }: { code: string }) {
     if (id) localStorage.setItem(`gs:me:${code}`, id); else localStorage.removeItem(`gs:me:${code}`);
     localStorage.setItem(`gs:claimed:${code}`, "1");
     setMe(id); setClaimed(true);
+  };
+  const doJoin = () => {
+    const nm = joinName.trim();
+    if (!nm) return;
+    const id = "u" + Math.random().toString(36).slice(2, 9);
+    const g = state.outing ? String(pickGroup || joinGroup || "1") : undefined;
+    sendAddPlayer({ id, name: nm, hcp: Math.max(0, Math.min(54, parseInt(joinHcp) || 0)), group: g });
+    if (g) setGrp(g);
+    claim(id);
+  };
+  const copyGroupLink = (n: number) => {
+    navigator.clipboard?.writeText(`${location.origin}/#/r/${code}-${n}`).then(() => { setGCopied(true); setTimeout(() => setGCopied(false), 1600); }).catch(() => {});
   };
   const copyCode = () => {
     navigator.clipboard?.writeText(`${location.origin}/#/r/${code}`).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1600); }).catch(() => {});
@@ -443,9 +462,31 @@ export default function Round({ code }: { code: string }) {
 
         {!claimed && (
           <div className="modal"><div className="sheet">
-            <h3>Which player are you?</h3><p>So we can highlight you on the board.</p>
-            <div className="claimlist">{state.players.map((p) => (<button key={p.id} onClick={() => claim(p.id)}>{p.name}<span>Hcp {p.hcp}</span></button>))}</div>
-            <button className="ghostbtn" onClick={() => claim(null)}>Just watching</button>
+            {state.outing ? (
+              <>
+                <h3>{joinGroup ? `Join Group ${joinGroup}` : "Join the outing"}</h3>
+                <p>{joinGroup ? "Add yourself to this foursome." : "Pick your foursome and add yourself."}</p>
+                {!joinGroup && (
+                  <label className="joinrow">Foursome
+                    <select className="hcpin" value={pickGroup} onChange={(e) => setPickGroup(e.target.value)}>
+                      {Array.from({ length: 36 }, (_, i) => String(i + 1)).map((n) => <option key={n} value={n}>Group {n}</option>)}
+                    </select>
+                  </label>
+                )}
+                <input className="admin-pw" placeholder="Your name" value={joinName} onChange={(e) => setJoinName(e.target.value)} />
+                <label className="joinrow">Handicap
+                  <input className="hcpin" type="number" inputMode="numeric" value={joinHcp} onChange={(e) => setJoinHcp(e.target.value)} />
+                </label>
+                <button className="primary" disabled={!joinName.trim()} onClick={doJoin}>Join{joinGroup ? ` Group ${joinGroup}` : ` Group ${pickGroup}`}</button>
+                <button className="ghostbtn" onClick={() => claim(null)}>{isCreator ? "Just organizing" : "Just watching"}</button>
+              </>
+            ) : (
+              <>
+                <h3>Which player are you?</h3><p>So we can highlight you on the board.</p>
+                <div className="claimlist">{state.players.map((p) => (<button key={p.id} onClick={() => claim(p.id)}>{p.name}<span>Hcp {p.hcp}</span></button>))}</div>
+                <button className="ghostbtn" onClick={() => claim(null)}>Just watching</button>
+              </>
+            )}
           </div></div>
         )}
 
@@ -453,6 +494,18 @@ export default function Round({ code }: { code: string }) {
           <div className="modal"><div className="sheet">
             <h3>{roundTitle}</h3>
             <button className="codepill sheetcode" onClick={copyCode}>{copied ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Code {code}</>}</button>
+            {state.outing && (
+              <div className="grouplink">
+                <span className="gl-label">Send a foursome their join link</span>
+                <div className="gl-row">
+                  <button onClick={() => setShareGrp((g) => Math.max(1, g - 1))} aria-label="fewer"><Minus size={16} /></button>
+                  <b>Group {shareGrp}</b>
+                  <button onClick={() => setShareGrp((g) => Math.min(36, g + 1))} aria-label="more"><Plus size={16} /></button>
+                  <button className="glcopy" onClick={() => copyGroupLink(shareGrp)}>{gCopied ? "Copied" : "Copy link"}</button>
+                </div>
+                <p className="gl-hint">They open it, type their name, and land on Group {shareGrp}.</p>
+              </div>
+            )}
             <p>Leaving keeps this round on your phone so you can jump back in. Ending it removes it from your Resume when you’re done for the day.</p>
             <button className="primary" onClick={() => { location.hash = ""; }}>Leave — keep it</button>
             <button className="dangerbtn" onClick={() => { localStorage.removeItem("gs:lastRound"); localStorage.removeItem("gs:lastRoundName"); location.hash = ""; }}>End round</button>

@@ -100,5 +100,11 @@ export function useRound(code: string) {
     setState((s) => (s ? { ...s, sixesMode: mode } : s));
   }, []);
 
-  return { state, connected, missing, sendScore, sendWolfPick, sendBbb, sendPress, sendSixesMode };
+  const sendAddPlayer = useCallback((player: { id: string; name: string; hcp: number; group?: string }) => {
+    wsRef.current?.send(JSON.stringify({ type: "addPlayer", ...player }));
+    setState((s) => (s && !s.players.some((p) => p.id === player.id)
+      ? { ...s, players: [...s.players, player as any] } : s));
+  }, []);
+
+  return { state, connected, missing, sendScore, sendWolfPick, sendBbb, sendPress, sendSixesMode, sendAddPlayer };
 }

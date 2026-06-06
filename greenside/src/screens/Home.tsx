@@ -3,7 +3,7 @@ import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw } fro
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole } from "../lib/golf";
 
-const VERSION = "v21";
+const VERSION = "v22";
 
 const FORMAT_DEFS = [
   { id: "net", label: "Net" }, { id: "gross", label: "Gross" },
@@ -50,7 +50,7 @@ export default function Home() {
   const [formats, setFormats] = useState<Record<string, boolean>>({ net: true, gross: true, stableford: false, chicago: false, skins: false });
   const [games, setGames] = useState<Record<string, boolean>>({ wolf: false, nines: false, sixes: false, vegas: false, nassau: false, bbb: false, bestball: false });
   const [hcpMode, setHcpMode] = useState<"perHole" | "course" | "gross">("perHole");
-  const [joinCode, setJoinCode] = useState((location.hash.match(/#\/r\/([A-Za-z0-9]+)/) || [])[1] || "");
+  const [joinCode, setJoinCode] = useState((location.hash.match(/#\/r\/([A-Za-z0-9-]+)/) || [])[1] || "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [last] = useState(() => ({ code: localStorage.getItem("gs:lastRound") || "", name: localStorage.getItem("gs:lastRoundName") || "" }));
@@ -221,7 +221,7 @@ export default function Home() {
   function onCreatePress() {
     setErr("");
     const named = players.map((p) => p.name.trim()).filter(Boolean);
-    if (!named.length) { setErr("Add at least one player."); return; }
+    if (!outing && !named.length) { setErr("Add at least one player."); return; }
     if (!Object.values(formats).some(Boolean)) { setErr("Pick at least one format."); return; }
     if (last.code) { setConfirmNew(true); return; }
     doCreate();
@@ -244,7 +244,12 @@ export default function Home() {
     try {
       const r = await fetch("/api/round", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
       const { code } = await r.json();
-      localStorage.setItem(`gs:me:${code}`, "p1"); localStorage.setItem(`gs:claimed:${code}`, "1");
+      if (outing) {
+        localStorage.setItem(`gs:creator:${code}`, "1");
+        localStorage.setItem(`gs:claimed:${code}`, "1"); // organizer view; can join a foursome later
+      } else {
+        localStorage.setItem(`gs:me:${code}`, "p1"); localStorage.setItem(`gs:claimed:${code}`, "1");
+      }
       localStorage.setItem("gs:lastRound", code); localStorage.setItem("gs:lastRoundName", payload.name);
       location.hash = `#/r/${code}`;
     } catch { setErr("Couldn't create the round. Try again."); setBusy(false); }
@@ -371,17 +376,10 @@ export default function Home() {
                 <button className={`seg-btn ${!outing ? "on" : ""}`} onClick={() => { if (outing) toggleOuting(); }}>One group</button>
                 <button className={`seg-btn ${outing ? "on" : ""}`} onClick={() => { if (!outing) toggleOuting(); }}>Outing</button>
               </div>
-              {outing && (
-                <div className="grpcount">
-                  <span>Foursomes</span>
-                  <div className="steppermini">
-                    <button onClick={() => setGroups(groupCount - 1)} aria-label="fewer">–</button><b>{groupCount}</b><button onClick={() => setGroups(groupCount + 1)} aria-label="more">+</button>
-                  </div>
-                </div>
-              )}
-              {outing && <p className="hint">One code for the whole outing. Tag each player to a group — each foursome enters only their own scores, and the board rolls everyone up.</p>}
+              {outing && <p className="hint">One outing code, and each foursome gets its own join link — Group 1, Group 2, and so on, up to 36. Players open their link, type their name, and they're on that team. You'll get the links to share the moment you create it.</p>}
             </div>
 
+            {!outing && (
             <div className="field">
               <span>Players</span>
               <div className="players">
@@ -399,6 +397,7 @@ export default function Home() {
               </div>
               {players.length < cap && <button className="addp" onClick={addP}><Plus size={15} strokeWidth={2.4} /> Add player</button>}
             </div>
+            )}
 
             <div className="field">
               <span>Scoring</span>
@@ -444,7 +443,7 @@ export default function Home() {
           <div className="panel">
             <label className="field">
               <span>Round code</span>
-              <input className="code-in" value={joinCode} onChange={(e) => setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))} placeholder="ABCD" maxLength={6} />
+              <input className="code-in" value={joinCode} onChange={(e) => setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ""))} placeholder="ABCD or ABCD-1" maxLength={8} />
             </label>
             {err && <p className="err">{err}</p>}
             <button className="primary" onClick={join}>Join round</button>
