@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v27";
+const BUILD = "v28";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -354,18 +354,34 @@ export default {
       if (!isFinite(lat) || !isFinite(lng)) return Response.json({ available: false, error: "no-location" });
       return cachedJson(`https://cache/holemap/${lat.toFixed(4)},${lng.toFixed(4)}`, 7 * 86400, async () => {
         const q = `[out:json][timeout:25];(way["golf"](around:1600,${lat},${lng});relation["golf"](around:1600,${lat},${lng}););out geom;`;
-        try {
-          const r = await fetch("https://overpass-api.de/api/interpreter", {
-            method: "POST",
-            headers: { "content-type": "application/x-www-form-urlencoded" },
-            body: "data=" + encodeURIComponent(q),
-          });
-          if (!r.ok) return Response.json({ available: false, error: "overpass-" + r.status });
-          const data = await r.json();
-          return Response.json(parseHoleMap(data));
-        } catch {
-          return Response.json({ available: false, error: "overpass-fetch-failed" });
+        // overpass-api.de has been returning 406 to programmatic requests since ~Apr 2026; try mirrors first.
+        const servers = [
+          "https://overpass.private.coffee/api/interpreter",
+          "https://overpass.kumi.systems/api/interpreter",
+          "https://overpass-api.de/api/interpreter",
+        ];
+        let lastErr = "none";
+        for (const ep of servers) {
+          const host = ep.split("/")[2];
+          try {
+            const r = await fetch(ep, {
+              method: "POST",
+              headers: {
+                "content-type": "application/x-www-form-urlencoded",
+                "accept": "application/json",
+                "user-agent": "GreenSideStrokes/1.0 (+https://greensidestrokes.com; golf hole maps)",
+              },
+              body: "data=" + encodeURIComponent(q),
+            });
+            if (!r.ok) { lastErr = "overpass-" + r.status + "@" + host; continue; }
+            const data = await r.json();
+            return Response.json(parseHoleMap(data)); // 200 → cached (incl. legit "not mapped")
+          } catch {
+            lastErr = "fetch-failed@" + host;
+          }
         }
+        // Couldn't reach any server — return non-200 so the failure is NOT cached.
+        return new Response(JSON.stringify({ available: false, error: lastErr }), { status: 503, headers: { "content-type": "application/json" } });
       });
     }
 
