@@ -441,3 +441,28 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .ag-members { display: flex; flex-wrap: wrap; gap: 6px; }
 .ag-chip { display: inline-flex; align-items: center; gap: 6px; background: rgba(15,58,40,.06); border-radius: 8px; padding: 4px 6px 4px 10px; font-size: 13px; font-weight: 600; color: var(--ink); }
 .ag-chip button { border: none; background: rgba(216,63,47,.14); color: var(--over); width: 19px; height: 19px; border-radius: 6px; font-size: 14px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
+/* ---- OpenStreetMap hole maps ---- */
+.holemap-wrap { margin: 14px 0 4px; }
+.holemap-head { font-size: 13px; font-weight: 700; color: var(--ink); opacity: .82; text-align: center; margin-bottom: 6px; }
+.holemap { display: block; width: 100%; max-width: 320px; margin: 0 auto; background: #eef4ec; border: 1px solid rgba(15,58,40,.14); border-radius: 14px; }
+.hm-fairway { fill: #bfe0a8; stroke: #9fce86; stroke-width: .8; }
+.hm-green { fill: #57c878; stroke: #2f9c52; stroke-width: 1; }
+.hm-bunker { fill: #ecd9a0; stroke: #d8bd72; stroke-width: .8; }
+.hm-water { fill: #8fc2ec; stroke: #5ea3dd; stroke-width: .8; }
+.hm-line { fill: none; stroke: #13241a; stroke-width: 2; stroke-dasharray: 5 5; stroke-linecap: round; opacity: .7; }
+.hm-tee { fill: #13241a; stroke: #fff; stroke-width: 1.5; }
+.hm-dist { fill: #13241a; font-size: 13px; font-weight: 800; paint-order: stroke; stroke: #eef4ec; stroke-width: 3px; }
+.hm-hlabel { font-size: 10px; font-weight: 700; paint-order: stroke; stroke: #fff; stroke-width: 2.5px; }
+.hm-hlabel-w { fill: #2f6da3; }
+.hm-hlabel-b { fill: #8a6d23; }
+.holemap-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 7px; }
+.holemap-legend .lg { font-size: 11px; font-weight: 700; color: var(--ink); opacity: .75; display: inline-flex; align-items: center; gap: 5px; }
+.holemap-legend .lg::before { content: ""; width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+.lg-g::before { background: #57c878; }
+.lg-f::before { background: #bfe0a8; }
+.lg-b::before { background: #ecd9a0; }
+.lg-w::before { background: #8fc2ec; }
+.hm-note { text-align: center; font-size: 10.5px; color: var(--ink); opacity: .5; margin-top: 5px; }
+.holemap-empty { text-align: center; font-size: 12px; color: var(--ink); opacity: .5; margin: 14px 0 4px; padding: 0 12px; }
+.hm-diag { opacity: .8; }

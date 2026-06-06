@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Minus, Plus, Crown, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Trophy, ClipboardList, Copy, Check, Home } from "lucide-react";
 import { LogoMark } from "../components/Logo";
+import HoleMap from "../components/HoleMap";
 import { useRound } from "../lib/useRound";
 import { computeStandings, computeGames, computeTeams, strokesOn, toParClass, fmtToPar, holesUp, sixesSegs, scoreTone } from "../lib/golf";
 
@@ -26,6 +27,20 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
   const [pickGroup, setPickGroup] = useState<string>(joinGroup || "1");
   const [shareGrp, setShareGrp] = useState(1);
   const [gCopied, setGCopied] = useState(false);
+  const [holeMap, setHoleMap] = useState<any>(null);
+
+  // Fetch the OSM hole-map data once, when the round first loads.
+  const hmFetched = useRef(false);
+  useEffect(() => {
+    if (!state || hmFetched.current) return;
+    hmFetched.current = true;
+    const lat = (state as any).lat, lng = (state as any).lng;
+    if (lat == null || lng == null) { setHoleMap({ available: false, counts: null }); return; }
+    fetch(`/api/holemap?lat=${lat}&lng=${lng}`)
+      .then((r) => r.json())
+      .then(setHoleMap)
+      .catch(() => setHoleMap({ available: false, error: "fetch" }));
+  }, [state]);
 
   const enabledFormats = useMemo(
     () => (state ? Object.keys(state.formats).filter((k) => state.formats[k as keyof typeof state.formats]) : []),
@@ -456,6 +471,31 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
               })}
             </div>
             )}
+            {(() => {
+              if (holeMap == null) return null; // still loading
+              if (!holeMap.available) {
+                const c = holeMap.counts;
+                return (
+                  <div className="holemap-empty">
+                    No hole map for this course yet.
+                    {c && (c.greens || c.bunkers || c.water) ? <span className="hm-diag"> (OSM has {c.greens} greens, {c.bunkers} bunkers, {c.water} water — but no hole lines to map)</span> : null}
+                  </div>
+                );
+              }
+              const hm = holeMap.holes.find((h: any) => h.ref === hole.num);
+              if (!hm) return <div className="holemap-empty">Hole map unavailable for this hole.</div>;
+              return (
+                <div className="holemap-wrap">
+                  <div className="holemap-head">Hole {hole.num}{hm.par ? ` · Par ${hm.par}` : ""} · {hm.teeToGreenYds} yds tee→green</div>
+                  <HoleMap hole={hm} />
+                  <div className="holemap-legend">
+                    <span className="lg lg-g">Green</span><span className="lg lg-f">Fairway</span>
+                    <span className="lg lg-b">Bunker</span><span className="lg lg-w">Water</span>
+                  </div>
+                  <div className="hm-note">Diagram from OpenStreetMap · straight-line yards</div>
+                </div>
+              );
+            })()}
             {(state.games?.sixes || state.games?.nassau) && state.players.length === 4 && (() => {
               const blocks: any[] = [];
               const teamNames = (t: any[]) => t.map((p) => p.name).join("/");

@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v25";
+const BUILD = "v27";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -75,6 +75,51 @@ function extractJson(text: string): any {
   const end = body.lastIndexOf("}");
   if (start === -1 || end === -1) return null;
   try { return JSON.parse(body.slice(start, end + 1)); } catch { return null; }
+}
+
+// ---- OpenStreetMap hole-map parsing (vector hole diagrams + distances) ----
+function hmHav(a: number[], b: number[]): number { // meters between [lat,lng]
+  const R = 6371000, toR = Math.PI / 180;
+  const dLat = (b[0] - a[0]) * toR, dLng = (b[1] - a[1]) * toR;
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(a[0] * toR) * Math.cos(b[0] * toR) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(x)));
+}
+function hmRing(geom: any[]): number[][] { return geom.map((g) => [g.lat, g.lon]); }
+function hmCentroid(geom: any[]): number[] { let la = 0, lo = 0; geom.forEach((g) => { la += g.lat; lo += g.lon; }); return [la / geom.length, lo / geom.length]; }
+function hmYds(m: number): number { return Math.round(m * 1.09361); }
+
+function parseHoleMap(data: any) {
+  const els = (data && data.elements) || [];
+  const ways = els.filter((e: any) => e.type === "way" && Array.isArray(e.geometry) && e.geometry.length);
+  const g = (v: string) => ways.filter((w: any) => w.tags && w.tags.golf === v);
+  const holeWays = g("hole").filter((w: any) => w.geometry.length >= 2);
+  const greens = g("green").map((w: any) => ({ poly: hmRing(w.geometry), c: hmCentroid(w.geometry) }));
+  const fairways = g("fairway").map((w: any) => ({ poly: hmRing(w.geometry), c: hmCentroid(w.geometry) }));
+  const bunkers = g("bunker").map((w: any) => ({ poly: hmRing(w.geometry), c: hmCentroid(w.geometry), kind: "bunker" }));
+  const water = ways.filter((w: any) => w.tags && (w.tags.golf === "water_hazard" || w.tags.golf === "lateral_water_hazard" || w.tags.natural === "water"))
+    .map((w: any) => ({ poly: hmRing(w.geometry), c: hmCentroid(w.geometry), kind: "water" }));
+  const counts = { holes: holeWays.length, greens: greens.length, bunkers: bunkers.length, water: water.length };
+  if (!holeWays.length) return { available: false, counts };
+
+  const nearest = (c: number[], arr: any[]) => { let best: any = null, bd = 1e12; for (const a of arr) { const d = hmHav(c, a.c); if (d < bd) { bd = d; best = a; } } return { best, bd }; };
+  const minToLine = (c: number[], line: number[][]) => Math.min(...line.map((p) => hmHav(c, p)));
+
+  const holes = holeWays.map((w: any) => {
+    const line = hmRing(w.geometry);
+    const tee = line[0], gEnd = line[line.length - 1];
+    const ref = parseInt(w.tags.ref);
+    const par = parseInt(w.tags.par) || null;
+    const gn = nearest(gEnd, greens);
+    const green = gn.best && gn.bd < 80 ? gn.best : null;
+    const greenC = green ? green.c : gEnd;
+    const fw = nearest(hmCentroid(w.geometry), fairways);
+    const fairway = fw.best && fw.bd < 130 ? fw.best.poly : null;
+    const hazards = [...bunkers, ...water].filter((h) => minToLine(h.c, line) < 55)
+      .map((h) => ({ kind: h.kind, poly: h.poly, c: h.c, yards: hmYds(hmHav(tee, h.c)) }));
+    return { ref: isFinite(ref) ? ref : null, par, line, tee, green: green ? green.poly : null, greenC, fairway, hazards, teeToGreenYds: hmYds(hmHav(tee, greenC)) };
+  }).sort((a: any, b: any) => (a.ref || 99) - (b.ref || 99));
+
+  return { available: true, counts, holes };
 }
 
 export default {
@@ -300,6 +345,28 @@ export default {
         } catch { /* non-fatal */ }
       }
       return Response.json({ code, adminToken });
+    }
+
+    // ---- Hole maps from OpenStreetMap (vector diagrams + distances) ----
+    if (path === "/api/holemap" && request.method === "GET") {
+      const lat = parseFloat(url.searchParams.get("lat") || "");
+      const lng = parseFloat(url.searchParams.get("lng") || "");
+      if (!isFinite(lat) || !isFinite(lng)) return Response.json({ available: false, error: "no-location" });
+      return cachedJson(`https://cache/holemap/${lat.toFixed(4)},${lng.toFixed(4)}`, 7 * 86400, async () => {
+        const q = `[out:json][timeout:25];(way["golf"](around:1600,${lat},${lng});relation["golf"](around:1600,${lat},${lng}););out geom;`;
+        try {
+          const r = await fetch("https://overpass-api.de/api/interpreter", {
+            method: "POST",
+            headers: { "content-type": "application/x-www-form-urlencoded" },
+            body: "data=" + encodeURIComponent(q),
+          });
+          if (!r.ok) return Response.json({ available: false, error: "overpass-" + r.status });
+          const data = await r.json();
+          return Response.json(parseHoleMap(data));
+        } catch {
+          return Response.json({ available: false, error: "overpass-fetch-failed" });
+        }
+      });
     }
 
     // ---- A round's live object ----
