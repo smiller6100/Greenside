@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v50";
+const BUILD = "v51";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -20,8 +20,8 @@ const catalog = (env: Env) => env.COURSE_CATALOG.get(env.COURSE_CATALOG.idFromNa
 
 // Produce (and cache) a hole map for a coordinate. Shared by the public route and the admin probe.
 async function holeMapFor(lat: number, lng: number, wantHoles: number): Promise<Response> {
-  return cachedJson(`https://cache/holemap/v9/${lat.toFixed(4)},${lng.toFixed(4)},${wantHoles}`, 7 * 86400, async () => {
-    const q = `[out:json][timeout:25];(way["golf"](around:1600,${lat},${lng});relation["golf"](around:1600,${lat},${lng});way["leisure"="golf_course"](around:1600,${lat},${lng});relation["leisure"="golf_course"](around:1600,${lat},${lng}););out geom;`;
+  return cachedJson(`https://cache/holemap/v10/${lat.toFixed(4)},${lng.toFixed(4)},${wantHoles}`, 7 * 86400, async () => {
+    const q = `[out:json][timeout:25];(way["golf"](around:2800,${lat},${lng});relation["golf"](around:2800,${lat},${lng});way["leisure"="golf_course"](around:2800,${lat},${lng});relation["leisure"="golf_course"](around:2800,${lat},${lng}););out geom;`;
     const servers = [
       "https://overpass.private.coffee/api/interpreter",
       "https://overpass.kumi.systems/api/interpreter",
