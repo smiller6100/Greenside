@@ -28,7 +28,7 @@ type Hole = {
   teeToGreenYds: number;
 };
 
-const BOXW = 300, BOXH = 380, PAD = 18;
+const BOXW = 300, BOXH = 380, PAD = 8;
 
 export default function HoleMap({ hole }: { hole: Hole }) {
   const fairways = hole.fairways || [];

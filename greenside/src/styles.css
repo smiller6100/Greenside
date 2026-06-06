@@ -445,7 +445,7 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 /* ---- OpenStreetMap hole maps ---- */
 .holemap-wrap { margin: 14px 0 4px; }
 .holemap-head { font-size: 13px; font-weight: 700; color: var(--ink); opacity: .82; text-align: center; margin-bottom: 6px; }
-.holemap { display: block; width: 100%; max-width: 320px; margin: 0 auto; background: #eef4ec; border: 1px solid rgba(15,58,40,.14); border-radius: 14px; }
+.holemap { display: block; width: 100%; max-width: 480px; margin: 0 auto; background: #eef4ec; border-radius: 12px; }
 .hm-fairway { fill: #bfe0a8; stroke: #9fce86; stroke-width: .8; }
 .hm-rough { fill: #d8ebc4; stroke: #c4dca8; stroke-width: .6; }
 .hm-teebox { fill: #7fae62; stroke: #5f8f44; stroke-width: .8; }
