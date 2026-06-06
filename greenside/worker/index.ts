@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v31";
+const BUILD = "v33";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -97,6 +97,31 @@ function hmInside(pt: number[], ring: number[][]): boolean {
   }
   return inside;
 }
+// Local meters relative to origin o (equirectangular): returns [east, north].
+function hmLocal(o: number[], p: number[]): number[] {
+  return [(p[1] - o[1]) * 111320 * Math.cos((o[0] * Math.PI) / 180), (p[0] - o[0]) * 110540];
+}
+// Perpendicular distance (m) from point c to segment a-b.
+function hmSegDist(c: number[], a: number[], b: number[]): number {
+  const A = hmLocal(a, a), B = hmLocal(a, b), C = hmLocal(a, c);
+  const dx = B[0] - A[0], dy = B[1] - A[1], L2 = dx * dx + dy * dy || 1;
+  let t = ((C[0] - A[0]) * dx + (C[1] - A[1]) * dy) / L2;
+  t = Math.max(0, Math.min(1, t));
+  const px = A[0] + t * dx, py = A[1] + t * dy;
+  return Math.hypot(C[0] - px, C[1] - py);
+}
+// Min perpendicular distance (m) from c to a polyline's segments.
+function hmPerpToPath(c: number[], line: number[][]): number {
+  let m = 1e12;
+  for (let i = 0; i + 1 < line.length; i++) m = Math.min(m, hmSegDist(c, line[i], line[i + 1]));
+  return m;
+}
+// Signed along-track distance (m) of c from the tee toward the green (negative = behind tee).
+function hmAlong(c: number[], tee: number[], gEnd: number[]): number {
+  const G = hmLocal(tee, gEnd), C = hmLocal(tee, c);
+  const L = Math.hypot(G[0], G[1]) || 1;
+  return (C[0] * G[0] + C[1] * G[1]) / L;
+}
 
 function parseHoleMap(data: any, qLat: number, qLng: number, wantHoles: number) {
   const els = (data && data.elements) || [];
@@ -158,7 +183,6 @@ function parseHoleMap(data: any, qLat: number, qLng: number, wantHoles: number) 
   if (!holeWays.length) return { available: false, counts };
 
   const nearest = (c: number[], arr: any[]) => { let best: any = null, bd = 1e12; for (const a of arr) { const d = hmHav(c, a.c); if (d < bd) { bd = d; best = a; } } return { best, bd }; };
-  const minToLine = (c: number[], line: number[][]) => Math.min(...line.map((p) => hmHav(c, p)));
 
   let holes = holeWays.map((w: any) => {
     const line = hmRing(w.geometry);
@@ -170,7 +194,12 @@ function parseHoleMap(data: any, qLat: number, qLng: number, wantHoles: number) 
     const greenC = green ? green.c : gEnd;
     const fw = nearest(hmCentroid(w.geometry), fairways);
     const fairway = fw.best && fw.bd < 130 ? fw.best.poly : null;
-    const hazards = [...bunkers, ...water].filter((h) => minToLine(h.c, line) < 55)
+    // Bunkers attach only if close to the tee->green corridor AND well past the tee
+    // (drops a neighbouring hole's greenside sand that merely sits beside this tee).
+    const teeToGreenM = hmHav(tee, greenC);
+    const hazBunkers = bunkers.filter((h) => hmPerpToPath(h.c, line) < 35 && hmAlong(h.c, tee, gEnd) > 25 && hmAlong(h.c, tee, gEnd) < teeToGreenM + 35);
+    const hazWater = water.filter((h) => hmPerpToPath(h.c, line) < 55); // forced tee carries are legit
+    const hazards = [...hazBunkers, ...hazWater]
       .map((h) => ({ kind: h.kind, poly: h.poly, c: h.c, yards: hmYds(hmHav(tee, h.c)) }));
     return { ref: isFinite(ref) ? ref : null, par, line, tee, green: green ? green.poly : null, greenC, fairway, hazards, teeToGreenYds: hmYds(hmHav(tee, greenC)) };
   }).sort((a: any, b: any) => (a.ref || 99) - (b.ref || 99));
@@ -413,7 +442,7 @@ export default {
       const lng = parseFloat(url.searchParams.get("lng") || "");
       const wantHoles = parseInt(url.searchParams.get("holes") || "0") || 0;
       if (!isFinite(lat) || !isFinite(lng)) return Response.json({ available: false, error: "no-location" });
-      return cachedJson(`https://cache/holemap/v4/${lat.toFixed(4)},${lng.toFixed(4)},${wantHoles}`, 7 * 86400, async () => {
+      return cachedJson(`https://cache/holemap/v5/${lat.toFixed(4)},${lng.toFixed(4)},${wantHoles}`, 7 * 86400, async () => {
         const q = `[out:json][timeout:25];(way["golf"](around:1600,${lat},${lng});relation["golf"](around:1600,${lat},${lng});way["leisure"="golf_course"](around:1600,${lat},${lng});relation["leisure"="golf_course"](around:1600,${lat},${lng}););out geom;`;
         // overpass-api.de has been returning 406 to programmatic requests since ~Apr 2026; try mirrors first.
         const servers = [
