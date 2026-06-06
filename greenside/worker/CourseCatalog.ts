@@ -95,6 +95,17 @@ export class CourseCatalog implements DurableObject {
       return Response.json({ ok: true });
     }
 
+    if (url.pathname.endsWith("/rename") && request.method === "POST") {
+      const { id, name, where } = await request.json<any>();
+      if (!id || !name) return Response.json({ ok: false });
+      const key = (name + "|" + (where || "")).toLowerCase().replace(/[^a-z0-9]/g, "");
+      const clash = sql.exec("SELECT id FROM courses WHERE key=? AND id<>?", key, id).toArray();
+      // Renaming corrects a bad scan, so wipe coords to force a fresh geocode under the new name.
+      if (clash.length) sql.exec("UPDATE courses SET name=?,where_txt=?,lat=NULL,lng=NULL WHERE id=?", name, where || "", id);
+      else sql.exec("UPDATE courses SET name=?,where_txt=?,key=?,lat=NULL,lng=NULL WHERE id=?", name, where || "", key, id);
+      return Response.json({ ok: true });
+    }
+
     if (url.pathname.endsWith("/delete") && request.method === "POST") {
       const { id } = await request.json<any>();
       if (!id) return Response.json({ ok: false });

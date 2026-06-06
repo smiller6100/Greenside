@@ -3,7 +3,7 @@ import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw } fro
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole } from "../lib/golf";
 
-const VERSION = "v46";
+const VERSION = "v47";
 
 const FORMAT_DEFS = [
   { id: "net", label: "Net" }, { id: "gross", label: "Gross" },
@@ -63,6 +63,9 @@ export default function Home() {
   const [coverage, setCoverage] = useState<any[] | null>(null);
   const [covRunning, setCovRunning] = useState(false);
   const [covTotal, setCovTotal] = useState(0);
+  const [editId, setEditId] = useState("");
+  const [editName, setEditName] = useState("");
+  const [editWhere, setEditWhere] = useState("");
 
   // course
   const [query, setQuery] = useState("");
@@ -215,6 +218,16 @@ export default function Home() {
       const d: any = await r.json();
       if (d.ok) setAdminCourses((cs) => cs.filter((c) => c.id !== id));
     } catch { setAdminMsg("Delete failed."); }
+  };
+  const startEdit = (c: { id: string; name: string; where: string }) => { setEditId(c.id); setEditName(c.name); setEditWhere(c.where || ""); };
+  const saveEdit = async () => {
+    if (!editName.trim()) return;
+    try {
+      const r = await fetch("/api/admin/courses/rename", { method: "POST", headers: { "x-admin-key": adminKey, "content-type": "application/json" }, body: JSON.stringify({ id: editId, name: editName.trim(), where: editWhere.trim() }) });
+      const d: any = await r.json();
+      if (d.ok) { setAdminCourses((cs) => cs.map((c) => c.id === editId ? { ...c, name: editName.trim(), where: editWhere.trim() } : c)); setEditId(""); setCoverage(null); }
+      else setAdminMsg("Rename failed.");
+    } catch { setAdminMsg("Rename failed."); }
   };
   const runCoverage = async () => {
     setCovRunning(true); setCoverage([]); setAdminMsg(""); setCovTotal(0);
@@ -508,8 +521,22 @@ export default function Home() {
                   {adminCourses.length === 0 && <p className="hint left">No saved courses.</p>}
                   {adminCourses.map((c) => (
                     <div className="adminrow" key={c.id}>
-                      <div className="adminrow-info"><b>{c.name}</b>{c.where ? <span> · {c.where}</span> : null}<span className="dim"> · {c.plays}×</span></div>
-                      <button className="delbtn" onClick={() => deleteAdminCourse(c.id)}>Delete</button>
+                      {editId === c.id ? (
+                        <div className="adminedit">
+                          <input className="admin-pw" value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Course name" />
+                          <input className="admin-pw" value={editWhere} onChange={(e) => setEditWhere(e.target.value)} placeholder="City, State" />
+                          <div className="adminedit-btns">
+                            <button className="primary" onClick={saveEdit}>Save</button>
+                            <button className="ghostbtn" onClick={() => setEditId("")}>Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="adminrow-info"><b>{c.name}</b>{c.where ? <span> · {c.where}</span> : null}<span className="dim"> · {c.plays}×</span></div>
+                          <button className="editbtn" onClick={() => startEdit(c)}>Edit</button>
+                          <button className="delbtn" onClick={() => deleteAdminCourse(c.id)}>Delete</button>
+                        </>
+                      )}
                     </div>
                   ))}
                 </div>

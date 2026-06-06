@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v46";
+const BUILD = "v47";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -46,22 +46,25 @@ async function holeMapFor(lat: number, lng: number, wantHoles: number): Promise<
 }
 
 // Look up a course's coordinates by name (cached 30d), fully automated. Tries several query
-// variants (full name, the distinctive part after a dash, a "golf course" hint) against
-// golfcourseapi then OpenStreetMap's Nominatim, so compound names still resolve with no manual entry.
+// variants against golfcourseapi, then OpenStreetMap's Nominatim — and from OSM it keeps only a
+// result that is actually a golf_course feature, so compound/odd names resolve without grabbing
+// an unrelated road or subdivision.
 async function geocodeCourse(env: any, name: string, where: string): Promise<{ lat: number; lng: number } | null> {
   if (!name) return null;
-  const term = (name + " " + (where || "")).trim();
+  const w = (where || "").trim();
   const UA = "GreenSideStrokes/1.0 (+https://greensidestrokes.com; golf hole maps)";
+  const cleaned = name.replace(/\s+[-—/|]\s+/g, " ").trim();          // "The Legends Country Club Merrill Hills"
   const parts = name.split(/\s+[-—/|]\s+/).map((s) => s.trim()).filter(Boolean);
-  const sub = parts.length > 1 ? parts[parts.length - 1] : null; // e.g. "Merrill Hills" from "...Club - Merrill Hills"
+  const sub = parts.length > 1 ? parts[parts.length - 1] : null;       // "Merrill Hills"
   const cands: string[] = [];
-  const add = (s: string) => { const t = s.trim(); if (t && !cands.includes(t)) cands.push(t); };
-  add(term);
-  if (sub) { add((sub + " " + (where || "")).trim()); add(sub + " golf course"); }
-  add(name + " golf course");
-  const candidates = cands.slice(0, 4);
+  const add = (s: string) => { const t = (s || "").trim(); if (t && !cands.includes(t)) cands.push(t); };
+  add(cleaned + (w ? " " + w : ""));
+  add(name + (w ? " " + w : ""));
+  if (sub) { add(sub + (w ? " " + w : "")); add(sub); }
+  add(cleaned);
+  const candidates = cands.slice(0, 5);
   try {
-    const r = await cachedJson(`https://cache/geo/v3/${encodeURIComponent(term.toLowerCase())}`, 30 * 86400, async () => {
+    const r = await cachedJson(`https://cache/geo/v4/${encodeURIComponent(name.toLowerCase() + "|" + w.toLowerCase())}`, 30 * 86400, async () => {
       for (const q of candidates) {
         if (env.GOLF_API_KEY) {
           try {
@@ -73,11 +76,11 @@ async function geocodeCourse(env: any, name: string, where: string): Promise<{ l
           } catch { /* try next */ }
         }
         try {
-          const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(q)}`, { headers: { "user-agent": UA, "accept": "application/json" } });
+          const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&q=${encodeURIComponent(q)}`, { headers: { "user-agent": UA, "accept": "application/json" } });
           if (res.ok) {
-            const h = (((await res.json()) as any) || [])[0];
-            const la = h ? parseFloat(h.lat) : NaN, ln = h ? parseFloat(h.lon) : NaN;
-            if (isFinite(la) && isFinite(ln)) return Response.json({ lat: la, lng: ln, src: "osm" });
+            const arr = (((await res.json()) as any) || []) as any[];
+            const golf = arr.find((h) => (h.category === "leisure" || h.class === "leisure") && h.type === "golf_course");
+            if (golf) { const la = parseFloat(golf.lat), ln = parseFloat(golf.lon); if (isFinite(la) && isFinite(ln)) return Response.json({ lat: la, lng: ln, src: "osm-golf" }); }
           }
         } catch { /* try next */ }
       }
@@ -536,6 +539,12 @@ export default {
       if (path === "/api/admin/courses/delete" && request.method === "POST") {
         const body = await request.text();
         const r = await catalog(env).fetch("https://do/delete", { method: "POST", headers: { "content-type": "application/json" }, body });
+        return new Response(await r.text(), { headers: { "content-type": "application/json" } });
+      }
+
+      if (path === "/api/admin/courses/rename" && request.method === "POST") {
+        const body = await request.text();
+        const r = await catalog(env).fetch("https://do/rename", { method: "POST", headers: { "content-type": "application/json" }, body });
         return new Response(await r.text(), { headers: { "content-type": "application/json" } });
       }
 

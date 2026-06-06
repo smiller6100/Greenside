@@ -477,3 +477,8 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .hm-diag { opacity: .8; }
 .cov-ok { color: #2f7a3a; font-weight: 700; }
 .cov-no { color: #b0641a; font-weight: 700; }
+.editbtn { flex-shrink: 0; border: none; background: rgba(15,58,40,.08); color: var(--ink); font: inherit; font-size: 13px; font-weight: 700; padding: 8px 12px; border-radius: 10px; cursor: pointer; margin-right: 6px; }
+.adminedit { width: 100%; display: flex; flex-direction: column; gap: 7px; }
+.adminedit .admin-pw { width: 100%; }
+.adminedit-btns { display: flex; gap: 8px; }
+.adminedit-btns .primary, .adminedit-btns .ghostbtn { flex: 1; }
