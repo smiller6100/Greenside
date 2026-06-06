@@ -84,16 +84,16 @@ body { font-family: 'Libre Franklin', sans-serif; }
 .pinfo { min-width: 0; }
 .pn { font-size: 15.5px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
 .dots { display: flex; align-items: center; gap: 4px; margin-top: 5px; }
-.dots i { width: 7px; height: 7px; border-radius: 50%; background: #1fd167; box-shadow: 0 0 0 1.5px #000; }
+.dots i { width: 6px; height: 6px; border-radius: 50%; background: #1fd167; }
 .dots .ph { font-size: 11px; color: var(--mut); margin-left: 2px; font-weight: 500; }
 .stepper { display: flex; align-items: center; gap: 6px; }
 .stepper button { border: none; cursor: pointer; font: inherit; }
 .stepper > button:not(.num) { width: 42px; height: 42px; border-radius: 12px; background: rgba(21,57,42,.07); color: var(--pine); display: flex; align-items: center; justify-content: center; transition: .15s; }
 .stepper > button:not(.num):active { transform: scale(.9); background: rgba(21,57,42,.14); }
-.num { width: 58px; height: 48px; border-radius: 13px; background: var(--pine); color: #f4f6f5; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; }
-.num span { font-size: 23px; font-weight: 700; } .num span.ghost { opacity: .4; }
+.num { width: 58px; height: 48px; border-radius: 13px; background: #fff; color: var(--ink); border: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; box-shadow: 0 2px 6px rgba(15,58,40,.07); }
+.num span { font-size: 25px; font-weight: 800; } .num span.ghost { opacity: .35; color: var(--mut); }
 .num small { font-size: 10px; font-weight: 700; margin-top: 2px; }
-.num small.under { color: #7fd6a3; } .num small.over { color: #e8a08c; } .num small.even { color: #e3c585; }
+.num small.under { color: #15a85a; } .num small.over { color: #d83f2f; } .num small.even { color: var(--mut); }
 
 /* tabs */
 .tabs { position: sticky; bottom: 0; display: flex; background: rgba(255,255,255,.92); backdrop-filter: blur(10px); border-top: 1px solid var(--line); padding: 3px 12px calc(3px + env(safe-area-inset-bottom)); }
@@ -365,9 +365,9 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .nine td.popcell { position: relative; }
 .nine .pops { position: absolute; top: 2px; left: 0; right: 0; display: flex; justify-content: center; gap: 2px; pointer-events: none; }
 .nine .pops i { width: 3.5px; height: 3.5px; border-radius: 50%; background: var(--gold); display: block; }
-.nine .pops i { width: 5px; height: 5px; border-radius: 50%; background: #1fd167; box-shadow: 0 0 0 1px #000; display: block; }
+.nine .pops i { width: 3.5px; height: 3.5px; border-radius: 50%; background: #1fd167; display: block; }
 .popdemo i { width: 4px; height: 4px; border-radius: 50%; background: var(--gold); display: inline-block; }
-.popdemo i { width: 5px; height: 5px; border-radius: 50%; background: #1fd167; box-shadow: 0 0 0 1px #000; display: inline-block; }
+.popdemo i { width: 4px; height: 4px; border-radius: 50%; background: #1fd167; display: inline-block; }
 /* Running to-par badge by player name on the hole-entry cards */
 .tpar { display: inline-flex; align-items: center; gap: 1px; font-size: 12.5px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .tpar.under { color: var(--under); }
@@ -392,17 +392,16 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 /* vertical bands so each hole column reads cleanly down the card */
 .nine td:nth-child(even), .nine th:nth-child(even) { background: #eef3f0; }
 
-/* Score color-coding on the Full Card (light tint, dark text — dense but clear) */
-.nine tbody td.sc-eagle { background: #b7efce; color: #084a2b; font-weight: 800; box-shadow: inset 0 0 0 2px #0a8f4e; }
-.nine tbody td.sc-bird  { background: #d8f5e4; color: #0f5a37; font-weight: 800; }
+/* Score color lives in the NUMBER, not the cell background */
+.nine tbody td.sc-eagle { color: #0a8f4e; font-weight: 800; }
+.nine tbody td.sc-bird  { color: #15a85a; font-weight: 800; }
 .nine tbody td.sc-par   { color: var(--ink); }
-.nine tbody td.sc-bog   { background: #fdeccf; color: #8a5806; font-weight: 800; }
-.nine tbody td.sc-dbl   { background: #f9d6d0; color: #9e271a; font-weight: 800; }
+.nine tbody td.sc-bog   { color: #cf8410; font-weight: 800; }
+.nine tbody td.sc-dbl   { color: #d83f2f; font-weight: 800; }
 
-/* Score color-coding on the Hole view stepper box (solid fills, white numbers) */
-.num.sc-eagle { background: #0a8f4e; box-shadow: 0 0 0 2px var(--gold), 0 4px 12px rgba(10,143,78,.4); }
-.num.sc-bird  { background: #15a85a; box-shadow: 0 4px 12px rgba(21,168,90,.35); }
-.num.sc-par   { background: var(--pine); }
-.num.sc-bog   { background: #e0901c; box-shadow: 0 4px 12px rgba(224,144,28,.35); }
-.num.sc-dbl   { background: #d83f2f; box-shadow: 0 4px 12px rgba(216,63,47,.35); }
-.num.sc-eagle small, .num.sc-bird small, .num.sc-bog small, .num.sc-dbl small { color: rgba(255,255,255,.92); }
+/* Hole-view stepper: white box, color-coded number */
+.num.sc-eagle span { color: #0a8f4e; }
+.num.sc-bird span  { color: #15a85a; }
+.num.sc-par span   { color: var(--ink); }
+.num.sc-bog span   { color: #cf8410; }
+.num.sc-dbl span   { color: #d83f2f; }
