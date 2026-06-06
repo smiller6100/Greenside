@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v34";
+const BUILD = "v35";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -201,12 +201,16 @@ function parseHoleMap(data: any, qLat: number, qLng: number, wantHoles: number) 
     const gn = nearest(gEnd, greens);
     const green = gn.best && gn.bd < 80 ? gn.best : null;
     const greenC = green ? green.c : gEnd;
-    // Fairway: the polygon the play line runs through (midpoint inside), else nearest to that midpoint.
+    // Fairways: sample points along the actual play line (follows doglegs) and keep every
+    // fairway polygon the line runs through. OSM splits a hole's fairway into several pieces.
     const mid = [(tee[0] + gEnd[0]) / 2, (tee[1] + gEnd[1]) / 2];
-    let fairway: number[][] | null = null;
-    const fHit = fairways.find((f: any) => hmInside(mid, f.poly));
-    if (fHit) fairway = fHit.poly;
-    else { const fw = nearest(mid, fairways); if (fw.best && fw.bd < 100) fairway = fw.best.poly; }
+    const lineSamples: number[][] = [];
+    for (let i = 0; i + 1 < line.length; i++) {
+      const a = line[i], b = line[i + 1];
+      for (let s = 0; s <= 12; s++) { const t = s / 12; lineSamples.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]); }
+    }
+    let holeFairways = fairways.filter((f: any) => lineSamples.some((p) => hmInside(p, f.poly))).map((f: any) => f.poly);
+    if (!holeFairways.length) { const fw = nearest(mid, fairways); if (fw.best && fw.bd < 100) holeFairways = [fw.best.poly]; }
     // Bunkers attach only if close to the tee->green corridor AND well past the tee
     // (drops a neighbouring hole's greenside sand that merely sits beside this tee).
     const teeToGreenM = hmHav(tee, greenC);
@@ -214,7 +218,7 @@ function parseHoleMap(data: any, qLat: number, qLng: number, wantHoles: number) 
     const hazWater = water.filter((h) => hmPerpToPath(h.c, line) < 55); // forced tee carries are legit
     const hazards = [...hazBunkers, ...hazWater]
       .map((h) => ({ kind: h.kind, poly: h.poly, c: h.c, yards: hmYds(hmHav(tee, h.c)) }));
-    return { ref: isFinite(ref) ? ref : null, par, line, tee, green: green ? green.poly : null, greenC, fairway, hazards, teeToGreenYds: hmYds(hmHav(tee, greenC)) };
+    return { ref: isFinite(ref) ? ref : null, par, line, tee, green: green ? green.poly : null, greenC, fairways: holeFairways, hazards, teeToGreenYds: hmYds(hmHav(tee, greenC)) };
   }).sort((a: any, b: any) => (a.ref || 99) - (b.ref || 99));
 
   // Safety net: if duplicate hole numbers remain, keep the first of each.
@@ -455,7 +459,7 @@ export default {
       const lng = parseFloat(url.searchParams.get("lng") || "");
       const wantHoles = parseInt(url.searchParams.get("holes") || "0") || 0;
       if (!isFinite(lat) || !isFinite(lng)) return Response.json({ available: false, error: "no-location" });
-      return cachedJson(`https://cache/holemap/v6/${lat.toFixed(4)},${lng.toFixed(4)},${wantHoles}`, 7 * 86400, async () => {
+      return cachedJson(`https://cache/holemap/v7/${lat.toFixed(4)},${lng.toFixed(4)},${wantHoles}`, 7 * 86400, async () => {
         const q = `[out:json][timeout:25];(way["golf"](around:1600,${lat},${lng});relation["golf"](around:1600,${lat},${lng});way["leisure"="golf_course"](around:1600,${lat},${lng});relation["leisure"="golf_course"](around:1600,${lat},${lng}););out geom;`;
         // overpass-api.de has been returning 406 to programmatic requests since ~Apr 2026; try mirrors first.
         const servers = [

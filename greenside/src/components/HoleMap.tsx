@@ -8,7 +8,7 @@ type Hole = {
   tee: number[];
   green: number[][] | null;
   greenC: number[];
-  fairway: number[][] | null;
+  fairways: number[][][];
   hazards: { kind: string; poly: number[][]; c: number[]; yards: number }[];
   teeToGreenYds: number;
 };
@@ -19,7 +19,7 @@ export default function HoleMap({ hole }: { hole: Hole }) {
   // Gather every coordinate so the whole hole fits the frame.
   const all: number[][] = [...hole.line];
   if (hole.green) all.push(...hole.green);
-  if (hole.fairway) all.push(...hole.fairway);
+  hole.fairways.forEach((f) => all.push(...f));
   hole.hazards.forEach((h) => all.push(...h.poly));
   if (all.length < 2) return null;
 
@@ -64,7 +64,9 @@ export default function HoleMap({ hole }: { hole: Hole }) {
 
   return (
     <svg className="holemap" viewBox={`0 0 ${BOXW} ${BOXH}`} preserveAspectRatio="xMidYMid meet">
-      {hole.fairway && <polygon className="hm-fairway" points={poly(hole.fairway)} />}
+      {hole.fairways.map((f, i) => (
+        <polygon key={"f" + i} className="hm-fairway" points={poly(f)} />
+      ))}
       {hole.hazards.filter((h) => h.kind === "water").map((h, i) => (
         <polygon key={"w" + i} className="hm-water" points={poly(h.poly)} />
       ))}
