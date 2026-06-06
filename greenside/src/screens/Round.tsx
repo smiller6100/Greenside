@@ -2,12 +2,12 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { Minus, Plus, Crown, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Trophy, ClipboardList, Copy, Check, Home } from "lucide-react";
 import { LogoMark } from "../components/Logo";
 import { useRound } from "../lib/useRound";
-import { computeStandings, computeGames, computeTeams, strokesOn, toParClass, fmtToPar } from "../lib/golf";
+import { computeStandings, computeGames, computeTeams, strokesOn, toParClass, fmtToPar, holesUp, sixesSegs } from "../lib/golf";
 
 const FORMAT_LABELS: Record<string, string> = { net: "Net", gross: "Gross", stableford: "Stableford", chicago: "Chicago", skins: "Skins", card: "Full card", games: "Games", teams: "Teams" };
 
 export default function Round({ code }: { code: string }) {
-  const { state, connected, missing, sendScore, sendWolfPick, sendBbb } = useRound(code);
+  const { state, connected, missing, sendScore, sendWolfPick, sendBbb, sendPress } = useRound(code);
   const [tab, setTab] = useState<"board" | "score">("board");
   const [view, setView] = useState("net"); // a scoring format (leaderboard side)
   const [scView, setScView] = useState<"hole" | "card" | "games">("hole"); // scorecard side
@@ -124,7 +124,12 @@ export default function Round({ code }: { code: string }) {
               <div className="grow" key={p.id}><span className={p.id === me ? "me" : ""}>{p.name}</span><b>{games.sixes.points[p.id]} pts</b></div>
             ))}
             <div className="gsegs">{games.sixes.segments.map((s: any, i: number) => (
-              <div className="gseg" key={i}><em>{s.label}</em><span>{s.a.map(nameOf).join(" & ")} <i>vs</i> {s.b.map(nameOf).join(" & ")}</span></div>
+              <div className="gseg" key={i}>
+                <em>{s.label}</em>
+                <span>{s.a.map(nameOf).join(" & ")} <i>vs</i> {s.b.map(nameOf).join(" & ")}</span>
+                <b className="segstatus">{s.status}</b>
+                {s.presses.map((pr: any, j: number) => (<span className="presrow" key={j}>Press from {pr.start}: {pr.status}</span>))}
+              </div>
             ))}</div>
           </div>
         ) : need("Sixes", "exactly 4"))}
@@ -141,6 +146,7 @@ export default function Round({ code }: { code: string }) {
             <h3>Nassau</h3>
             <p className="gteams">{games.nassau.teams[0].map(nameOf).join(" & ")} <i>vs</i> {games.nassau.teams[1].map(nameOf).join(" & ")}</p>
             {games.nassau.lines.map((l: any, i: number) => (<div className="grow" key={i}><span>{l.label}</span><b>{l.status}</b></div>))}
+            {games.nassau.presses?.map((l: any, i: number) => (<div className="grow presrowline" key={`p${i}`}><span>{l.label}</span><b>{l.status}</b></div>))}
           </div>
         ) : need("Nassau", "exactly 4"))}
         {state.games?.bestball && (games.bestball ? (
@@ -300,6 +306,80 @@ export default function Round({ code }: { code: string }) {
               <button className="nav" disabled={holeIdx === course.length - 1} onClick={() => setHoleIdx((i) => Math.min(course.length - 1, i + 1))}><ChevronRight size={20} /></button>
             </div>
             <div className="prog"><span style={{ width: `${((holeIdx + 1) / course.length) * 100}%` }} /></div>
+            {state.outing && groups.length > 1 && (
+              <div className="grpswitch">
+                {groups.map((gname) => (
+                  <button key={gname} className={effGrp === gname ? "on" : ""} onClick={() => setGrp(gname)}>Group {gname}</button>
+                ))}
+              </div>
+            )}
+            <div className="cards">
+              {state.players.filter((p) => !state.outing || (p.group || "A") === effGrp).map((p) => {
+                const rec = useHcp ? strokesOn(p.hcp, hole.si) : 0;
+                const val = (state.scores[p.id] || {})[hole.num];
+                const rel = val != null ? val - hole.par : null;
+                const sc = state.scores[p.id] || {};
+                const ppPlayed = course.filter((h) => sc[h.num] != null);
+                const toPar = ppPlayed.reduce((s, h) => s + (sc[h.num] - h.par), 0);
+                return (
+                  <div key={p.id} className={`pcard ${p.id === me ? "self" : ""}`}>
+                    <div className="pinfo"><div className="pn">{p.name}{p.id === me && <em>You</em>}
+                      {ppPlayed.length > 0 && (
+                        <span className={`tpar ${toParClass(toPar)}`}>
+                          {toPar > 0 ? <ChevronUp size={13} strokeWidth={2.8} /> : toPar < 0 ? <ChevronDown size={13} strokeWidth={2.8} /> : null}
+                          {fmtToPar(toPar)}
+                        </span>
+                      )}</div>
+                      <div className="dots">{Array.from({ length: rec }).map((_, k) => <i key={k} />)}<span className="ph">{rec ? `${rec} stroke${rec > 1 ? "s" : ""}` : (useHcp ? "scratch here" : "gross")}</span></div></div>
+                    <div className="stepper">
+                      <button onClick={() => adjust(p.id, -1)} aria-label="minus"><Minus size={18} strokeWidth={2.4} /></button>
+                      <button className="num" onClick={() => setPar(p.id)}><span className={val == null ? "ghost" : ""}>{val ?? hole.par}</span>{rel != null && <small className={toParClass(rel)}>{fmtToPar(rel)}</small>}</button>
+                      <button onClick={() => adjust(p.id, 1)} aria-label="plus"><Plus size={18} strokeWidth={2.4} /></button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {(state.games?.sixes || state.games?.nassau) && state.players.length === 4 && (() => {
+              const blocks: any[] = [];
+              const teamNames = (t: any[]) => t.map((p) => p.name).join("/");
+              if (state.games?.sixes) {
+                const seg = sixesSegs(state.players).find((s) => hole.num >= s.lo && hole.num <= s.hi);
+                if (seg) {
+                  const up = holesUp(state, seg.a, seg.b, seg.lo, seg.hi);
+                  const down = up > 0 ? seg.b : up < 0 ? seg.a : null;
+                  const pressed = ((state.presses?.sixes) || []).includes(hole.num);
+                  blocks.push(
+                    <div className="pressbar" key="sixes">
+                      <div className="wolf-head">Sixes · {seg.label}: <b>{up === 0 ? "all square" : `${teamNames(up > 0 ? seg.a : seg.b)} ${Math.abs(up)} up`}</b></div>
+                      {up !== 0 && hole.num < seg.hi && (
+                        <button className={`pressbtn ${pressed ? "on" : ""}`} onClick={() => sendPress("sixes", hole.num)}>
+                          {pressed ? `Pressed from ${hole.num} — tap to undo` : `Press: ${teamNames(down!)} start a new bet from here`}
+                        </button>
+                      )}
+                    </div>
+                  );
+                }
+              }
+              if (state.games?.nassau) {
+                const t1 = [state.players[0], state.players[1]], t2 = [state.players[2], state.players[3]];
+                const lo = hole.num <= 9 ? 1 : 10, hi = hole.num <= 9 ? 9 : 18, label = hole.num <= 9 ? "Front 9" : "Back 9";
+                const up = holesUp(state, t1, t2, lo, hi);
+                const down = up > 0 ? t2 : up < 0 ? t1 : null;
+                const pressed = ((state.presses?.nassau) || []).includes(hole.num);
+                blocks.push(
+                  <div className="pressbar" key="nassau">
+                    <div className="wolf-head">Nassau · {label}: <b>{up === 0 ? "all square" : `${teamNames(up > 0 ? t1 : t2)} ${Math.abs(up)} up`}</b></div>
+                    {up !== 0 && hole.num < hi && (
+                      <button className={`pressbtn ${pressed ? "on" : ""}`} onClick={() => sendPress("nassau", hole.num)}>
+                        {pressed ? `Pressed from ${hole.num} — tap to undo` : `Press: ${teamNames(down!)} start a new bet from here`}
+                      </button>
+                    )}
+                  </div>
+                );
+              }
+              return blocks;
+            })()}
             {state.games?.wolf && (state.players.length === 3 || state.players.length === 4) && (() => {
               const wolf = state.players[(hole.num - 1) % state.players.length];
               const others = state.players.filter((p) => p.id !== wolf.id);
@@ -340,40 +420,6 @@ export default function Round({ code }: { code: string }) {
                 </div>
               );
             })()}
-            {state.outing && groups.length > 1 && (
-              <div className="grpswitch">
-                {groups.map((gname) => (
-                  <button key={gname} className={effGrp === gname ? "on" : ""} onClick={() => setGrp(gname)}>Group {gname}</button>
-                ))}
-              </div>
-            )}
-            <div className="cards">
-              {state.players.filter((p) => !state.outing || (p.group || "A") === effGrp).map((p) => {
-                const rec = useHcp ? strokesOn(p.hcp, hole.si) : 0;
-                const val = (state.scores[p.id] || {})[hole.num];
-                const rel = val != null ? val - hole.par : null;
-                const sc = state.scores[p.id] || {};
-                const ppPlayed = course.filter((h) => sc[h.num] != null);
-                const toPar = ppPlayed.reduce((s, h) => s + (sc[h.num] - h.par), 0);
-                return (
-                  <div key={p.id} className={`pcard ${p.id === me ? "self" : ""}`}>
-                    <div className="pinfo"><div className="pn">{p.name}{p.id === me && <em>You</em>}
-                      {ppPlayed.length > 0 && (
-                        <span className={`tpar ${toParClass(toPar)}`}>
-                          {toPar > 0 ? <ChevronUp size={13} strokeWidth={2.8} /> : toPar < 0 ? <ChevronDown size={13} strokeWidth={2.8} /> : null}
-                          {fmtToPar(toPar)}
-                        </span>
-                      )}</div>
-                      <div className="dots">{Array.from({ length: rec }).map((_, k) => <i key={k} />)}<span className="ph">{rec ? `${rec} stroke${rec > 1 ? "s" : ""}` : (useHcp ? "scratch here" : "gross")}</span></div></div>
-                    <div className="stepper">
-                      <button onClick={() => adjust(p.id, -1)} aria-label="minus"><Minus size={18} strokeWidth={2.4} /></button>
-                      <button className="num" onClick={() => setPar(p.id)}><span className={val == null ? "ghost" : ""}>{val ?? hole.par}</span>{rel != null && <small className={toParClass(rel)}>{fmtToPar(rel)}</small>}</button>
-                      <button onClick={() => adjust(p.id, 1)} aria-label="plus"><Plus size={18} strokeWidth={2.4} /></button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
             <p className="foot">Tap the number to log par · everyone sees it immediately</p>
               </>
             )}

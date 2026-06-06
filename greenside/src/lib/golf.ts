@@ -18,6 +18,7 @@ export interface RoundState {
   scores: Record<string, Record<string, number>>; // playerId -> holeNum -> strokes
   wolf?: Record<string, string>;                   // holeNum -> partnerId | "lone"
   bbb?: Record<string, { bingo?: string; bango?: string; bongo?: string }>; // holeNum -> winners
+  presses?: { sixes?: number[]; nassau?: number[] }; // start holes of presses per game
   createdAt: number;
   lat?: number | null;
   lng?: number | null;
@@ -133,6 +134,24 @@ function teamBest(state: RoundState, team: Player[], h: Hole): number | null {
   const vals = team.map((p) => rawNet(state, p, h)).filter((v): v is number => v != null);
   return vals.length ? Math.min(...vals) : null;
 }
+// Match play: holes team a is up over [lo,hi] (negative = team b up). Only played holes count.
+export function holesUp(state: RoundState, a: Player[], b: Player[], lo: number, hi: number): number {
+  let up = 0;
+  state.course.filter((h) => h.num >= lo && h.num <= hi).forEach((h) => {
+    const ba = teamBest(state, a, h), bb = teamBest(state, b, h);
+    if (ba == null || bb == null) return;
+    if (ba < bb) up++; else if (bb < ba) up--;
+  });
+  return up;
+}
+// The three rotating Sixes pairings.
+export function sixesSegs(P: Player[]) {
+  return [
+    { lo: 1, hi: 6, a: [P[0], P[1]], b: [P[2], P[3]] },
+    { lo: 7, hi: 12, a: [P[0], P[2]], b: [P[1], P[3]] },
+    { lo: 13, hi: 18, a: [P[0], P[3]], b: [P[1], P[2]] },
+  ];
+}
 function vegasNum(state: RoundState, team: Player[], h: Hole): number | null {
   const vals = team.map((p) => rawNet(state, p, h)).filter((v): v is number => v != null).sort((x, y) => x - y);
   if (vals.length < 2) return null;
@@ -147,20 +166,24 @@ export function computeGames(state: RoundState): any {
   const course = state.course;
   const t1 = [P[0], P[1]], t2 = [P[2], P[3]];
 
+  const nm = (team: Player[]) => team.map((p) => p.name).join("/");
+  const matchStatus = (u: number, a: Player[], b: Player[]) => (u === 0 ? "All square" : u > 0 ? `${nm(a)} ${u} up` : `${nm(b)} ${-u} up`);
+
   if (g.sixes && n === 4) {
     const pts: Record<string, number> = {}; P.forEach((p) => (pts[p.id] = 0));
-    const segs = [
-      { lo: 1, hi: 6, a: [P[0], P[1]], b: [P[2], P[3]] },
-      { lo: 7, hi: 12, a: [P[0], P[2]], b: [P[1], P[3]] },
-      { lo: 13, hi: 18, a: [P[0], P[3]], b: [P[1], P[2]] },
-    ];
+    const segs = sixesSegs(P);
     course.forEach((h) => {
       const seg = segs.find((s) => h.num >= s.lo && h.num <= s.hi); if (!seg) return;
       const ba = teamBest(state, seg.a, h), bb = teamBest(state, seg.b, h);
       if (ba == null || bb == null) return;
       if (ba < bb) seg.a.forEach((p) => pts[p.id]++); else if (bb < ba) seg.b.forEach((p) => pts[p.id]++);
     });
-    out.sixes = { points: pts, segments: segs.map((s) => ({ label: `Holes ${s.lo}\u2013${s.hi}`, a: s.a.map((p) => p.id), b: s.b.map((p) => p.id) })) };
+    const prs = (state.presses?.sixes) || [];
+    out.sixes = { points: pts, segments: segs.map((s) => {
+      const presses = prs.filter((h) => h >= s.lo && h <= s.hi).sort((x, y) => x - y)
+        .map((start) => ({ start, status: matchStatus(holesUp(state, s.a, s.b, start, s.hi), s.a, s.b) }));
+      return { lo: s.lo, hi: s.hi, label: `Holes ${s.lo}\u2013${s.hi}`, a: s.a.map((p) => p.id), b: s.b.map((p) => p.id), status: matchStatus(holesUp(state, s.a, s.b, s.lo, s.hi), s.a, s.b), presses };
+    }) };
   }
 
   if (g.wolf && (n === 3 || n === 4)) {
@@ -215,21 +238,16 @@ export function computeGames(state: RoundState): any {
   }
 
   if (g.nassau && n === 4) {
-    const seg = (lo: number, hi: number) => {
-      let up = 0;
-      course.filter((h) => h.num >= lo && h.num <= hi).forEach((h) => {
-        const ba = teamBest(state, t1, h), bb = teamBest(state, t2, h);
-        if (ba == null || bb == null) return;
-        if (ba < bb) up++; else if (bb < ba) up--;
-      });
-      return up;
-    };
-    const fmt = (u: number) => (u === 0 ? "All square" : u > 0 ? `Team 1 ${u} up` : `Team 2 ${-u} up`);
+    const prs = (state.presses?.nassau) || [];
+    const frontP = prs.filter((h) => h <= 9).sort((x, y) => x - y)
+      .map((start) => ({ label: `Front press · from ${start}`, status: matchStatus(holesUp(state, t1, t2, start, 9), t1, t2) }));
+    const backP = prs.filter((h) => h >= 10).sort((x, y) => x - y)
+      .map((start) => ({ label: `Back press · from ${start}`, status: matchStatus(holesUp(state, t1, t2, start, 18), t1, t2) }));
     out.nassau = { teams: [t1.map((p) => p.id), t2.map((p) => p.id)], lines: [
-      { label: "Front 9", status: fmt(seg(1, 9)) },
-      { label: "Back 9", status: fmt(seg(10, 18)) },
-      { label: "Overall", status: fmt(seg(1, 18)) },
-    ] };
+      { label: "Front 9", status: matchStatus(holesUp(state, t1, t2, 1, 9), t1, t2) },
+      { label: "Back 9", status: matchStatus(holesUp(state, t1, t2, 10, 18), t1, t2) },
+      { label: "Overall", status: matchStatus(holesUp(state, t1, t2, 1, 18), t1, t2) },
+    ], presses: [...frontP, ...backP] };
   }
   if (g.bestball && n === 4) {
     const tally = (team: Player[]) => {

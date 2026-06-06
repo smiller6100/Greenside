@@ -137,8 +137,8 @@ body { font-family: 'Libre Franklin', sans-serif; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* claim modal */
-.modal { position: absolute; inset: 0; background: rgba(10,32,24,.55); backdrop-filter: blur(3px); display: flex; align-items: flex-end; z-index: 20; }
-.sheet { width: 100%; background: var(--cream); border-radius: 22px 22px 0 0; padding: 26px 22px calc(26px + env(safe-area-inset-bottom)); box-shadow: 0 -10px 40px rgba(0,0,0,.3); animation: up .35s cubic-bezier(.2,.7,.2,1); }
+.modal { position: fixed; inset: 0; background: rgba(10,32,24,.55); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; z-index: 20; padding: 20px; }
+.sheet { width: 100%; max-width: 380px; background: var(--cream); border-radius: 22px; padding: 26px 22px; box-shadow: 0 24px 60px rgba(0,0,0,.35); animation: up .35s cubic-bezier(.2,.7,.2,1); }
 @keyframes up { from { transform: translateY(40px); opacity: .6; } to { transform: none; opacity: 1; } }
 .sheet h3 { font-family: 'Fraunces', serif; font-size: 24px; color: var(--pine); font-weight: 600; }
 .sheet > p { font-size: 13.5px; color: var(--mut); margin: 4px 0 18px; font-weight: 500; }
@@ -377,3 +377,12 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 
 /* Code pill inside the Home sheet */
 .sheetcode { margin: 2px auto 12px; }
+
+/* Press (money match) controls */
+.pressbar { background: linear-gradient(100deg, #5a3a0e, #7c5414); border-radius: 15px; padding: 12px 15px; margin-bottom: 14px; box-shadow: 0 6px 18px rgba(90,58,14,.22); }
+.pressbar .wolf-head { color: #fdf6e8; }
+.pressbtn { margin-top: 10px; width: 100%; border: 1px solid rgba(253,246,232,.35); background: rgba(253,246,232,.1); color: #fdf6e8; font: inherit; font-size: 13px; font-weight: 700; padding: 11px 10px; border-radius: 11px; cursor: pointer; }
+.pressbtn.on { background: var(--brass); border-color: #fff; color: #fff; }
+.segstatus { display: block; color: var(--pine); font-weight: 800; margin-top: 3px; }
+.presrow { display: block; color: var(--brass); font-size: 12px; font-weight: 600; margin-top: 2px; }
+.grow.presrowline span, .grow.presrowline b { color: var(--brass); font-size: 12.5px; }

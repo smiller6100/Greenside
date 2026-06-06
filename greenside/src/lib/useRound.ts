@@ -82,5 +82,18 @@ export function useRound(code: string) {
     });
   }, []);
 
-  return { state, connected, missing, sendScore, sendWolfPick, sendBbb };
+  const sendPress = useCallback((game: "sixes" | "nassau", hole: number) => {
+    wsRef.current?.send(JSON.stringify({ type: "press", game, hole }));
+    setState((s) => {
+      if (!s) return s;
+      const presses: any = { ...(s.presses || {}) };
+      const arr = [...(presses[game] || [])];
+      const i = arr.indexOf(hole);
+      if (i >= 0) arr.splice(i, 1); else arr.push(hole);
+      presses[game] = arr;
+      return { ...s, presses };
+    });
+  }, []);
+
+  return { state, connected, missing, sendScore, sendWolfPick, sendBbb, sendPress };
 }
