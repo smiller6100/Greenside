@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v33";
+const BUILD = "v34";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -129,7 +129,14 @@ function parseHoleMap(data: any, qLat: number, qLng: number, wantHoles: number) 
   const g = (v: string) => ways.filter((w: any) => w.tags && w.tags.golf === v);
   let holeWays = g("hole").filter((w: any) => w.geometry.length >= 2);
   let greens = g("green").map((w: any) => ({ poly: hmRing(w.geometry), c: hmCentroid(w.geometry) }));
-  let fairways = g("fairway").map((w: any) => ({ poly: hmRing(w.geometry), c: hmCentroid(w.geometry) }));
+  let fairways: any[] = [];
+  els.forEach((e: any) => {
+    if (!e.tags || e.tags.golf !== "fairway") return;
+    if (e.type === "way" && Array.isArray(e.geometry) && e.geometry.length >= 4) fairways.push({ poly: hmRing(e.geometry), c: hmCentroid(e.geometry) });
+    else if (e.type === "relation" && Array.isArray(e.members)) e.members.forEach((m: any) => {
+      if ((m.role === "outer" || !m.role) && Array.isArray(m.geometry) && m.geometry.length >= 4) fairways.push({ poly: hmRing(m.geometry), c: hmCentroid(m.geometry) });
+    });
+  });
   let bunkers = g("bunker").map((w: any) => ({ poly: hmRing(w.geometry), c: hmCentroid(w.geometry), kind: "bunker" }));
   let water = ways.filter((w: any) => w.tags && (w.tags.golf === "water_hazard" || w.tags.golf === "lateral_water_hazard" || w.tags.natural === "water"))
     .map((w: any) => ({ poly: hmRing(w.geometry), c: hmCentroid(w.geometry), kind: "water" }));
@@ -170,16 +177,18 @@ function parseHoleMap(data: any, qLat: number, qLng: number, wantHoles: number) 
     }
   }
 
+  const rawFairways = fairways.length;
   if (chosen) {
     const ring = chosen.ring;
     holeWays = chosen.holes;
     greens = greens.filter((x: any) => hmInside(x.c, ring));
-    fairways = fairways.filter((x: any) => hmInside(x.c, ring));
+    // A big fairway can straddle an imperfect boundary, so keep it if its centroid OR any vertex is inside.
+    fairways = fairways.filter((x: any) => hmInside(x.c, ring) || x.poly.some((p: number[]) => hmInside(p, ring)));
     bunkers = bunkers.filter((x: any) => hmInside(x.c, ring));
     water = water.filter((x: any) => hmInside(x.c, ring));
   }
 
-  const counts = { found: g("hole").length, courses: boundaries.length, holes: holeWays.length, greens: greens.length, bunkers: bunkers.length, water: water.length };
+  const counts = { found: g("hole").length, courses: boundaries.length, holes: holeWays.length, greens: greens.length, fairways: fairways.length, rawFairways, bunkers: bunkers.length, water: water.length };
   if (!holeWays.length) return { available: false, counts };
 
   const nearest = (c: number[], arr: any[]) => { let best: any = null, bd = 1e12; for (const a of arr) { const d = hmHav(c, a.c); if (d < bd) { bd = d; best = a; } } return { best, bd }; };
@@ -192,8 +201,12 @@ function parseHoleMap(data: any, qLat: number, qLng: number, wantHoles: number) 
     const gn = nearest(gEnd, greens);
     const green = gn.best && gn.bd < 80 ? gn.best : null;
     const greenC = green ? green.c : gEnd;
-    const fw = nearest(hmCentroid(w.geometry), fairways);
-    const fairway = fw.best && fw.bd < 130 ? fw.best.poly : null;
+    // Fairway: the polygon the play line runs through (midpoint inside), else nearest to that midpoint.
+    const mid = [(tee[0] + gEnd[0]) / 2, (tee[1] + gEnd[1]) / 2];
+    let fairway: number[][] | null = null;
+    const fHit = fairways.find((f: any) => hmInside(mid, f.poly));
+    if (fHit) fairway = fHit.poly;
+    else { const fw = nearest(mid, fairways); if (fw.best && fw.bd < 100) fairway = fw.best.poly; }
     // Bunkers attach only if close to the tee->green corridor AND well past the tee
     // (drops a neighbouring hole's greenside sand that merely sits beside this tee).
     const teeToGreenM = hmHav(tee, greenC);
@@ -442,7 +455,7 @@ export default {
       const lng = parseFloat(url.searchParams.get("lng") || "");
       const wantHoles = parseInt(url.searchParams.get("holes") || "0") || 0;
       if (!isFinite(lat) || !isFinite(lng)) return Response.json({ available: false, error: "no-location" });
-      return cachedJson(`https://cache/holemap/v5/${lat.toFixed(4)},${lng.toFixed(4)},${wantHoles}`, 7 * 86400, async () => {
+      return cachedJson(`https://cache/holemap/v6/${lat.toFixed(4)},${lng.toFixed(4)},${wantHoles}`, 7 * 86400, async () => {
         const q = `[out:json][timeout:25];(way["golf"](around:1600,${lat},${lng});relation["golf"](around:1600,${lat},${lng});way["leisure"="golf_course"](around:1600,${lat},${lng});relation["leisure"="golf_course"](around:1600,${lat},${lng}););out geom;`;
         // overpass-api.de has been returning 406 to programmatic requests since ~Apr 2026; try mirrors first.
         const servers = [
