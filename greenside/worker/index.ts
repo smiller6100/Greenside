@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v42";
+const BUILD = "v45";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -45,18 +45,33 @@ async function holeMapFor(lat: number, lng: number, wantHoles: number): Promise<
   });
 }
 
-// Look up a course's coordinates by name via golfcourseapi (cached 30d). Used to fill in
-// scanned-in courses that have no lat/lng of their own.
+// Look up a course's coordinates by name (cached 30d), fully automated:
+// golfcourseapi first if configured, then OpenStreetMap's Nominatim search — so any course
+// OSM knows by name gets coordinates with no manual entry.
 async function geocodeCourse(env: any, name: string, where: string): Promise<{ lat: number; lng: number } | null> {
-  if (!env.GOLF_API_KEY || !name) return null;
+  if (!name) return null;
   const term = (name + " " + (where || "")).trim();
+  const UA = "GreenSideStrokes/1.0 (+https://greensidestrokes.com; golf hole maps)";
   try {
-    const r = await cachedJson(`https://cache/geo/v1/${encodeURIComponent(term.toLowerCase())}`, 30 * 86400, async () => {
-      const res = await fetch(`${GOLF_API}/search?search_query=${encodeURIComponent(term)}`, { headers: { Authorization: `Key ${env.GOLF_API_KEY}` } });
-      if (!res.ok) return Response.json({ lat: null, lng: null });
-      const d: any = await res.json();
-      const loc = (d.courses || [])[0]?.location || {};
-      return Response.json({ lat: loc.latitude ?? null, lng: loc.longitude ?? null });
+    const r = await cachedJson(`https://cache/geo/v2/${encodeURIComponent(term.toLowerCase())}`, 30 * 86400, async () => {
+      if (env.GOLF_API_KEY) {
+        try {
+          const res = await fetch(`${GOLF_API}/search?search_query=${encodeURIComponent(term)}`, { headers: { Authorization: `Key ${env.GOLF_API_KEY}` } });
+          if (res.ok) {
+            const loc = (((await res.json()) as any).courses || [])[0]?.location || {};
+            if (loc.latitude != null && loc.longitude != null) return Response.json({ lat: loc.latitude, lng: loc.longitude, src: "golfapi" });
+          }
+        } catch { /* fall through to OSM */ }
+      }
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(term)}`, { headers: { "user-agent": UA, "accept": "application/json" } });
+        if (res.ok) {
+          const h = (((await res.json()) as any) || [])[0];
+          const la = h ? parseFloat(h.lat) : NaN, ln = h ? parseFloat(h.lon) : NaN;
+          if (isFinite(la) && isFinite(ln)) return Response.json({ lat: la, lng: ln, src: "osm" });
+        }
+      } catch { /* no match */ }
+      return Response.json({ lat: null, lng: null });
     });
     const j: any = await r.json();
     return (j.lat != null && j.lng != null && isFinite(j.lat) && isFinite(j.lng)) ? { lat: j.lat, lng: j.lng } : null;
