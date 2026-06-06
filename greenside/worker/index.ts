@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v29";
+const BUILD = "v30";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -87,24 +87,70 @@ function hmHav(a: number[], b: number[]): number { // meters between [lat,lng]
 function hmRing(geom: any[]): number[][] { return geom.map((g) => [g.lat, g.lon]); }
 function hmCentroid(geom: any[]): number[] { let la = 0, lo = 0; geom.forEach((g) => { la += g.lat; lo += g.lon; }); return [la / geom.length, lo / geom.length]; }
 function hmYds(m: number): number { return Math.round(m * 1.09361); }
+// Ray-casting point-in-polygon. pt and ring vertices are [lat,lng]; treat lng as x, lat as y.
+function hmInside(pt: number[], ring: number[][]): boolean {
+  const x = pt[1], y = pt[0];
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][1], yi = ring[i][0], xj = ring[j][1], yj = ring[j][0];
+    if (((yi > y) !== (yj > y)) && (x < ((xj - xi) * (y - yi)) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
+}
 
-function parseHoleMap(data: any) {
+function parseHoleMap(data: any, qLat: number, qLng: number) {
   const els = (data && data.elements) || [];
   const ways = els.filter((e: any) => e.type === "way" && Array.isArray(e.geometry) && e.geometry.length);
   const g = (v: string) => ways.filter((w: any) => w.tags && w.tags.golf === v);
-  const holeWays = g("hole").filter((w: any) => w.geometry.length >= 2);
-  const greens = g("green").map((w: any) => ({ poly: hmRing(w.geometry), c: hmCentroid(w.geometry) }));
-  const fairways = g("fairway").map((w: any) => ({ poly: hmRing(w.geometry), c: hmCentroid(w.geometry) }));
-  const bunkers = g("bunker").map((w: any) => ({ poly: hmRing(w.geometry), c: hmCentroid(w.geometry), kind: "bunker" }));
-  const water = ways.filter((w: any) => w.tags && (w.tags.golf === "water_hazard" || w.tags.golf === "lateral_water_hazard" || w.tags.natural === "water"))
+  let holeWays = g("hole").filter((w: any) => w.geometry.length >= 2);
+  let greens = g("green").map((w: any) => ({ poly: hmRing(w.geometry), c: hmCentroid(w.geometry) }));
+  let fairways = g("fairway").map((w: any) => ({ poly: hmRing(w.geometry), c: hmCentroid(w.geometry) }));
+  let bunkers = g("bunker").map((w: any) => ({ poly: hmRing(w.geometry), c: hmCentroid(w.geometry), kind: "bunker" }));
+  let water = ways.filter((w: any) => w.tags && (w.tags.golf === "water_hazard" || w.tags.golf === "lateral_water_hazard" || w.tags.natural === "water"))
     .map((w: any) => ({ poly: hmRing(w.geometry), c: hmCentroid(w.geometry), kind: "water" }));
-  const counts = { holes: holeWays.length, greens: greens.length, bunkers: bunkers.length, water: water.length };
+
+  // Course boundaries (to isolate ONE course when several are nearby). Ways + relation outers.
+  const boundaries: number[][][] = [];
+  els.forEach((e: any) => {
+    if (!e.tags || e.tags.leisure !== "golf_course") return;
+    if (e.type === "way" && Array.isArray(e.geometry) && e.geometry.length >= 4) boundaries.push(hmRing(e.geometry));
+    else if (e.type === "relation" && Array.isArray(e.members)) {
+      e.members.forEach((m: any) => {
+        if ((m.role === "outer" || !m.role) && Array.isArray(m.geometry) && m.geometry.length >= 4) boundaries.push(hmRing(m.geometry));
+      });
+    }
+  });
+
+  // Pick the boundary for THIS course: prefer one containing the round's location with the most holes;
+  // else the boundary nearest the location that actually has holes.
+  const q = [qLat, qLng];
+  const teeOf = (w: any) => [w.geometry[0].lat, w.geometry[0].lon];
+  const holesInside = (ring: number[][]) => holeWays.filter((w: any) => hmInside(teeOf(w), ring)).length;
+  let chosen: number[][] | null = null;
+  const containing = boundaries.filter((r) => hmInside(q, r));
+  if (containing.length) {
+    chosen = containing.reduce((best, r) => (holesInside(r) > (best ? holesInside(best) : -1) ? r : best), null as number[][] | null);
+  } else if (boundaries.length) {
+    let bd = Infinity;
+    for (const r of boundaries) { if (!holesInside(r)) continue; const d = hmHav(q, hmCentroid(r.map((p) => ({ lat: p[0], lon: p[1] })))); if (d < bd) { bd = d; chosen = r; } }
+  }
+
+  if (chosen) {
+    const ring = chosen;
+    holeWays = holeWays.filter((w: any) => hmInside(teeOf(w), ring));
+    greens = greens.filter((x: any) => hmInside(x.c, ring));
+    fairways = fairways.filter((x: any) => hmInside(x.c, ring));
+    bunkers = bunkers.filter((x: any) => hmInside(x.c, ring));
+    water = water.filter((x: any) => hmInside(x.c, ring));
+  }
+
+  const counts = { found: g("hole").length, courses: boundaries.length, holes: holeWays.length, greens: greens.length, bunkers: bunkers.length, water: water.length };
   if (!holeWays.length) return { available: false, counts };
 
   const nearest = (c: number[], arr: any[]) => { let best: any = null, bd = 1e12; for (const a of arr) { const d = hmHav(c, a.c); if (d < bd) { bd = d; best = a; } } return { best, bd }; };
   const minToLine = (c: number[], line: number[][]) => Math.min(...line.map((p) => hmHav(c, p)));
 
-  const holes = holeWays.map((w: any) => {
+  let holes = holeWays.map((w: any) => {
     const line = hmRing(w.geometry);
     const tee = line[0], gEnd = line[line.length - 1];
     const ref = parseInt(w.tags.ref);
@@ -118,6 +164,10 @@ function parseHoleMap(data: any) {
       .map((h) => ({ kind: h.kind, poly: h.poly, c: h.c, yards: hmYds(hmHav(tee, h.c)) }));
     return { ref: isFinite(ref) ? ref : null, par, line, tee, green: green ? green.poly : null, greenC, fairway, hazards, teeToGreenYds: hmYds(hmHav(tee, greenC)) };
   }).sort((a: any, b: any) => (a.ref || 99) - (b.ref || 99));
+
+  // Safety net: if duplicate hole numbers remain, keep the first of each.
+  const seen = new Set<number>();
+  holes = holes.filter((h: any) => { if (h.ref == null) return true; if (seen.has(h.ref)) return false; seen.add(h.ref); return true; });
 
   return { available: true, counts, holes };
 }
@@ -352,8 +402,8 @@ export default {
       const lat = parseFloat(url.searchParams.get("lat") || "");
       const lng = parseFloat(url.searchParams.get("lng") || "");
       if (!isFinite(lat) || !isFinite(lng)) return Response.json({ available: false, error: "no-location" });
-      return cachedJson(`https://cache/holemap/v2/${lat.toFixed(4)},${lng.toFixed(4)}`, 7 * 86400, async () => {
-        const q = `[out:json][timeout:25];(way["golf"](around:1600,${lat},${lng});relation["golf"](around:1600,${lat},${lng}););out geom;`;
+      return cachedJson(`https://cache/holemap/v3/${lat.toFixed(4)},${lng.toFixed(4)}`, 7 * 86400, async () => {
+        const q = `[out:json][timeout:25];(way["golf"](around:1600,${lat},${lng});relation["golf"](around:1600,${lat},${lng});way["leisure"="golf_course"](around:1600,${lat},${lng});relation["leisure"="golf_course"](around:1600,${lat},${lng}););out geom;`;
         // overpass-api.de has been returning 406 to programmatic requests since ~Apr 2026; try mirrors first.
         const servers = [
           "https://overpass.private.coffee/api/interpreter",
@@ -375,7 +425,7 @@ export default {
             });
             if (!r.ok) { lastErr = "overpass-" + r.status + "@" + host; continue; }
             const data = await r.json();
-            return Response.json(parseHoleMap(data)); // 200 → cached (incl. legit "not mapped")
+            return Response.json(parseHoleMap(data, lat, lng)); // 200 → cached (incl. legit "not mapped")
           } catch {
             lastErr = "fetch-failed@" + host;
           }
