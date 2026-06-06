@@ -80,6 +80,21 @@ export class CourseCatalog implements DurableObject {
       return Response.json({ courses: rows.map((r: any) => ({ id: r.id, name: r.name, where: r.where_txt, plays: r.plays })) });
     }
 
+    if (url.pathname.endsWith("/listfull")) {
+      const rows = sql.exec("SELECT id,name,where_txt,lat,lng,holes FROM courses ORDER BY lower(name)").toArray();
+      return Response.json({ courses: rows.map((r: any) => {
+        let holesN = 0; try { holesN = JSON.parse(r.holes).length; } catch {}
+        return { id: r.id, name: r.name, where: r.where_txt, lat: r.lat, lng: r.lng, holesN };
+      }) });
+    }
+
+    if (url.pathname.endsWith("/setcoords") && request.method === "POST") {
+      const { id, lat, lng } = await request.json<any>();
+      if (!id) return Response.json({ ok: false });
+      sql.exec("UPDATE courses SET lat=?,lng=? WHERE id=?", lat ?? null, lng ?? null, id);
+      return Response.json({ ok: true });
+    }
+
     if (url.pathname.endsWith("/delete") && request.method === "POST") {
       const { id } = await request.json<any>();
       if (!id) return Response.json({ ok: false });

@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v38";
+const BUILD = "v42";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -17,6 +17,51 @@ function genCode(len = 4): string {
 
 const GOLF_API = "https://api.golfcourseapi.com/v1";
 const catalog = (env: Env) => env.COURSE_CATALOG.get(env.COURSE_CATALOG.idFromName("global"));
+
+// Produce (and cache) a hole map for a coordinate. Shared by the public route and the admin probe.
+async function holeMapFor(lat: number, lng: number, wantHoles: number): Promise<Response> {
+  return cachedJson(`https://cache/holemap/v9/${lat.toFixed(4)},${lng.toFixed(4)},${wantHoles}`, 7 * 86400, async () => {
+    const q = `[out:json][timeout:25];(way["golf"](around:1600,${lat},${lng});relation["golf"](around:1600,${lat},${lng});way["leisure"="golf_course"](around:1600,${lat},${lng});relation["leisure"="golf_course"](around:1600,${lat},${lng}););out geom;`;
+    const servers = [
+      "https://overpass.private.coffee/api/interpreter",
+      "https://overpass.kumi.systems/api/interpreter",
+      "https://overpass-api.de/api/interpreter",
+    ];
+    let lastErr = "none";
+    for (const ep of servers) {
+      const host = ep.split("/")[2];
+      try {
+        const r = await fetch(ep, {
+          method: "POST",
+          headers: { "content-type": "application/x-www-form-urlencoded", "accept": "application/json", "user-agent": "GreenSideStrokes/1.0 (+https://greensidestrokes.com; golf hole maps)" },
+          body: "data=" + encodeURIComponent(q),
+        });
+        if (!r.ok) { lastErr = "overpass-" + r.status + "@" + host; continue; }
+        const data = await r.json();
+        return Response.json(parseHoleMap(data, lat, lng, wantHoles));
+      } catch { lastErr = "fetch-failed@" + host; }
+    }
+    return new Response(JSON.stringify({ available: false, error: lastErr }), { status: 503, headers: { "content-type": "application/json" } });
+  });
+}
+
+// Look up a course's coordinates by name via golfcourseapi (cached 30d). Used to fill in
+// scanned-in courses that have no lat/lng of their own.
+async function geocodeCourse(env: any, name: string, where: string): Promise<{ lat: number; lng: number } | null> {
+  if (!env.GOLF_API_KEY || !name) return null;
+  const term = (name + " " + (where || "")).trim();
+  try {
+    const r = await cachedJson(`https://cache/geo/v1/${encodeURIComponent(term.toLowerCase())}`, 30 * 86400, async () => {
+      const res = await fetch(`${GOLF_API}/search?search_query=${encodeURIComponent(term)}`, { headers: { Authorization: `Key ${env.GOLF_API_KEY}` } });
+      if (!res.ok) return Response.json({ lat: null, lng: null });
+      const d: any = await res.json();
+      const loc = (d.courses || [])[0]?.location || {};
+      return Response.json({ lat: loc.latitude ?? null, lng: loc.longitude ?? null });
+    });
+    const j: any = await r.json();
+    return (j.lat != null && j.lng != null && isFinite(j.lat) && isFinite(j.lng)) ? { lat: j.lat, lng: j.lng } : null;
+  } catch { return null; }
+}
 
 function simplifyCourse(c: any) {
   const loc = c.location || {};
@@ -323,7 +368,17 @@ export default {
       const id = cm[1];
       if (id.startsWith("c_")) {
         const r = await catalog(env).fetch(`https://do/get?id=${encodeURIComponent(id)}`);
-        return new Response(r.body, { status: r.status, headers: { "content-type": "application/json" } });
+        if (!r.ok) return new Response(r.body, { status: r.status, headers: { "content-type": "application/json" } });
+        const c: any = await r.json();
+        // Self-heal: a scanned course with no coords gets geocoded once so its rounds can show a map.
+        if ((c.lat == null || c.lng == null) && c.name) {
+          const g = await geocodeCourse(env, c.name, c.where || "");
+          if (g) {
+            c.lat = g.lat; c.lng = g.lng;
+            await catalog(env).fetch("https://do/setcoords", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id, lat: g.lat, lng: g.lng }) });
+          }
+        }
+        return Response.json(c);
       }
       if (/^\d+$/.test(id)) {
         if (!env.GOLF_API_KEY) return new Response("Not configured", { status: 503 });
@@ -458,6 +513,36 @@ export default {
         const r = await catalog(env).fetch("https://do/delete", { method: "POST", headers: { "content-type": "application/json" }, body });
         return new Response(await r.text(), { headers: { "content-type": "application/json" } });
       }
+
+      // Walk the catalog: fill missing coords (geocode + persist), then probe OSM for hole coverage.
+      // Paginate with ?offset & ?limit to be gentle on the public Overpass mirrors.
+      if (path === "/api/admin/coverage" && request.method === "GET") {
+        const offset = parseInt(url.searchParams.get("offset") || "0") || 0;
+        const limit = Math.min(parseInt(url.searchParams.get("limit") || "30") || 30, 60);
+        const lr = await catalog(env).fetch("https://do/listfull");
+        const all = (((await lr.json()) as any).courses || []) as any[];
+        const slice = all.slice(offset, offset + limit);
+        const out: any[] = [];
+        for (const c of slice) {
+          let lat = c.lat, lng = c.lng, source = "catalog";
+          if (lat == null || lng == null) {
+            const g = await geocodeCourse(env, c.name, c.where || "");
+            if (g) {
+              lat = g.lat; lng = g.lng; source = "geocoded";
+              await catalog(env).fetch("https://do/setcoords", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: c.id, lat, lng }) });
+            } else source = "no-coords";
+          }
+          let holesMapped = 0, mapErr: string | null = null;
+          if (lat != null && lng != null) {
+            try {
+              const hm: any = await (await holeMapFor(lat, lng, c.holesN || 18)).json();
+              if (hm.available) holesMapped = (hm.holes || []).length; else mapErr = hm.error || "not-mapped";
+            } catch { mapErr = "probe-failed"; }
+          }
+          out.push({ id: c.id, name: c.name, where: c.where, source, holesExpected: c.holesN, holesMapped, mapErr });
+        }
+        return Response.json({ total: all.length, offset, returned: slice.length, nextOffset: offset + slice.length < all.length ? offset + slice.length : null, courses: out });
+      }
       return new Response("Not found", { status: 404 });
     }
 
@@ -483,37 +568,7 @@ export default {
       const lng = parseFloat(url.searchParams.get("lng") || "");
       const wantHoles = parseInt(url.searchParams.get("holes") || "0") || 0;
       if (!isFinite(lat) || !isFinite(lng)) return Response.json({ available: false, error: "no-location" });
-      return cachedJson(`https://cache/holemap/v9/${lat.toFixed(4)},${lng.toFixed(4)},${wantHoles}`, 7 * 86400, async () => {
-        const q = `[out:json][timeout:25];(way["golf"](around:1600,${lat},${lng});relation["golf"](around:1600,${lat},${lng});way["leisure"="golf_course"](around:1600,${lat},${lng});relation["leisure"="golf_course"](around:1600,${lat},${lng}););out geom;`;
-        // overpass-api.de has been returning 406 to programmatic requests since ~Apr 2026; try mirrors first.
-        const servers = [
-          "https://overpass.private.coffee/api/interpreter",
-          "https://overpass.kumi.systems/api/interpreter",
-          "https://overpass-api.de/api/interpreter",
-        ];
-        let lastErr = "none";
-        for (const ep of servers) {
-          const host = ep.split("/")[2];
-          try {
-            const r = await fetch(ep, {
-              method: "POST",
-              headers: {
-                "content-type": "application/x-www-form-urlencoded",
-                "accept": "application/json",
-                "user-agent": "GreenSideStrokes/1.0 (+https://greensidestrokes.com; golf hole maps)",
-              },
-              body: "data=" + encodeURIComponent(q),
-            });
-            if (!r.ok) { lastErr = "overpass-" + r.status + "@" + host; continue; }
-            const data = await r.json();
-            return Response.json(parseHoleMap(data, lat, lng, wantHoles)); // 200 → cached (incl. legit "not mapped")
-          } catch {
-            lastErr = "fetch-failed@" + host;
-          }
-        }
-        // Couldn't reach any server — return non-200 so the failure is NOT cached.
-        return new Response(JSON.stringify({ available: false, error: lastErr }), { status: 503, headers: { "content-type": "application/json" } });
-      });
+      return holeMapFor(lat, lng, wantHoles);
     }
 
     // ---- A round's live object ----
