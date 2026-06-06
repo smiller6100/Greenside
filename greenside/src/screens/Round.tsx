@@ -1,9 +1,9 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Minus, Plus, Crown, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Trophy, ClipboardList, Copy, Check, Home } from "lucide-react";
+import { Minus, Plus, Crown, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Trophy, ClipboardList, Copy, Check, Home, Settings } from "lucide-react";
 import { LogoMark } from "../components/Logo";
 import HoleMap from "../components/HoleMap";
 import { useRound } from "../lib/useRound";
-import { computeStandings, computeGames, computeTeams, strokesOn, toParClass, fmtToPar, holesUp, sixesSegs, scoreTone } from "../lib/golf";
+import { computeStandings, computeGames, computeTeams, strokesOn, toParClass, fmtToPar, holesUp, sixesSegs, scoreTone, FORMAT_DEFS, HCP_DEFS, GAME_DEFS } from "../lib/golf";
 
 const FORMAT_LABELS: Record<string, string> = { net: "Net", gross: "Gross", stableford: "Stableford", chicago: "Chicago", skins: "Skins", card: "Full card", games: "Games", teams: "Teams" };
 
@@ -19,6 +19,29 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
   const isCreator = localStorage.getItem(`gs:creator:${code}`) === "1";
   const adminToken = localStorage.getItem(`gs:admin:${code}`) || "";
   const isAdmin = !!adminToken || isCreator;
+  const [editing, setEditing] = useState(false);
+  const [edFormats, setEdFormats] = useState<Record<string, boolean>>({});
+  const [edGames, setEdGames] = useState<Record<string, boolean>>({});
+  const [edHcp, setEdHcp] = useState("perHole");
+  const openEdit = () => {
+    if (!state) return;
+    setEdFormats({ ...(state.formats as any) });
+    setEdGames({ ...((state.games as any) || {}) });
+    setEdHcp(state.handicapMode || "perHole");
+    setEditing(true);
+  };
+  const saveEdit = () => {
+    if (!Object.values(edFormats).some(Boolean)) return; // keep at least one format
+    sendSetRules(adminToken, { handicapMode: edHcp, formats: edFormats, games: state?.outing ? undefined : edGames });
+    setEditing(false);
+  };
+  const editFlag = useRef(false);
+  useEffect(() => {
+    if (state && !editFlag.current && sessionStorage.getItem("gs:editOnOpen") === code) {
+      editFlag.current = true; sessionStorage.removeItem("gs:editOnOpen");
+      if (!state.outing || isAdmin) openEdit();
+    }
+  }, [state]);
   const [copied, setCopied] = useState(false);
   const [leaving, setLeaving] = useState(false);
   // self-join (outings)
@@ -361,8 +384,50 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
       <div className="frame">
         <div className="topbar">
           <div className="mark"><LogoMark size={22} /><span>GREENSIDE</span></div>
-          <div className={`live ${connected ? "on" : ""}`}><span className="dot" />{connected ? "LIVE" : "···"}</div>
+          <div className="topbar-right">
+            {(!state.outing || isAdmin) && <button className="gearbtn" onClick={openEdit} aria-label="Edit round"><Settings size={18} /></button>}
+            <div className={`live ${connected ? "on" : ""}`}><span className="dot" />{connected ? "LIVE" : "···"}</div>
+          </div>
         </div>
+
+        {editing && (
+          <div className="editwrap" onClick={() => setEditing(false)}>
+            <div className="editcard" onClick={(e) => e.stopPropagation()}>
+              <div className="edithead"><h3>Edit round</h3><button className="xbtn" onClick={() => setEditing(false)}>✕</button></div>
+              <p className="hint left">Changes apply to everyone in this round, live. The course can't be changed here.</p>
+
+              <label className="edlabel">Scoring</label>
+              <div className="chiprow">
+                {FORMAT_DEFS.map((f) => (
+                  <button key={f.id} className={`chip ${edFormats[f.id] ? "on" : ""}`} onClick={() => setEdFormats({ ...edFormats, [f.id]: !edFormats[f.id] })}>{f.label}</button>
+                ))}
+              </div>
+
+              {!state.outing && (
+                <>
+                  <label className="edlabel">Side games</label>
+                  <div className="chiprow">
+                    {GAME_DEFS.map((f) => (
+                      <button key={f.id} className={`chip ${edGames[f.id] ? "on" : ""}`} onClick={() => setEdGames({ ...edGames, [f.id]: !edGames[f.id] })}>{f.label}</button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              <label className="edlabel">Handicaps</label>
+              <div className="segmented">
+                {HCP_DEFS.map((h) => (
+                  <button key={h.id} className={`seg-btn ${edHcp === h.id ? "on" : ""}`} onClick={() => setEdHcp(h.id)}>{h.label}</button>
+                ))}
+              </div>
+
+              <div className="editbtns">
+                <button className="ghostbtn" onClick={() => setEditing(false)}>Cancel</button>
+                <button className="primary" onClick={saveEdit} disabled={!Object.values(edFormats).some(Boolean)}>Save changes</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {tab === "board" ? (
           <main className="body">

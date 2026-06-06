@@ -312,3 +312,27 @@ export function computeTeams(state: RoundState): any[] {
   rows.sort((a, b) => (a.thru === 0 ? 1 : 0) - (b.thru === 0 ? 1 : 0) || a.toPar - b.toPar);
   return rows;
 }
+
+// ---- Round option definitions (shared by Home setup and Round edit) ----
+export const FORMAT_DEFS = [
+  { id: "net", label: "Net" }, { id: "gross", label: "Gross" },
+  { id: "stableford", label: "Stableford" }, { id: "chicago", label: "Chicago" }, { id: "skins", label: "Skins" },
+] as const;
+export const HCP_DEFS = [
+  { id: "perHole", label: "Per-hole" }, { id: "course", label: "Course" }, { id: "gross", label: "Off" },
+] as const;
+export const GAME_DEFS = [
+  { id: "wolf", label: "Wolf" }, { id: "nines", label: "Nines" },
+  { id: "sixes", label: "Sixes" }, { id: "vegas", label: "Vegas" }, { id: "nassau", label: "Nassau" },
+  { id: "bestball", label: "Best Ball" },
+  { id: "bbb", label: "Bingo Bango Bongo" },
+] as const;
+export const GAME_HELP: Record<string, string> = {
+  wolf: "3\u20134 players. A different \u201cwolf\u201d each hole picks a partner after the tee shots, or goes solo for triple. Set the pick on the Scorecard tab.",
+  nines: "3 players. Each hole splits 9 points: 5 to the low score, 3 to the middle, 1 to the high (ties split). Most points wins.",
+  sixes: "4 players. Teams of two, partners rotate every 6 holes. Low team score wins the hole \u2014 1 point per win.",
+  vegas: "4 players. Two fixed teams. Each hole your pair\u2019s two scores make a number (low one first); the lower number wins the difference.",
+  nassau: "4 players. Two fixed teams, best-ball match play. Three bets in one: front 9, back 9, and the overall 18.",
+  bestball: "4 players. Two fixed teams; each hole counts only the better score of the pair. Lowest team total over 18 wins.",
+  bbb: "Any size. 3 points a hole \u2014 Bingo (first on the green), Bango (closest once everyone\u2019s on), Bongo (first in the hole). You award them on the Scorecard tab. Most points wins.",
+};

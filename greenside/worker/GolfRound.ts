@@ -158,6 +158,14 @@ export class GolfRound implements DurableObject {
       const stored = await this.ctx.storage.get("adminToken");
       if (stored && data.token !== stored) return;
       if (data.handicapMode === "perHole" || data.handicapMode === "course" || data.handicapMode === "gross") state.handicapMode = data.handicapMode;
+      if (data.formats && typeof data.formats === "object") {
+        const f: any = {}; for (const k of ["net", "gross", "stableford", "chicago", "skins"]) f[k] = !!data.formats[k];
+        if (Object.values(f).some(Boolean)) state.formats = f; // keep at least one format on
+      }
+      if (data.games && typeof data.games === "object") {
+        const g: any = {}; for (const k of ["wolf", "nines", "sixes", "vegas", "nassau", "bbb", "bestball"]) g[k] = !!data.games[k];
+        state.games = g;
+      }
       await this.ctx.storage.put("state", state);
       this.broadcast({ type: "state", state });
     } else if (data.type === "deleteGroup") {

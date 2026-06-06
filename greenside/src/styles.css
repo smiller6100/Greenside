@@ -483,3 +483,18 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .adminedit-btns { display: flex; gap: 8px; }
 .adminedit-btns .primary, .adminedit-btns .ghostbtn { flex: 1; }
 .cov-dbg { display: block; margin-top: 3px; font-size: 10.5px; line-height: 1.4; word-break: break-word; }
+
+/* Round edit panel */
+.topbar-right { display: flex; align-items: center; gap: 10px; }
+.gearbtn { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border: none; border-radius: 10px; background: rgba(255,255,255,.12); color: #fff; cursor: pointer; }
+.editwrap { position: fixed; inset: 0; background: rgba(8,20,14,.55); display: flex; align-items: center; justify-content: center; padding: 18px; z-index: 60; }
+.editcard { width: 100%; max-width: 460px; max-height: 86vh; overflow-y: auto; background: var(--card, #fff); border-radius: 18px; padding: 18px 18px 20px; box-shadow: 0 18px 50px rgba(0,0,0,.3); }
+.edithead { display: flex; align-items: center; justify-content: space-between; }
+.edithead h3 { margin: 0; font-size: 20px; color: var(--ink); }
+.edithead .xbtn { border: none; background: none; font-size: 20px; color: var(--ink); opacity: .55; cursor: pointer; }
+.edlabel { display: block; font-size: 12px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--ink); opacity: .6; margin: 16px 0 8px; }
+.editcard .chiprow { display: flex; flex-wrap: wrap; gap: 8px; }
+.editbtns { display: flex; gap: 10px; margin-top: 22px; }
+.editbtns .ghostbtn, .editbtns .primary { flex: 1; }
+.resume-wrap { display: flex; flex-direction: column; gap: 0; }
+.resume-edit { align-self: flex-end; margin-top: 6px; border: none; background: none; color: var(--brand, #2f7a3a); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; padding: 4px 2px; }
