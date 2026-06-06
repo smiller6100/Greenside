@@ -3,9 +3,9 @@
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
 :root {
-  --pine: #0e3b28; --pine2: #0a2a1d; --cream: #eef1f3; --card: #ffffff;
-  --brass: #a9760f; --ink: #15211b; --mut: #54605a; --line: rgba(16,33,25,.13);
-  --under: #157a47; --over: #c0392b; --even: #a9760f;
+  --pine: #0f5a37; --pine2: #0a3d26; --cream: #f1f5f1; --card: #ffffff;
+  --brass: #b07d0c; --gold: #e7b53a; --ink: #13241a; --mut: #586860; --line: rgba(15,58,40,.13);
+  --under: #1a9a55; --over: #d83f2f; --even: #b07d0c;
 }
 
 html, body, #root { height: 100%; }
@@ -13,7 +13,7 @@ body { font-family: 'Libre Franklin', sans-serif; }
 
 .gs {
   min-height: 100vh; display: flex; justify-content: center; align-items: flex-start;
-  background: radial-gradient(120% 80% at 50% -10%, #1d4733 0%, #0e2a1f 60%, #0a2018 100%);
+  background: radial-gradient(120% 80% at 50% -10%, #1e8a55 0%, #0f5836 55%, #0a3d28 100%);
   color: var(--ink); font-variant-numeric: tabular-nums; line-height: 1.4;
 }
 .frame {
@@ -50,7 +50,7 @@ body { font-family: 'Libre Franklin', sans-serif; }
 .board { display: flex; flex-direction: column; gap: 8px; }
 .row { display: flex; align-items: center; gap: 14px; padding: 14px 16px; background: var(--card); border: 1px solid var(--line); border-radius: 15px; opacity: 0; transform: translateY(8px); animation: rise .5s forwards cubic-bezier(.2,.7,.2,1); }
 @keyframes rise { to { opacity: 1; transform: none; } }
-.row.lead { background: linear-gradient(100deg, #0e3b28, #1d5a3c); border-color: transparent; box-shadow: 0 8px 22px rgba(14,42,31,.28); }
+.row.lead { background: linear-gradient(100deg, #0f5a37, #1f9457); border-color: transparent; box-shadow: 0 8px 22px rgba(14,42,31,.28); }
 .row.lead .nm, .row.lead .pos { color: #f5f7f6; }
 .row.lead .mt { color: rgba(246,240,226,.6); }
 .row.self:not(.lead) { box-shadow: inset 0 0 0 1.5px var(--brass); }
@@ -84,7 +84,7 @@ body { font-family: 'Libre Franklin', sans-serif; }
 .pinfo { min-width: 0; }
 .pn { font-size: 15.5px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
 .dots { display: flex; align-items: center; gap: 4px; margin-top: 5px; }
-.dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--brass); }
+.dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); }
 .dots .ph { font-size: 11px; color: var(--mut); margin-left: 2px; font-weight: 500; }
 .stepper { display: flex; align-items: center; gap: 6px; }
 .stepper button { border: none; cursor: pointer; font: inherit; }
@@ -258,7 +258,7 @@ body { font-family: 'Libre Franklin', sans-serif; }
 .gnote { text-align: center; color: var(--mut); font-size: 14px; padding: 30px 24px; font-weight: 500; }
 
 /* wolf control */
-.wolfbar { background: linear-gradient(100deg, #0e3b28, #1d5a3c); border-radius: 15px; padding: 13px 15px; margin-bottom: 14px; box-shadow: 0 6px 18px rgba(14,42,31,.22); }
+.wolfbar { background: linear-gradient(100deg, #0f5a37, #1f9457); border-radius: 15px; padding: 13px 15px; margin-bottom: 14px; box-shadow: 0 6px 18px rgba(14,42,31,.22); }
 .wolf-head { color: #f5f7f6; font-size: 13px; font-weight: 500; margin-bottom: 10px; }
 .wolf-head b { font-weight: 700; color: #fff; }
 .wolf-picks { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -365,9 +365,9 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 /* Full Card handicap pop dots */
 .nine td.popcell { position: relative; }
 .nine .pops { position: absolute; top: 2px; left: 0; right: 0; display: flex; justify-content: center; gap: 2px; pointer-events: none; }
-.nine .pops i { width: 3.5px; height: 3.5px; border-radius: 50%; background: var(--brass); display: block; }
+.nine .pops i { width: 3.5px; height: 3.5px; border-radius: 50%; background: var(--gold); display: block; }
 .dotlegend { display: flex; align-items: center; gap: 6px; justify-content: center; }
-.popdemo i { width: 4px; height: 4px; border-radius: 50%; background: var(--brass); display: inline-block; }
+.popdemo i { width: 4px; height: 4px; border-radius: 50%; background: var(--gold); display: inline-block; }
 
 /* Running to-par badge by player name on the hole-entry cards */
 .tpar { display: inline-flex; align-items: center; gap: 1px; font-size: 12.5px; font-weight: 800; font-variant-numeric: tabular-nums; }
@@ -379,12 +379,12 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .sheetcode { margin: 2px auto 12px; }
 
 /* Press (money match) controls */
-.pressbar { background: linear-gradient(100deg, #5a3a0e, #7c5414); border-radius: 15px; padding: 12px 15px; margin-bottom: 14px; box-shadow: 0 6px 18px rgba(90,58,14,.22); }
-.pressbar .wolf-head { color: #fdf6e8; }
-.pressbtn { margin-top: 10px; width: 100%; border: 1px solid rgba(253,246,232,.35); background: rgba(253,246,232,.1); color: #fdf6e8; font: inherit; font-size: 13px; font-weight: 700; padding: 11px 10px; border-radius: 11px; cursor: pointer; }
-.pressbtn.on { background: var(--brass); border-color: #fff; color: #fff; }
+.pressbar { background: linear-gradient(105deg, #f3c850, #e6a92b); border-radius: 15px; padding: 12px 15px; margin-bottom: 14px; box-shadow: 0 6px 18px rgba(193,138,20,.28); }
+.pressbar .wolf-head { color: #3d2c06; font-size: 13px; font-weight: 600; margin-bottom: 0; }
+.pressbar .wolf-head b { color: #20180a; font-weight: 800; }
+.pressbtn { margin-top: 10px; width: 100%; border: none; background: var(--pine); color: #fff; font: inherit; font-size: 13px; font-weight: 700; padding: 11px 10px; border-radius: 11px; cursor: pointer; }
+.pressbtn.on { background: #20180a; }
 .segstatus { display: block; color: var(--pine); font-weight: 800; margin-top: 3px; }
 .presrow { display: block; color: var(--brass); font-size: 12px; font-weight: 600; margin-top: 2px; }
 .grow.presrowline span, .grow.presrowline b { color: var(--brass); font-size: 12.5px; }
-
-.pressbar .presrow { color: #fdf6e8; opacity: .92; font-weight: 600; font-size: 12.5px; margin-top: 6px; }
+.pressbar .presrow { color: #4a3608; opacity: 1; font-weight: 700; font-size: 12.5px; margin-top: 6px; }

@@ -370,7 +370,7 @@ export default function Round({ code }: { code: string }) {
               };
               if (state.games?.sixes) {
                 const seg = sixesSegs(state.players).find((s) => hole.num >= s.lo && hole.num <= s.hi);
-                if (seg) render("sixes", `Sixes · ${seg.label}`, seg.a, seg.b, seg.lo, seg.hi, "sixes");
+                if (seg) render("sixes", `Sixes · Holes ${seg.lo}\u2013${seg.hi}`, seg.a, seg.b, seg.lo, seg.hi, "sixes");
               }
               if (state.games?.nassau) {
                 const t1 = [state.players[0], state.players[1]], t2 = [state.players[2], state.players[3]];
