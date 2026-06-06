@@ -47,6 +47,21 @@ export default function HoleMap({ hole }: { hole: Hole }) {
   const teeX = X(hole.tee[1]), teeY = Y(hole.tee[0]);
   const grX = X(hole.greenC[1]), grY = Y(hole.greenC[0]);
 
+  // Place hazard carry labels, dropping any that would collide with one already placed
+  // (bunkers cluster near the green, so their numbers overlap badly without this).
+  const placed: { x: number; y: number }[] = [{ x: grX, y: grY - 10 }]; // reserve the green-distance spot
+  const hazLabels: { x: number; y: number; text: number; kind: string }[] = [];
+  hole.hazards
+    .map((h) => ({ x: X(h.c[1]), y: Y(h.c[0]) + 3, text: h.yards, kind: h.kind }))
+    .sort((a, b) => a.text - b.text)
+    .forEach((L) => {
+      if (placed.some((p) => Math.abs(p.x - L.x) < 22 && Math.abs(p.y - L.y) < 12)) return;
+      placed.push({ x: L.x, y: L.y });
+      hazLabels.push(L);
+    });
+  // Tee->green distance sits mid-line (open ground) instead of on top of the green/bunkers.
+  const midX = (teeX + grX) / 2, midY = (teeY + grY) / 2;
+
   return (
     <svg className="holemap" viewBox={`0 0 ${BOXW} ${BOXH}`} preserveAspectRatio="xMidYMid meet">
       {hole.fairway && <polygon className="hm-fairway" points={poly(hole.fairway)} />}
@@ -62,14 +77,15 @@ export default function HoleMap({ hole }: { hole: Hole }) {
 
       {/* tee marker */}
       <circle className="hm-tee" cx={teeX} cy={teeY} r={5} />
-      {/* tee->green distance near the green */}
-      <text className="hm-dist" x={grX} y={grY - 10} textAnchor="middle">{hole.teeToGreenYds} yd</text>
 
-      {/* hazard carry distances */}
-      {hole.hazards.map((h, i) => (
-        <text key={"hl" + i} className={"hm-hlabel " + (h.kind === "water" ? "hm-hlabel-w" : "hm-hlabel-b")}
-          x={X(h.c[1])} y={Y(h.c[0]) + 3} textAnchor="middle">{h.yards}</text>
+      {/* hazard carry distances (decluttered) */}
+      {hazLabels.map((L, i) => (
+        <text key={"hl" + i} className={"hm-hlabel " + (L.kind === "water" ? "hm-hlabel-w" : "hm-hlabel-b")}
+          x={L.x} y={L.y} textAnchor="middle">{L.text}</text>
       ))}
+
+      {/* tee->green distance, mid-line in open space, drawn last so it stays on top */}
+      <text className="hm-dist" x={midX} y={midY - 6} textAnchor="middle">{hole.teeToGreenYds} yd</text>
     </svg>
   );
 }
