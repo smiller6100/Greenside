@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v45";
+const BUILD = "v46";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -45,32 +45,42 @@ async function holeMapFor(lat: number, lng: number, wantHoles: number): Promise<
   });
 }
 
-// Look up a course's coordinates by name (cached 30d), fully automated:
-// golfcourseapi first if configured, then OpenStreetMap's Nominatim search — so any course
-// OSM knows by name gets coordinates with no manual entry.
+// Look up a course's coordinates by name (cached 30d), fully automated. Tries several query
+// variants (full name, the distinctive part after a dash, a "golf course" hint) against
+// golfcourseapi then OpenStreetMap's Nominatim, so compound names still resolve with no manual entry.
 async function geocodeCourse(env: any, name: string, where: string): Promise<{ lat: number; lng: number } | null> {
   if (!name) return null;
   const term = (name + " " + (where || "")).trim();
   const UA = "GreenSideStrokes/1.0 (+https://greensidestrokes.com; golf hole maps)";
+  const parts = name.split(/\s+[-—/|]\s+/).map((s) => s.trim()).filter(Boolean);
+  const sub = parts.length > 1 ? parts[parts.length - 1] : null; // e.g. "Merrill Hills" from "...Club - Merrill Hills"
+  const cands: string[] = [];
+  const add = (s: string) => { const t = s.trim(); if (t && !cands.includes(t)) cands.push(t); };
+  add(term);
+  if (sub) { add((sub + " " + (where || "")).trim()); add(sub + " golf course"); }
+  add(name + " golf course");
+  const candidates = cands.slice(0, 4);
   try {
-    const r = await cachedJson(`https://cache/geo/v2/${encodeURIComponent(term.toLowerCase())}`, 30 * 86400, async () => {
-      if (env.GOLF_API_KEY) {
-        try {
-          const res = await fetch(`${GOLF_API}/search?search_query=${encodeURIComponent(term)}`, { headers: { Authorization: `Key ${env.GOLF_API_KEY}` } });
-          if (res.ok) {
-            const loc = (((await res.json()) as any).courses || [])[0]?.location || {};
-            if (loc.latitude != null && loc.longitude != null) return Response.json({ lat: loc.latitude, lng: loc.longitude, src: "golfapi" });
-          }
-        } catch { /* fall through to OSM */ }
-      }
-      try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(term)}`, { headers: { "user-agent": UA, "accept": "application/json" } });
-        if (res.ok) {
-          const h = (((await res.json()) as any) || [])[0];
-          const la = h ? parseFloat(h.lat) : NaN, ln = h ? parseFloat(h.lon) : NaN;
-          if (isFinite(la) && isFinite(ln)) return Response.json({ lat: la, lng: ln, src: "osm" });
+    const r = await cachedJson(`https://cache/geo/v3/${encodeURIComponent(term.toLowerCase())}`, 30 * 86400, async () => {
+      for (const q of candidates) {
+        if (env.GOLF_API_KEY) {
+          try {
+            const res = await fetch(`${GOLF_API}/search?search_query=${encodeURIComponent(q)}`, { headers: { Authorization: `Key ${env.GOLF_API_KEY}` } });
+            if (res.ok) {
+              const loc = (((await res.json()) as any).courses || [])[0]?.location || {};
+              if (loc.latitude != null && loc.longitude != null) return Response.json({ lat: loc.latitude, lng: loc.longitude, src: "golfapi" });
+            }
+          } catch { /* try next */ }
         }
-      } catch { /* no match */ }
+        try {
+          const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(q)}`, { headers: { "user-agent": UA, "accept": "application/json" } });
+          if (res.ok) {
+            const h = (((await res.json()) as any) || [])[0];
+            const la = h ? parseFloat(h.lat) : NaN, ln = h ? parseFloat(h.lon) : NaN;
+            if (isFinite(la) && isFinite(ln)) return Response.json({ lat: la, lng: ln, src: "osm" });
+          }
+        } catch { /* try next */ }
+      }
       return Response.json({ lat: null, lng: null });
     });
     const j: any = await r.json();
