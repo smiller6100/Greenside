@@ -490,7 +490,8 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
                   <div className="holemap-head">Hole {hole.num}{hm.par ? ` · Par ${hm.par}` : ""} · {hm.teeToGreenYds} yds tee→green</div>
                   <HoleMap hole={hm} />
                   <div className="holemap-legend">
-                    <span className="lg lg-g">Green</span><span className="lg lg-f">Fairway</span>
+                    <span className="lg lg-t">Tee</span><span className="lg lg-f">Fairway</span>
+                    <span className="lg lg-r">Rough</span><span className="lg lg-g">Green</span>
                     <span className="lg lg-b">Bunker</span><span className="lg lg-w">Water</span>
                   </div>
                   <div className="hm-note">Diagram from OpenStreetMap · straight-line yards</div>

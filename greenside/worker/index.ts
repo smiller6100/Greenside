@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v35";
+const BUILD = "v37";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -129,14 +129,21 @@ function parseHoleMap(data: any, qLat: number, qLng: number, wantHoles: number) 
   const g = (v: string) => ways.filter((w: any) => w.tags && w.tags.golf === v);
   let holeWays = g("hole").filter((w: any) => w.geometry.length >= 2);
   let greens = g("green").map((w: any) => ({ poly: hmRing(w.geometry), c: hmCentroid(w.geometry) }));
-  let fairways: any[] = [];
-  els.forEach((e: any) => {
-    if (!e.tags || e.tags.golf !== "fairway") return;
-    if (e.type === "way" && Array.isArray(e.geometry) && e.geometry.length >= 4) fairways.push({ poly: hmRing(e.geometry), c: hmCentroid(e.geometry) });
-    else if (e.type === "relation" && Array.isArray(e.members)) e.members.forEach((m: any) => {
-      if ((m.role === "outer" || !m.role) && Array.isArray(m.geometry) && m.geometry.length >= 4) fairways.push({ poly: hmRing(m.geometry), c: hmCentroid(m.geometry) });
+  // Collect a golf-tagged area from both plain ways and relation outers (fairway/rough are often multipolygons).
+  const gatherArea = (tag: string) => {
+    const out: any[] = [];
+    els.forEach((e: any) => {
+      if (!e.tags || e.tags.golf !== tag) return;
+      if (e.type === "way" && Array.isArray(e.geometry) && e.geometry.length >= 4) out.push({ poly: hmRing(e.geometry), c: hmCentroid(e.geometry) });
+      else if (e.type === "relation" && Array.isArray(e.members)) e.members.forEach((m: any) => {
+        if ((m.role === "outer" || !m.role) && Array.isArray(m.geometry) && m.geometry.length >= 4) out.push({ poly: hmRing(m.geometry), c: hmCentroid(m.geometry) });
+      });
     });
-  });
+    return out;
+  };
+  let fairways = gatherArea("fairway");
+  let rough = gatherArea("rough");
+  let tees = g("tee").map((w: any) => ({ poly: hmRing(w.geometry), c: hmCentroid(w.geometry) }));
   let bunkers = g("bunker").map((w: any) => ({ poly: hmRing(w.geometry), c: hmCentroid(w.geometry), kind: "bunker" }));
   let water = ways.filter((w: any) => w.tags && (w.tags.golf === "water_hazard" || w.tags.golf === "lateral_water_hazard" || w.tags.natural === "water"))
     .map((w: any) => ({ poly: hmRing(w.geometry), c: hmCentroid(w.geometry), kind: "water" }));
@@ -177,18 +184,21 @@ function parseHoleMap(data: any, qLat: number, qLng: number, wantHoles: number) 
     }
   }
 
-  const rawFairways = fairways.length;
+  const rawFairways = fairways.length, rawRough = rough.length;
+  const overlapsRing = (x: any, ring: number[][]) => hmInside(x.c, ring) || x.poly.some((p: number[]) => hmInside(p, ring));
   if (chosen) {
     const ring = chosen.ring;
     holeWays = chosen.holes;
     greens = greens.filter((x: any) => hmInside(x.c, ring));
-    // A big fairway can straddle an imperfect boundary, so keep it if its centroid OR any vertex is inside.
-    fairways = fairways.filter((x: any) => hmInside(x.c, ring) || x.poly.some((p: number[]) => hmInside(p, ring)));
+    // A big fairway/rough can straddle an imperfect boundary, so keep it if its centroid OR any vertex is inside.
+    fairways = fairways.filter((x: any) => overlapsRing(x, ring));
+    rough = rough.filter((x: any) => overlapsRing(x, ring));
+    tees = tees.filter((x: any) => hmInside(x.c, ring));
     bunkers = bunkers.filter((x: any) => hmInside(x.c, ring));
     water = water.filter((x: any) => hmInside(x.c, ring));
   }
 
-  const counts = { found: g("hole").length, courses: boundaries.length, holes: holeWays.length, greens: greens.length, fairways: fairways.length, rawFairways, bunkers: bunkers.length, water: water.length };
+  const counts = { found: g("hole").length, courses: boundaries.length, holes: holeWays.length, greens: greens.length, fairways: fairways.length, rawFairways, rough: rough.length, rawRough, tees: tees.length, bunkers: bunkers.length, water: water.length };
   if (!holeWays.length) return { available: false, counts };
 
   const nearest = (c: number[], arr: any[]) => { let best: any = null, bd = 1e12; for (const a of arr) { const d = hmHav(c, a.c); if (d < bd) { bd = d; best = a; } } return { best, bd }; };
@@ -211,6 +221,10 @@ function parseHoleMap(data: any, qLat: number, qLng: number, wantHoles: number) 
     }
     let holeFairways = fairways.filter((f: any) => lineSamples.some((p) => hmInside(p, f.poly))).map((f: any) => f.poly);
     if (!holeFairways.length) { const fw = nearest(mid, fairways); if (fw.best && fw.bd < 100) holeFairways = [fw.best.poly]; }
+    // Rough: same line-sampling idea (a course-wide rough becomes a green backdrop for the hole).
+    const holeRough = rough.filter((r: any) => lineSamples.some((p) => hmInside(p, r.poly))).map((r: any) => r.poly);
+    // Tee boxes: the golf=tee polygons clustered around this hole's tee point.
+    const holeTees = tees.filter((t: any) => hmHav(t.c, tee) < 55).map((t: any) => t.poly);
     // Bunkers attach only if close to the tee->green corridor AND well past the tee
     // (drops a neighbouring hole's greenside sand that merely sits beside this tee).
     const teeToGreenM = hmHav(tee, greenC);
@@ -218,7 +232,7 @@ function parseHoleMap(data: any, qLat: number, qLng: number, wantHoles: number) 
     const hazWater = water.filter((h) => hmPerpToPath(h.c, line) < 55); // forced tee carries are legit
     const hazards = [...hazBunkers, ...hazWater]
       .map((h) => ({ kind: h.kind, poly: h.poly, c: h.c, yards: hmYds(hmHav(tee, h.c)) }));
-    return { ref: isFinite(ref) ? ref : null, par, line, tee, green: green ? green.poly : null, greenC, fairways: holeFairways, hazards, teeToGreenYds: hmYds(hmHav(tee, greenC)) };
+    return { ref: isFinite(ref) ? ref : null, par, line, tee, green: green ? green.poly : null, greenC, fairways: holeFairways, rough: holeRough, tees: holeTees, hazards, teeToGreenYds: hmYds(hmHav(tee, greenC)) };
   }).sort((a: any, b: any) => (a.ref || 99) - (b.ref || 99));
 
   // Safety net: if duplicate hole numbers remain, keep the first of each.
@@ -459,7 +473,7 @@ export default {
       const lng = parseFloat(url.searchParams.get("lng") || "");
       const wantHoles = parseInt(url.searchParams.get("holes") || "0") || 0;
       if (!isFinite(lat) || !isFinite(lng)) return Response.json({ available: false, error: "no-location" });
-      return cachedJson(`https://cache/holemap/v7/${lat.toFixed(4)},${lng.toFixed(4)},${wantHoles}`, 7 * 86400, async () => {
+      return cachedJson(`https://cache/holemap/v8/${lat.toFixed(4)},${lng.toFixed(4)},${wantHoles}`, 7 * 86400, async () => {
         const q = `[out:json][timeout:25];(way["golf"](around:1600,${lat},${lng});relation["golf"](around:1600,${lat},${lng});way["leisure"="golf_course"](around:1600,${lat},${lng});relation["leisure"="golf_course"](around:1600,${lat},${lng}););out geom;`;
         // overpass-api.de has been returning 406 to programmatic requests since ~Apr 2026; try mirrors first.
         const servers = [

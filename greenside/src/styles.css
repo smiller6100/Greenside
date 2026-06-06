@@ -447,6 +447,8 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .holemap-head { font-size: 13px; font-weight: 700; color: var(--ink); opacity: .82; text-align: center; margin-bottom: 6px; }
 .holemap { display: block; width: 100%; max-width: 320px; margin: 0 auto; background: #eef4ec; border: 1px solid rgba(15,58,40,.14); border-radius: 14px; }
 .hm-fairway { fill: #bfe0a8; stroke: #9fce86; stroke-width: .8; }
+.hm-rough { fill: #d8ebc4; stroke: #c4dca8; stroke-width: .6; }
+.hm-teebox { fill: #7fae62; stroke: #5f8f44; stroke-width: .8; }
 .hm-green { fill: #57c878; stroke: #2f9c52; stroke-width: 1; }
 .hm-bunker { fill: #ecd9a0; stroke: #d8bd72; stroke-width: .8; }
 .hm-water { fill: #8fc2ec; stroke: #5ea3dd; stroke-width: .8; }
@@ -461,6 +463,8 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .holemap-legend .lg::before { content: ""; width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
 .lg-g::before { background: #57c878; }
 .lg-f::before { background: #bfe0a8; }
+.lg-r::before { background: #d8ebc4; }
+.lg-t::before { background: #7fae62; }
 .lg-b::before { background: #ecd9a0; }
 .lg-w::before { background: #8fc2ec; }
 .hm-note { text-align: center; font-size: 10.5px; color: var(--ink); opacity: .5; margin-top: 5px; }

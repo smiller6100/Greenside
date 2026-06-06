@@ -8,7 +8,9 @@ type Hole = {
   tee: number[];
   green: number[][] | null;
   greenC: number[];
-  fairways: number[][][];
+  fairways?: number[][][];
+  rough?: number[][][];
+  tees?: number[][][];
   hazards: { kind: string; poly: number[][]; c: number[]; yards: number }[];
   teeToGreenYds: number;
 };
@@ -16,10 +18,15 @@ type Hole = {
 const BOXW = 300, BOXH = 380, PAD = 18;
 
 export default function HoleMap({ hole }: { hole: Hole }) {
-  // Gather every coordinate so the whole hole fits the frame.
+  const fairways = hole.fairways || [];
+  const rough = hole.rough || [];
+  const tees = hole.tees || [];
+  // Gather coords for the frame fit. Rough is excluded — it can span the whole course and
+  // would shrink the hole to a dot; we still draw it (clipped to the frame) as a backdrop.
   const all: number[][] = [...hole.line];
   if (hole.green) all.push(...hole.green);
-  hole.fairways.forEach((f) => all.push(...f));
+  fairways.forEach((f) => all.push(...f));
+  tees.forEach((t) => all.push(...t));
   hole.hazards.forEach((h) => all.push(...h.poly));
   if (all.length < 2) return null;
 
@@ -64,7 +71,10 @@ export default function HoleMap({ hole }: { hole: Hole }) {
 
   return (
     <svg className="holemap" viewBox={`0 0 ${BOXW} ${BOXH}`} preserveAspectRatio="xMidYMid meet">
-      {hole.fairways.map((f, i) => (
+      {rough.map((r, i) => (
+        <polygon key={"r" + i} className="hm-rough" points={poly(r)} />
+      ))}
+      {fairways.map((f, i) => (
         <polygon key={"f" + i} className="hm-fairway" points={poly(f)} />
       ))}
       {hole.hazards.filter((h) => h.kind === "water").map((h, i) => (
@@ -74,6 +84,9 @@ export default function HoleMap({ hole }: { hole: Hole }) {
         <polygon key={"b" + i} className="hm-bunker" points={poly(h.poly)} />
       ))}
       {hole.green && <polygon className="hm-green" points={poly(hole.green)} />}
+      {tees.map((t, i) => (
+        <polygon key={"t" + i} className="hm-teebox" points={poly(t)} />
+      ))}
 
       <polyline className="hm-line" points={hole.line.map(pt).join(" ")} />
 
