@@ -449,6 +449,11 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .hm-fairway { fill: #bfe0a8; stroke: #9fce86; stroke-width: .8; }
 .hm-rough { fill: #d8ebc4; stroke: #c4dca8; stroke-width: .6; }
 .hm-teebox { fill: #7fae62; stroke: #5f8f44; stroke-width: .8; }
+.hm-teebox-sel { fill: #4f7a36; stroke: #2f5a1c; stroke-width: 1.4; }
+.hm-tees { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 0 8px; }
+.hm-tees-lbl { font-size: 13px; font-weight: 700; color: #5f8f44; margin-right: 2px; }
+.hm-tee-chip { font-size: 14px; font-weight: 700; color: #2f4a1c; background: #e4efd8; border: 1.5px solid #bcd6a3; border-radius: 999px; padding: 4px 12px; cursor: pointer; }
+.hm-tee-chip.on { color: #fff; background: #4f7a36; border-color: #4f7a36; }
 .hm-green { fill: #57c878; stroke: #2f9c52; stroke-width: 1; }
 .hm-bunker { fill: #ecd9a0; stroke: #d8bd72; stroke-width: .8; }
 .hm-water { fill: #8fc2ec; stroke: #5ea3dd; stroke-width: .8; }
