@@ -423,3 +423,7 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .gl-row b { font-size: 15px; color: var(--pine); min-width: 76px; text-align: center; }
 .glcopy { margin-left: auto; border: none; background: var(--pine); color: #fff; font: inherit; font-size: 13px; font-weight: 700; padding: 10px 16px; border-radius: 11px; cursor: pointer; }
 .gl-hint { font-size: 12px; color: var(--mut); margin-top: 9px; }
+
+/* Team-scoring toggle (Best Ball / Best 2 / Scramble) */
+.teamtoggle { display: flex; width: 100%; margin: 0 0 14px; }
+.teamtoggle button { flex: 1; }

@@ -20,6 +20,8 @@ export interface RoundState {
   bbb?: Record<string, { bingo?: string; bango?: string; bongo?: string }>; // holeNum -> winners
   presses?: { sixes?: number[]; nassau?: number[] }; // start holes of presses per game
   sixesMode?: "points" | "skins"; // Sixes scoring: cumulative points vs match-play (ties push)
+  teamMode?: "bestball" | "best2" | "scramble"; // outing team scoring
+  teamScores?: Record<string, Record<string, number>>; // group -> holeNum -> team strokes (scramble)
   createdAt: number;
   lat?: number | null;
   lng?: number | null;
@@ -280,22 +282,30 @@ export function computeGames(state: RoundState): any {
   return out;
 }
 
-// ---- Outing team scoring: 2 best net of each foursome per hole ----
+// ---- Outing team scoring: best ball (low ball), best 2, or scramble (one team ball) ----
 export function computeTeams(state: RoundState): any[] {
   const useHcp = state.handicapMode !== "gross";
+  const mode = state.teamMode || "best2";
   const groups: Record<string, Player[]> = {};
-  state.players.forEach((p) => { const g = p.group || "A"; (groups[g] = groups[g] || []).push(p); });
-  const rows = Object.keys(groups).sort().map((g) => {
+  state.players.forEach((p) => { const g = p.group || "1"; (groups[g] = groups[g] || []).push(p); });
+  const rows = Object.keys(groups).map((g) => {
     const members = groups[g];
     let toPar = 0, thru = 0;
     state.course.forEach((h) => {
-      const nets = members.map((p) => {
-        const v = (state.scores[p.id] || {})[h.num];
-        return v == null ? null : v - (useHcp ? strokesOn(p.hcp, h.si) : 0);
-      }).filter((v): v is number => v != null).sort((a, b) => a - b);
-      if (nets.length < 2) return;
-      toPar += nets[0] + nets[1] - 2 * h.par;
-      thru++;
+      if (mode === "scramble") {
+        const ts = (state.teamScores?.[g] || {})[h.num];
+        if (ts == null) return;
+        toPar += ts - h.par; thru++;
+      } else {
+        const nets = members.map((p) => {
+          const v = (state.scores[p.id] || {})[h.num];
+          return v == null ? null : v - (useHcp ? strokesOn(p.hcp, h.si) : 0);
+        }).filter((v): v is number => v != null).sort((a, b) => a - b);
+        const need = mode === "bestball" ? 1 : 2;
+        if (nets.length < need) return;
+        toPar += nets.slice(0, need).reduce((a, b) => a + b, 0) - need * h.par;
+        thru++;
+      }
     });
     return { group: g, names: members.map((p) => p.name), toPar, thru, count: members.length };
   });

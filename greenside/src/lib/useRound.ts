@@ -106,5 +106,18 @@ export function useRound(code: string) {
       ? { ...s, players: [...s.players, player as any] } : s));
   }, []);
 
-  return { state, connected, missing, sendScore, sendWolfPick, sendBbb, sendPress, sendSixesMode, sendAddPlayer };
+  const sendTeamScore = useCallback((group: string, hole: number, strokes: number) => {
+    wsRef.current?.send(JSON.stringify({ type: "teamScore", group, hole, strokes }));
+    setState((s) => s ? {
+      ...s,
+      teamScores: { ...(s.teamScores || {}), [group]: { ...((s.teamScores || {})[group] || {}), [hole]: strokes } },
+    } : s);
+  }, []);
+
+  const sendTeamMode = useCallback((mode: "bestball" | "best2" | "scramble") => {
+    wsRef.current?.send(JSON.stringify({ type: "setTeamMode", mode }));
+    setState((s) => (s ? { ...s, teamMode: mode } : s));
+  }, []);
+
+  return { state, connected, missing, sendScore, sendWolfPick, sendBbb, sendPress, sendSixesMode, sendAddPlayer, sendTeamScore, sendTeamMode };
 }

@@ -7,7 +7,7 @@ import { computeStandings, computeGames, computeTeams, strokesOn, toParClass, fm
 const FORMAT_LABELS: Record<string, string> = { net: "Net", gross: "Gross", stableford: "Stableford", chicago: "Chicago", skins: "Skins", card: "Full card", games: "Games", teams: "Teams" };
 
 export default function Round({ code, joinGroup }: { code: string; joinGroup?: string | null }) {
-  const { state, connected, missing, sendScore, sendWolfPick, sendBbb, sendPress, sendSixesMode, sendAddPlayer } = useRound(code);
+  const { state, connected, missing, sendScore, sendWolfPick, sendBbb, sendPress, sendSixesMode, sendAddPlayer, sendTeamScore, sendTeamMode } = useRound(code);
   const [tab, setTab] = useState<"board" | "score">("board");
   const [view, setView] = useState("net"); // a scoring format (leaderboard side)
   const [scView, setScView] = useState<"hole" | "card" | "games">("hole"); // scorecard side
@@ -70,8 +70,17 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
 
   const TeamsPanel = () => {
     const rows = computeTeams(state);
+    const tm = state.teamMode || "best2";
+    const foot = tm === "bestball" ? "Each foursome scored on its low ball per hole"
+      : tm === "scramble" ? "Each foursome plays one ball — enter the team score on the Scorecard tab"
+      : "Each foursome’s 2 best net scores per hole";
     return (
       <>
+        <div className="modetoggle teamtoggle">
+          <button className={tm === "bestball" ? "on" : ""} onClick={() => sendTeamMode("bestball")}>Best Ball</button>
+          <button className={tm === "best2" ? "on" : ""} onClick={() => sendTeamMode("best2")}>Best 2</button>
+          <button className={tm === "scramble" ? "on" : ""} onClick={() => sendTeamMode("scramble")}>Scramble</button>
+        </div>
         <div className="board">
           {rows.map((t, i) => (
             <div key={t.group} className={`row ${i === 0 && t.thru > 0 ? "lead" : ""} ${t.group === myGroup ? "self" : ""}`}>
@@ -81,7 +90,7 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
             </div>
           ))}
         </div>
-        <p className="foot">Each foursome’s 2 best net scores per hole</p>
+        <p className="foot">{foot}</p>
       </>
     );
   };
@@ -279,6 +288,49 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
     </div>
   );
 
+  // Scramble: one row per foursome (team ball)
+  const tsp = (g: string, n: number) => (state.teamScores?.[g] || {})[n];
+  const sumTs = (g: string, arr: typeof course) => arr.reduce((s, h) => s + (tsp(g, h.num) || 0), 0);
+  const nineTeam = (holes: typeof course, label: string) => (
+    <table className="nine">
+      <thead>
+        <tr><th className="stik">Hole</th>{holes.map((h) => <th key={h.num}>{h.num}</th>)}<th className="tot">{label}</th></tr>
+        <tr className="parrow"><th className="stik">Par</th>{holes.map((h) => <th key={h.num}>{h.par}</th>)}<th className="tot">{sumPar(holes)}</th></tr>
+      </thead>
+      <tbody>
+        {groups.map((g) => (
+          <tr key={g} className={g === myGroup ? "meRow" : ""}>
+            <th className="stik">Group {g}</th>
+            {holes.map((h) => { const v = tsp(g, h.num); return <td key={h.num} className={`popcell ${v != null ? scoreTone(v - h.par) : ""}`}>{v ?? ""}</td>; })}
+            <td className="tot">{sumTs(g, holes) || ""}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+  const ScrambleCard = () => (
+    <div className="cardstack">
+      {sumYards(course) > 0 && <div className="cardtee">Scramble · Par {sumPar(course)} · one team ball per hole</div>}
+      {groups.length === 0 ? <p className="foot">No foursomes have joined yet.</p> : (<>
+        {nineTeam(front, "Out")}
+        {back.length > 0 && nineTeam(back, "In")}
+        <table className="nine totals">
+          <thead><tr><th className="stik">Totals</th><th>Out</th>{back.length > 0 && <th>In</th>}<th className="tot">Gross</th></tr></thead>
+          <tbody>
+            {groups.map((g) => (
+              <tr key={g} className={g === myGroup ? "meRow" : ""}>
+                <th className="stik">Group {g}</th>
+                <td>{sumTs(g, front) || "–"}</td>
+                {back.length > 0 && <td>{sumTs(g, back) || "–"}</td>}
+                <td className="tot grand">{sumTs(g, course) || "–"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </>)}
+    </div>
+  );
+
   const _np = (state.name || "Round").split(" — ");
   const roundTitle = _np.length === 2 && _np[0].trim() === _np[1].trim() ? _np[0].trim() : (state.name || "Round");
 
@@ -324,7 +376,7 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
               <button className={`seg-btn ${scView === "card" ? "on" : ""}`} onClick={() => setScView("card")}>Full Card</button>
               {enabledGames.length > 0 && <button className={`seg-btn ${scView === "games" ? "on" : ""}`} onClick={() => setScView("games")}>Games</button>}
             </div>
-            {scView === "card" ? <FullCard /> : scView === "games" ? <GamesPanel /> : (
+            {scView === "card" ? (state.outing && state.teamMode === "scramble" ? <ScrambleCard /> : <FullCard />) : scView === "games" ? <GamesPanel /> : (
               <>
             <div className="holehead">
               <button className="nav" disabled={holeIdx === 0} onClick={() => setHoleIdx((i) => Math.max(0, i - 1))}><ChevronLeft size={20} /></button>
@@ -339,8 +391,39 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
                 ))}
               </div>
             )}
+            {state.outing && state.teamMode === "scramble" ? (
+              <div className="cards">
+                {(() => {
+                  const g = effGrp || "1";
+                  const tsMap = state.teamScores?.[g] || {};
+                  const ts = tsMap[hole.num];
+                  const rel = ts != null ? ts - hole.par : null;
+                  const played = course.filter((h) => tsMap[h.num] != null);
+                  const toPar = played.reduce((s, h) => s + (tsMap[h.num] - h.par), 0);
+                  const adjustTeam = (delta: number) => sendTeamScore(g, hole.num, Math.max(1, (ts ?? hole.par) + delta));
+                  const setTeamPar = () => { if (ts == null) sendTeamScore(g, hole.num, hole.par); };
+                  return (
+                    <div className="pcard self">
+                      <div className="pinfo"><div className="pn">Group {g} — team score
+                        {played.length > 0 && (
+                          <span className={`tpar ${toParClass(toPar)}`}>
+                            {toPar > 0 ? <ChevronUp size={13} strokeWidth={2.8} /> : toPar < 0 ? <ChevronDown size={13} strokeWidth={2.8} /> : null}
+                            {fmtToPar(toPar)}
+                          </span>
+                        )}</div>
+                        <div className="dots"><span className="ph">one ball · scramble</span></div></div>
+                      <div className="stepper">
+                        <button onClick={() => adjustTeam(-1)} aria-label="minus"><Minus size={18} strokeWidth={2.4} /></button>
+                        <button className={`num ${ts != null ? scoreTone(rel as number) : ""}`} onClick={setTeamPar}><span className={ts == null ? "ghost" : ""}>{ts ?? hole.par}</span>{rel != null && <small className={toParClass(rel)}>{fmtToPar(rel)}</small>}</button>
+                        <button onClick={() => adjustTeam(1)} aria-label="plus"><Plus size={18} strokeWidth={2.4} /></button>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            ) : (
             <div className="cards">
-              {state.players.filter((p) => !state.outing || (p.group || "A") === effGrp).map((p) => {
+              {state.players.filter((p) => !state.outing || (p.group || "1") === effGrp).map((p) => {
                 const rec = useHcp ? strokesOn(p.hcp, hole.si) : 0;
                 const val = (state.scores[p.id] || {})[hole.num];
                 const rel = val != null ? val - hole.par : null;
@@ -366,6 +449,7 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
                 );
               })}
             </div>
+            )}
             {(state.games?.sixes || state.games?.nassau) && state.players.length === 4 && (() => {
               const blocks: any[] = [];
               const teamNames = (t: any[]) => t.map((p) => p.name).join("/");

@@ -133,6 +133,23 @@ export class GolfRound implements DurableObject {
       state.presses[game] = arr;
       await this.ctx.storage.put("state", state);
       this.broadcast({ type: "state", state });
+    } else if (data.type === "teamScore") {
+      const hole = Number(data.hole);
+      const strokes = Number(data.strokes);
+      const group = data.group != null ? String(data.group) : "";
+      if (!group || !Number.isInteger(hole) || hole < 1 || hole > 18) return;
+      if (!Number.isInteger(strokes) || strokes < 1 || strokes > 30) return;
+      state.teamScores = state.teamScores || {};
+      state.teamScores[group] = state.teamScores[group] || {};
+      state.teamScores[group][hole] = strokes;
+      await this.ctx.storage.put("state", state);
+      this.broadcast({ type: "state", state });
+    } else if (data.type === "setTeamMode") {
+      if (data.mode === "bestball" || data.mode === "best2" || data.mode === "scramble") {
+        state.teamMode = data.mode;
+        await this.ctx.storage.put("state", state);
+        this.broadcast({ type: "state", state });
+      }
     } else if (data.type === "setMode") {
       if (data.game === "sixes" && (data.mode === "points" || data.mode === "skins")) {
         state.sixesMode = data.mode;
