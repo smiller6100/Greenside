@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Minus, Plus, Crown, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Trophy, ClipboardList, Copy, Check, Home, Settings } from "lucide-react";
+import { Minus, Plus, Crown, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Trophy, ClipboardList, Copy, Check, Home, Settings, MapPin } from "lucide-react";
 import { LogoMark } from "../components/Logo";
 import HoleMap from "../components/HoleMap";
 import { useRound } from "../lib/useRound";
@@ -51,6 +51,24 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
   const [shareGrp, setShareGrp] = useState(1);
   const [gCopied, setGCopied] = useState(false);
   const [holeMap, setHoleMap] = useState<any>(null);
+  const [gps, setGps] = useState<{ lat: number; lng: number; acc?: number } | null>(null);
+  const [gpsErr, setGpsErr] = useState("");
+  const watchId = useRef<number | null>(null);
+  const toggleGps = () => {
+    if (gps || watchId.current != null) {
+      if (watchId.current != null) navigator.geolocation.clearWatch(watchId.current);
+      watchId.current = null; setGps(null); setGpsErr("");
+      return;
+    }
+    if (!("geolocation" in navigator)) { setGpsErr("Location isn't available on this device."); return; }
+    setGpsErr("locating");
+    watchId.current = navigator.geolocation.watchPosition(
+      (p) => { setGpsErr(""); setGps({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy }); },
+      (e) => { setGpsErr(e.code === 1 ? "Location permission denied." : "Couldn't get your location."); if (watchId.current != null) { navigator.geolocation.clearWatch(watchId.current); watchId.current = null; } },
+      { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 }
+    );
+  };
+  useEffect(() => () => { if (watchId.current != null) navigator.geolocation.clearWatch(watchId.current); }, []);
 
   // Fetch the OSM hole-map data once, when the round first loads.
   const hmFetched = useRef(false);
@@ -553,13 +571,17 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
               return (
                 <div className="holemap-wrap">
                   <div className="holemap-head">Hole {hole.num}{hm.par ? ` · Par ${hm.par}` : ""} · {hm.teeToGreenYds} yds tee→green</div>
-                  <HoleMap hole={hm} />
+                  <HoleMap hole={hm} me={gps} />
                   <div className="holemap-legend">
                     <span className="lg lg-t">Tee</span><span className="lg lg-f">Fairway</span>
                     <span className="lg lg-r">Rough</span><span className="lg lg-g">Green</span>
                     <span className="lg lg-b">Bunker</span><span className="lg lg-w">Water</span>
                   </div>
-                  <div className="hm-note">Diagram from OpenStreetMap · straight-line yards</div>
+                  <button className={`locbtn ${gps ? "on" : ""}`} onClick={toggleGps}>
+                    <MapPin size={15} />{gps ? "Stop tracking" : gpsErr === "locating" ? "Locating…" : "Show my distance"}
+                  </button>
+                  {gpsErr && gpsErr !== "locating" && <div className="loc-err">{gpsErr}</div>}
+                  <div className="hm-note">Diagram from OpenStreetMap · straight-line yards{gps ? " · live GPS, ±accuracy varies" : ""}</div>
                 </div>
               );
             })()}

@@ -30,7 +30,7 @@ type Hole = {
 
 const BOXW = 300, BOXH = 380, PAD = 8;
 
-export default function HoleMap({ hole }: { hole: Hole }) {
+export default function HoleMap({ hole, me }: { hole: Hole; me?: { lat: number; lng: number; acc?: number } | null }) {
   const fairways = hole.fairways || [];
   const rough = hole.rough || [];
   const tees = hole.tees || [];
@@ -93,6 +93,18 @@ export default function HoleMap({ hole }: { hole: Hole }) {
       hazLabels.push(L);
     });
 
+  let meInfo: { x: number; y: number; center: number; front: number; back: number } | null = null;
+  if (me && isFinite(me.lat) && isFinite(me.lng)) {
+    const p = [me.lat, me.lng];
+    const center = yds(hav(p, hole.greenC));
+    let front = center, back = center;
+    if (hole.green && hole.green.length) {
+      const ds = hole.green.map((g) => hav(p, g));
+      front = yds(Math.min(...ds)); back = yds(Math.max(...ds));
+    }
+    meInfo = { x: X(me.lng), y: Y(me.lat), center, front, back };
+  }
+
   const svg = (
     <svg className="holemap" viewBox={`0 0 ${BOXW} ${BOXH}`} preserveAspectRatio="xMidYMid meet">
       {rough.map((r, i) => (
@@ -126,6 +138,15 @@ export default function HoleMap({ hole }: { hole: Hole }) {
       {/* tee marker */}
       <circle className="hm-tee" cx={teeX} cy={teeY} r={5} />
 
+      {meInfo && (
+        <>
+          <line className="hm-meline" x1={meInfo.x} y1={meInfo.y} x2={grX} y2={grY} />
+          <circle className="hm-me-acc" cx={meInfo.x} cy={meInfo.y} r={11} />
+          <circle className="hm-me" cx={meInfo.x} cy={meInfo.y} r={5.5} />
+          <text className="hm-melabel" x={meInfo.x} y={meInfo.y - 10} textAnchor="middle">{meInfo.center}</text>
+        </>
+      )}
+
       {/* hazard carry distances (decluttered) */}
       {hazLabels.map((L, i) => (
         <text key={"hl" + i} className={"hm-hlabel " + (L.kind === "water" ? "hm-hlabel-w" : "hm-hlabel-b")}
@@ -134,15 +155,25 @@ export default function HoleMap({ hole }: { hole: Hole }) {
     </svg>
   );
 
-  return selectable ? (
+  return (
     <>
-      <div className="hm-tees">
-        <span className="hm-tees-lbl">Tee</span>
-        {teeOpts.map((o, i) => (
-          <button key={i} className={"hm-tee-chip" + (i === Math.min(sel, teeOpts.length - 1) ? " on" : "")} onClick={() => setSel(i)}>{o.yds}</button>
-        ))}
-      </div>
+      {selectable && (
+        <div className="hm-tees">
+          <span className="hm-tees-lbl">Tee</span>
+          {teeOpts.map((o, i) => (
+            <button key={i} className={"hm-tee-chip" + (i === Math.min(sel, teeOpts.length - 1) ? " on" : "")} onClick={() => setSel(i)}>{o.yds}</button>
+          ))}
+        </div>
+      )}
       {svg}
+      {meInfo && (
+        <div className="hm-range">
+          <span className="hm-range-lbl">To green</span>
+          <span className="hm-range-v"><b>{meInfo.front}</b><i>front</i></span>
+          <span className="hm-range-v big"><b>{meInfo.center}</b><i>center</i></span>
+          <span className="hm-range-v"><b>{meInfo.back}</b><i>back</i></span>
+        </div>
+      )}
     </>
-  ) : svg;
+  );
 }

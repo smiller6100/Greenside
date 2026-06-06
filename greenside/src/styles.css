@@ -498,3 +498,18 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .editbtns .ghostbtn, .editbtns .primary { flex: 1; }
 .resume-wrap { display: flex; flex-direction: column; gap: 0; }
 .resume-edit { align-self: flex-end; margin-top: 6px; border: none; background: none; color: var(--brand, #2f7a3a); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; padding: 4px 2px; }
+
+/* Live GPS rangefinder */
+.hm-me { fill: #2a6cf0; stroke: #fff; stroke-width: 2; }
+.hm-me-acc { fill: rgba(42,108,240,.18); stroke: rgba(42,108,240,.4); stroke-width: 1; }
+.hm-meline { stroke: #2a6cf0; stroke-width: 1.6; stroke-dasharray: 3 3; opacity: .8; }
+.hm-melabel { fill: #2a6cf0; font-size: 12px; font-weight: 800; paint-order: stroke; stroke: #fff; stroke-width: 3px; }
+.hm-range { display: flex; align-items: flex-end; justify-content: center; gap: 16px; margin-top: 10px; }
+.hm-range-lbl { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ink); opacity: .55; align-self: center; }
+.hm-range-v { display: flex; flex-direction: column; align-items: center; line-height: 1.05; }
+.hm-range-v b { font-size: 20px; color: var(--ink); }
+.hm-range-v i { font-size: 10px; font-style: normal; text-transform: uppercase; letter-spacing: .04em; color: var(--ink); opacity: .55; }
+.hm-range-v.big b { font-size: 30px; color: #2a6cf0; }
+.locbtn { display: inline-flex; align-items: center; gap: 7px; margin: 10px auto 0; padding: 9px 16px; border: 1.5px solid #2a6cf0; background: rgba(42,108,240,.08); color: #2a6cf0; font: inherit; font-size: 14px; font-weight: 700; border-radius: 999px; cursor: pointer; }
+.locbtn.on { background: #2a6cf0; color: #fff; }
+.loc-err { text-align: center; font-size: 12px; color: var(--over, #b03a2e); margin-top: 6px; }
