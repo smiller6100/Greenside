@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v28";
+const BUILD = "v29";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -352,7 +352,7 @@ export default {
       const lat = parseFloat(url.searchParams.get("lat") || "");
       const lng = parseFloat(url.searchParams.get("lng") || "");
       if (!isFinite(lat) || !isFinite(lng)) return Response.json({ available: false, error: "no-location" });
-      return cachedJson(`https://cache/holemap/${lat.toFixed(4)},${lng.toFixed(4)}`, 7 * 86400, async () => {
+      return cachedJson(`https://cache/holemap/v2/${lat.toFixed(4)},${lng.toFixed(4)}`, 7 * 86400, async () => {
         const q = `[out:json][timeout:25];(way["golf"](around:1600,${lat},${lng});relation["golf"](around:1600,${lat},${lng}););out geom;`;
         // overpass-api.de has been returning 406 to programmatic requests since ~Apr 2026; try mirrors first.
         const servers = [
