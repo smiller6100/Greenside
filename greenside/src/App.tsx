@@ -9,12 +9,26 @@ function parseHash(): { code: string; group: string | null } | null {
   return { code: m[1].toUpperCase(), group };
 }
 
+// A round the user has ended on this device must never auto-reopen — even if
+// iOS restores the old URL when the app is killed and relaunched.
+function resolveRoute(): { code: string; group: string | null } | null {
+  const r = parseHash();
+  if (r && localStorage.getItem(`gs:ended:${r.code}`) === "1") return null;
+  return r;
+}
+
 export default function App() {
-  const [route, setRoute] = useState(parseHash());
+  const [route, setRoute] = useState(resolveRoute);
   useEffect(() => {
-    const on = () => setRoute(parseHash());
+    const on = () => setRoute(resolveRoute());
     window.addEventListener("hashchange", on);
-    return () => window.removeEventListener("hashchange", on);
+    window.addEventListener("pageshow", on); // re-check when iOS restores the tab
+    return () => { window.removeEventListener("hashchange", on); window.removeEventListener("pageshow", on); };
   }, []);
+  useEffect(() => {
+    if (!route && location.hash.includes("/r/")) {
+      try { history.replaceState(null, "", location.pathname + location.search); } catch { /* */ }
+    }
+  }, [route]);
   return route ? <Round key={route.code + (route.group || "")} code={route.code} joinGroup={route.group} /> : <Home />;
 }

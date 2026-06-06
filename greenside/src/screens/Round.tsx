@@ -633,7 +633,7 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
             )}
             <p>Leaving keeps this round on your phone so you can jump back in. Ending it removes it from your Resume when you’re done for the day.</p>
             <button className="primary" onClick={() => { location.replace(location.pathname + location.search); }}>Leave — keep it</button>
-            <button className="dangerbtn" onClick={() => { localStorage.removeItem("gs:lastRound"); localStorage.removeItem("gs:lastRoundName"); location.replace(location.pathname + location.search); }}>End round</button>
+            <button className="dangerbtn" onClick={() => { localStorage.setItem(`gs:ended:${code}`, "1"); localStorage.removeItem("gs:lastRound"); localStorage.removeItem("gs:lastRoundName"); location.replace(location.pathname + location.search); }}>End round</button>
             <button className="ghostbtn" onClick={() => setLeaving(false)}>Stay</button>
           </div></div>
         )}

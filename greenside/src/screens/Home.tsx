@@ -3,7 +3,7 @@ import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw } fro
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole } from "../lib/golf";
 
-const VERSION = "v25";
+const VERSION = "v26";
 
 const FORMAT_DEFS = [
   { id: "net", label: "Net" }, { id: "gross", label: "Gross" },
@@ -244,6 +244,7 @@ export default function Home() {
     try {
       const r = await fetch("/api/round", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
       const { code, adminToken } = await r.json();
+      localStorage.removeItem(`gs:ended:${code}`);
       if (adminToken) localStorage.setItem(`gs:admin:${code}`, adminToken);
       if (outing) {
         localStorage.setItem(`gs:creator:${code}`, "1");
@@ -258,6 +259,7 @@ export default function Home() {
   function join() {
     const c = joinCode.trim().toUpperCase();
     if (c.length < 3) { setErr("Enter the round code."); return; }
+    localStorage.removeItem(`gs:ended:${c.split("-")[0]}`); // explicit re-entry clears the ended block
     location.hash = `#/r/${c}`;
   }
 
