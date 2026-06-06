@@ -46,7 +46,6 @@ export default function HoleMap({ hole }: { hole: Hole }) {
   const cur = selectable ? teeOpts[Math.min(sel, teeOpts.length - 1)] : null;
   const teePoint = cur ? cur.c : hole.tee;
   const playLine = cur ? [teePoint, ...hole.line.slice(1)] : hole.line;
-  const distYds = cur ? cur.yds : hole.teeToGreenYds;
 
   // Gather coords for the frame fit. Rough is excluded — it can span the whole course and
   // would shrink the hole to a dot; we still draw it (clipped to the frame) as a backdrop.
@@ -86,15 +85,13 @@ export default function HoleMap({ hole }: { hole: Hole }) {
   const placed: { x: number; y: number }[] = [{ x: grX, y: grY - 10 }]; // reserve the green-distance spot
   const hazLabels: { x: number; y: number; text: number; kind: string }[] = [];
   hole.hazards
-    .map((h) => ({ x: X(h.c[1]), y: Y(h.c[0]) + 3, text: h.yards, kind: h.kind }))
+    .map((h) => ({ x: X(h.c[1]), y: Y(h.c[0]) + 3, text: yds(hav(teePoint, h.c)), kind: h.kind }))
     .sort((a, b) => a.text - b.text)
     .forEach((L) => {
       if (placed.some((p) => Math.abs(p.x - L.x) < 22 && Math.abs(p.y - L.y) < 12)) return;
       placed.push({ x: L.x, y: L.y });
       hazLabels.push(L);
     });
-  // Tee->green distance sits mid-line (open ground) instead of on top of the green/bunkers.
-  const midX = (teeX + grX) / 2, midY = (teeY + grY) / 2;
 
   const svg = (
     <svg className="holemap" viewBox={`0 0 ${BOXW} ${BOXH}`} preserveAspectRatio="xMidYMid meet">
@@ -134,9 +131,6 @@ export default function HoleMap({ hole }: { hole: Hole }) {
         <text key={"hl" + i} className={"hm-hlabel " + (L.kind === "water" ? "hm-hlabel-w" : "hm-hlabel-b")}
           x={L.x} y={L.y} textAnchor="middle">{L.text}</text>
       ))}
-
-      {/* tee->green distance, mid-line in open space, drawn last so it stays on top */}
-      <text className="hm-dist" x={midX} y={midY - 6} textAnchor="middle">{distYds} yd</text>
     </svg>
   );
 
