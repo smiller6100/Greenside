@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { Minus, Plus, Crown, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Trophy, ClipboardList, Copy, Check, Home } from "lucide-react";
 import { LogoMark } from "../components/Logo";
 import { useRound } from "../lib/useRound";
-import { computeStandings, computeGames, computeTeams, strokesOn, toParClass, fmtToPar, holesUp, sixesSegs } from "../lib/golf";
+import { computeStandings, computeGames, computeTeams, strokesOn, toParClass, fmtToPar, holesUp, sixesSegs, scoreTone } from "../lib/golf";
 
 const FORMAT_LABELS: Record<string, string> = { net: "Net", gross: "Gross", stableford: "Stableford", chicago: "Chicago", skins: "Skins", card: "Full card", games: "Games", teams: "Teams" };
 
@@ -216,7 +216,7 @@ export default function Round({ code }: { code: string }) {
               const v = sp(p.id, h.num);
               const pops = useHcp ? strokesOn(p.hcp, h.si) : 0;
               return (
-                <td key={h.num} className={`popcell ${v != null ? toParClass(v - h.par) : ""}`}>
+                <td key={h.num} className={`popcell ${v != null ? scoreTone(v - h.par) : ""}`}>
                   {pops > 0 && <span className="pops">{Array.from({ length: pops }).map((_, i) => <i key={i} />)}</span>}
                   {v ?? ""}
                 </td>
@@ -333,7 +333,7 @@ export default function Round({ code }: { code: string }) {
                       <div className="dots">{Array.from({ length: rec }).map((_, k) => <i key={k} />)}<span className="ph">{rec ? `${rec} stroke${rec > 1 ? "s" : ""}` : (useHcp ? "scratch here" : "gross")}</span></div></div>
                     <div className="stepper">
                       <button onClick={() => adjust(p.id, -1)} aria-label="minus"><Minus size={18} strokeWidth={2.4} /></button>
-                      <button className="num" onClick={() => setPar(p.id)}><span className={val == null ? "ghost" : ""}>{val ?? hole.par}</span>{rel != null && <small className={toParClass(rel)}>{fmtToPar(rel)}</small>}</button>
+                      <button className={`num ${val != null ? scoreTone(rel as number) : ""}`} onClick={() => setPar(p.id)}><span className={val == null ? "ghost" : ""}>{val ?? hole.par}</span>{rel != null && <small className={toParClass(rel)}>{fmtToPar(rel)}</small>}</button>
                       <button onClick={() => adjust(p.id, 1)} aria-label="plus"><Plus size={18} strokeWidth={2.4} /></button>
                     </div>
                   </div>

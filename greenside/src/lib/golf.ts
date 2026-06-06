@@ -66,6 +66,8 @@ export const strokesOn = (hcp: number, si: number) =>
 
 export const fmtToPar = (n: number) => (n === 0 ? "E" : n > 0 ? `+${n}` : `${n}`);
 export const toParClass = (n: number) => (n < 0 ? "under" : n > 0 ? "over" : "even");
+// Color-code a score by result vs par (eagle/birdie/par/bogey/double+)
+export const scoreTone = (rel: number) => (rel <= -2 ? "sc-eagle" : rel === -1 ? "sc-bird" : rel === 0 ? "sc-par" : rel === 1 ? "sc-bog" : "sc-dbl");
 
 // Chicago (Quota) per-hole points off GROSS score vs par: dbl+ 0, bogey 1, par 2, birdie 4, eagle+ 8
 function chicagoPts(toPar: number): number {
