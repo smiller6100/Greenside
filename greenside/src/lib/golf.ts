@@ -19,6 +19,7 @@ export interface RoundState {
   wolf?: Record<string, string>;                   // holeNum -> partnerId | "lone"
   bbb?: Record<string, { bingo?: string; bango?: string; bongo?: string }>; // holeNum -> winners
   presses?: { sixes?: number[]; nassau?: number[] }; // start holes of presses per game
+  sixesMode?: "points" | "skins"; // Sixes scoring: cumulative points vs match-play (ties push)
   createdAt: number;
   lat?: number | null;
   lng?: number | null;
@@ -181,7 +182,7 @@ export function computeGames(state: RoundState): any {
       if (ba < bb) seg.a.forEach((p) => pts[p.id]++); else if (bb < ba) seg.b.forEach((p) => pts[p.id]++);
     });
     const prs = (state.presses?.sixes) || [];
-    out.sixes = { points: pts, segments: segs.map((s) => {
+    out.sixes = { mode: state.sixesMode || "points", points: pts, segments: segs.map((s) => {
       const presses = prs.filter((h) => h >= s.lo && h <= s.hi).sort((x, y) => x - y)
         .map((start) => ({ start, status: matchStatus(holesUp(state, s.a, s.b, start, s.hi), s.a, s.b) }));
       return { lo: s.lo, hi: s.hi, label: `Holes ${s.lo}\u2013${s.hi}`, a: s.a.map((p) => p.id), b: s.b.map((p) => p.id), status: matchStatus(holesUp(state, s.a, s.b, s.lo, s.hi), s.a, s.b), presses };

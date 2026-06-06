@@ -109,10 +109,24 @@ export class GolfRound implements DurableObject {
       state.presses = state.presses || {};
       const arr: number[] = state.presses[game] || [];
       const i = arr.indexOf(hole);
-      if (i >= 0) arr.splice(i, 1); else arr.push(hole);
+      if (i >= 0) {
+        arr.splice(i, 1); // undo the press on this hole
+      } else {
+        // one press at a time per segment
+        const segLo = game === "sixes" ? Math.floor((hole - 1) / 6) * 6 + 1 : (hole <= 9 ? 1 : 10);
+        const segHi = game === "sixes" ? segLo + 5 : (hole <= 9 ? 9 : 18);
+        if (arr.some((h) => h >= segLo && h <= segHi)) return; // already a live press here
+        arr.push(hole);
+      }
       state.presses[game] = arr;
       await this.ctx.storage.put("state", state);
       this.broadcast({ type: "state", state });
+    } else if (data.type === "setMode") {
+      if (data.game === "sixes" && (data.mode === "points" || data.mode === "skins")) {
+        state.sixesMode = data.mode;
+        await this.ctx.storage.put("state", state);
+        this.broadcast({ type: "state", state });
+      }
     }
   }
 

@@ -7,7 +7,7 @@ import { computeStandings, computeGames, computeTeams, strokesOn, toParClass, fm
 const FORMAT_LABELS: Record<string, string> = { net: "Net", gross: "Gross", stableford: "Stableford", chicago: "Chicago", skins: "Skins", card: "Full card", games: "Games", teams: "Teams" };
 
 export default function Round({ code }: { code: string }) {
-  const { state, connected, missing, sendScore, sendWolfPick, sendBbb, sendPress } = useRound(code);
+  const { state, connected, missing, sendScore, sendWolfPick, sendBbb, sendPress, sendSixesMode } = useRound(code);
   const [tab, setTab] = useState<"board" | "score">("board");
   const [view, setView] = useState("net"); // a scoring format (leaderboard side)
   const [scView, setScView] = useState<"hole" | "card" | "games">("hole"); // scorecard side
@@ -119,8 +119,14 @@ export default function Round({ code }: { code: string }) {
         ) : need("Nines", "exactly 3"))}
         {state.games?.sixes && (games.sixes ? (
           <div className="gcard">
-            <h3>Sixes</h3>
-            {ranked(games.sixes.points).map((p) => (
+            <div className="gcard-head">
+              <h3>Sixes</h3>
+              <div className="modetoggle">
+                <button className={games.sixes.mode === "points" ? "on" : ""} onClick={() => sendSixesMode("points")}>Points</button>
+                <button className={games.sixes.mode === "skins" ? "on" : ""} onClick={() => sendSixesMode("skins")}>Skins</button>
+              </div>
+            </div>
+            {games.sixes.mode === "points" && ranked(games.sixes.points).map((p) => (
               <div className="grow" key={p.id}><span className={p.id === me ? "me" : ""}>{p.name}</span><b>{games.sixes.points[p.id]} pts</b></div>
             ))}
             <div className="gsegs">{games.sixes.segments.map((s: any, i: number) => (
@@ -131,6 +137,7 @@ export default function Round({ code }: { code: string }) {
                 {s.presses.map((pr: any, j: number) => (<span className="presrow" key={j}>Press from {pr.start}: {pr.status}</span>))}
               </div>
             ))}</div>
+            <p className="ghint">{games.sixes.mode === "skins" ? "Skins: win a hole to go 1 up, ties push, a lost hole cancels one. Down? Press to start a fresh bet (one at a time)." : "Points: 1 point per hole your side wins, across all three pairings."}</p>
           </div>
         ) : need("Sixes", "exactly 4"))}
         {state.games?.vegas && (games.vegas ? (
@@ -354,16 +361,19 @@ export default function Round({ code }: { code: string }) {
                   .map((start) => ({ start, status: statusOf(a, b, start, hi) }));
                 if (up === 0 && pressList.length === 0) return; // hide until a team is down
                 const down = up > 0 ? b : up < 0 ? a : null;
-                const iCanPress = !!me && !!down && down.some((p: any) => p.id === me) && hole.num < hi;
-                const pressedHere = all.includes(hole.num);
+                const onDown = !!me && !!down && down.some((p: any) => p.id === me);
+                const activePress = pressList.length ? pressList[0].start : null; // one at a time
+                const canStart = onDown && activePress == null && hole.num < hi;
+                const canUndo = onDown && activePress != null;
                 blocks.push(
                   <div className="pressbar" key={key}>
                     <div className="wolf-head">{label}: <b>{up === 0 ? "all square" : `${teamNames(up > 0 ? a : b)} ${Math.abs(up)} up`}</b></div>
                     {pressList.map((pr, i) => (<div className="presrow light" key={i}>Press from {pr.start}: {pr.status}</div>))}
-                    {iCanPress && (
-                      <button className={`pressbtn ${pressedHere ? "on" : ""}`} onClick={() => sendPress(game, hole.num)}>
-                        {pressedHere ? `Pressed from ${hole.num} — tap to undo` : "Press — start a new bet from here"}
-                      </button>
+                    {canStart && (
+                      <button className="pressbtn" onClick={() => sendPress(game, hole.num)}>Press — start a new bet from here</button>
+                    )}
+                    {canUndo && (
+                      <button className="pressbtn on" onClick={() => sendPress(game, activePress as number)}>Undo press (from {activePress})</button>
                     )}
                   </div>
                 );

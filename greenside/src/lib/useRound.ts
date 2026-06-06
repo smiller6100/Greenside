@@ -95,5 +95,10 @@ export function useRound(code: string) {
     });
   }, []);
 
-  return { state, connected, missing, sendScore, sendWolfPick, sendBbb, sendPress };
+  const sendSixesMode = useCallback((mode: "points" | "skins") => {
+    wsRef.current?.send(JSON.stringify({ type: "setMode", game: "sixes", mode }));
+    setState((s) => (s ? { ...s, sixesMode: mode } : s));
+  }, []);
+
+  return { state, connected, missing, sendScore, sendWolfPick, sendBbb, sendPress, sendSixesMode };
 }
