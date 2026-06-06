@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v47";
+const BUILD = "v48";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -45,50 +45,65 @@ async function holeMapFor(lat: number, lng: number, wantHoles: number): Promise<
   });
 }
 
-// Look up a course's coordinates by name (cached 30d), fully automated. Tries several query
-// variants against golfcourseapi, then OpenStreetMap's Nominatim — and from OSM it keeps only a
-// result that is actually a golf_course feature, so compound/odd names resolve without grabbing
-// an unrelated road or subdivision.
-async function geocodeCourse(env: any, name: string, where: string): Promise<{ lat: number; lng: number } | null> {
-  if (!name) return null;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Resolve a course to coordinates, returning debug on failure so we can see what OSM returned.
+// Polite to Nominatim (~1 req/sec), keeps only golf_course results, and never caches a miss.
+async function geocodeWithDebug(env: any, name: string, where: string): Promise<{ coords: { lat: number; lng: number } | null; debug: any }> {
+  if (!name) return { coords: null, debug: { reason: "no-name" } };
   const w = (where || "").trim();
   const UA = "GreenSideStrokes/1.0 (+https://greensidestrokes.com; golf hole maps)";
-  const cleaned = name.replace(/\s+[-—/|]\s+/g, " ").trim();          // "The Legends Country Club Merrill Hills"
+  const cacheKey = `https://cache/geo/v5/${encodeURIComponent((name + "|" + w).toLowerCase())}`;
+  const cache = (caches as any).default;
+  try { const hit = await cache.match(cacheKey); if (hit) { const j: any = await hit.json(); if (j && j.lat != null) return { coords: { lat: j.lat, lng: j.lng }, debug: { cached: true } }; } } catch { /* */ }
+
+  const cleaned = name.replace(/\s+[-—/|]\s+/g, " ").trim();
   const parts = name.split(/\s+[-—/|]\s+/).map((s) => s.trim()).filter(Boolean);
-  const sub = parts.length > 1 ? parts[parts.length - 1] : null;       // "Merrill Hills"
+  const sub = parts.length > 1 ? parts[parts.length - 1] : null;
   const cands: string[] = [];
   const add = (s: string) => { const t = (s || "").trim(); if (t && !cands.includes(t)) cands.push(t); };
   add(cleaned + (w ? " " + w : ""));
-  add(name + (w ? " " + w : ""));
-  if (sub) { add(sub + (w ? " " + w : "")); add(sub); }
+  if (sub) add(sub + (w ? " " + w : ""));
   add(cleaned);
-  const candidates = cands.slice(0, 5);
-  try {
-    const r = await cachedJson(`https://cache/geo/v4/${encodeURIComponent(name.toLowerCase() + "|" + w.toLowerCase())}`, 30 * 86400, async () => {
-      for (const q of candidates) {
-        if (env.GOLF_API_KEY) {
-          try {
-            const res = await fetch(`${GOLF_API}/search?search_query=${encodeURIComponent(q)}`, { headers: { Authorization: `Key ${env.GOLF_API_KEY}` } });
-            if (res.ok) {
-              const loc = (((await res.json()) as any).courses || [])[0]?.location || {};
-              if (loc.latitude != null && loc.longitude != null) return Response.json({ lat: loc.latitude, lng: loc.longitude, src: "golfapi" });
-            }
-          } catch { /* try next */ }
-        }
-        try {
-          const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&q=${encodeURIComponent(q)}`, { headers: { "user-agent": UA, "accept": "application/json" } });
-          if (res.ok) {
-            const arr = (((await res.json()) as any) || []) as any[];
-            const golf = arr.find((h) => (h.category === "leisure" || h.class === "leisure") && h.type === "golf_course");
-            if (golf) { const la = parseFloat(golf.lat), ln = parseFloat(golf.lon); if (isFinite(la) && isFinite(ln)) return Response.json({ lat: la, lng: ln, src: "osm-golf" }); }
+  const candidates = cands.slice(0, 3);
+
+  const debug: any = { tried: [] };
+  for (const q of candidates) {
+    if (env.GOLF_API_KEY) {
+      try {
+        const res = await fetch(`${GOLF_API}/search?search_query=${encodeURIComponent(q)}`, { headers: { Authorization: `Key ${env.GOLF_API_KEY}` } });
+        if (res.ok) {
+          const loc = (((await res.json()) as any).courses || [])[0]?.location || {};
+          if (loc.latitude != null && loc.longitude != null) {
+            const coords = { lat: loc.latitude, lng: loc.longitude };
+            try { await cache.put(cacheKey, Response.json({ ...coords }, { headers: { "cache-control": "max-age=2592000" } })); } catch { /* */ }
+            return { coords, debug: { ...debug, hit: "golfapi:" + q } };
           }
-        } catch { /* try next */ }
+        }
+      } catch { /* */ }
+    }
+    await sleep(1100); // honour Nominatim's ~1 req/sec policy
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&q=${encodeURIComponent(q)}`, { headers: { "user-agent": UA, "accept": "application/json" } });
+      if (!res.ok) { debug.tried.push({ q, status: res.status }); continue; }
+      const arr = (((await res.json()) as any) || []) as any[];
+      debug.tried.push({ q, n: arr.length, types: arr.slice(0, 3).map((h) => (h.class || h.category) + "/" + h.type) });
+      const golf = arr.find((h) => (h.class === "leisure" || h.category === "leisure") && h.type === "golf_course");
+      if (golf) {
+        const la = parseFloat(golf.lat), ln = parseFloat(golf.lon);
+        if (isFinite(la) && isFinite(ln)) {
+          const coords = { lat: la, lng: ln };
+          try { await cache.put(cacheKey, Response.json({ ...coords }, { headers: { "cache-control": "max-age=2592000" } })); } catch { /* */ }
+          return { coords, debug: { ...debug, hit: "osm:" + q } };
+        }
       }
-      return Response.json({ lat: null, lng: null });
-    });
-    const j: any = await r.json();
-    return (j.lat != null && j.lng != null && isFinite(j.lat) && isFinite(j.lng)) ? { lat: j.lat, lng: j.lng } : null;
-  } catch { return null; }
+    } catch { debug.tried.push({ q, status: "fetch-failed" }); }
+  }
+  return { coords: null, debug };
+}
+
+async function geocodeCourse(env: any, name: string, where: string): Promise<{ lat: number; lng: number } | null> {
+  return (await geocodeWithDebug(env, name, where)).coords;
 }
 
 function simplifyCourse(c: any) {
@@ -559,12 +574,13 @@ export default {
         const out: any[] = [];
         for (const c of slice) {
           let lat = c.lat, lng = c.lng, source = "catalog";
+          let geo: any = null;
           if (lat == null || lng == null) {
-            const g = await geocodeCourse(env, c.name, c.where || "");
-            if (g) {
-              lat = g.lat; lng = g.lng; source = "geocoded";
+            const gr = await geocodeWithDebug(env, c.name, c.where || "");
+            if (gr.coords) {
+              lat = gr.coords.lat; lng = gr.coords.lng; source = "geocoded";
               await catalog(env).fetch("https://do/setcoords", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: c.id, lat, lng }) });
-            } else source = "no-coords";
+            } else { source = "no-coords"; geo = gr.debug; }
           }
           let holesMapped = 0, mapErr: string | null = null;
           if (lat != null && lng != null) {
@@ -573,7 +589,7 @@ export default {
               if (hm.available) holesMapped = (hm.holes || []).length; else mapErr = hm.error || "not-mapped";
             } catch { mapErr = "probe-failed"; }
           }
-          out.push({ id: c.id, name: c.name, where: c.where, source, holesExpected: c.holesN, holesMapped, mapErr });
+          out.push({ id: c.id, name: c.name, where: c.where, source, holesExpected: c.holesN, holesMapped, mapErr, geo });
         }
         return Response.json({ total: all.length, offset, returned: slice.length, nextOffset: offset + slice.length < all.length ? offset + slice.length : null, courses: out });
       }

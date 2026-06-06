@@ -482,3 +482,4 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .adminedit .admin-pw { width: 100%; }
 .adminedit-btns { display: flex; gap: 8px; }
 .adminedit-btns .primary, .adminedit-btns .ghostbtn { flex: 1; }
+.cov-dbg { display: block; margin-top: 3px; font-size: 10.5px; line-height: 1.4; word-break: break-word; }
