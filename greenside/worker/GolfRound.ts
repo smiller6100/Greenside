@@ -28,7 +28,9 @@ export class GolfRound implements DurableObject {
       const cfg = await request.json<any>();
       const existing = await this.ctx.storage.get("state");
       if (!existing) {
-        await this.ctx.storage.put("state", { ...cfg, scores: {}, wolf: {}, createdAt: Date.now() });
+        const { adminToken, ...rest } = cfg;
+        if (adminToken) await this.ctx.storage.put("adminToken", adminToken);
+        await this.ctx.storage.put("state", { ...rest, scores: {}, wolf: {}, createdAt: Date.now() });
       }
       return Response.json({ ok: true });
     }
@@ -145,11 +147,39 @@ export class GolfRound implements DurableObject {
       await this.ctx.storage.put("state", state);
       this.broadcast({ type: "state", state });
     } else if (data.type === "setTeamMode") {
+      const stored = await this.ctx.storage.get("adminToken");
+      if (stored && data.token !== stored) return; // admin only when a token exists
       if (data.mode === "bestball" || data.mode === "best2" || data.mode === "scramble") {
         state.teamMode = data.mode;
         await this.ctx.storage.put("state", state);
         this.broadcast({ type: "state", state });
       }
+    } else if (data.type === "setRules") {
+      const stored = await this.ctx.storage.get("adminToken");
+      if (stored && data.token !== stored) return;
+      if (data.handicapMode === "perHole" || data.handicapMode === "course" || data.handicapMode === "gross") state.handicapMode = data.handicapMode;
+      await this.ctx.storage.put("state", state);
+      this.broadcast({ type: "state", state });
+    } else if (data.type === "deleteGroup") {
+      const stored = await this.ctx.storage.get("adminToken");
+      if (stored && data.token !== stored) return;
+      const g = String(data.group || "");
+      if (!g) return;
+      const removed = state.players.filter((p: any) => (p.group || "1") === g).map((p: any) => p.id);
+      state.players = state.players.filter((p: any) => (p.group || "1") !== g);
+      removed.forEach((id: string) => { if (state.scores) delete state.scores[id]; });
+      if (state.teamScores) delete state.teamScores[g];
+      await this.ctx.storage.put("state", state);
+      this.broadcast({ type: "state", state });
+    } else if (data.type === "removePlayer") {
+      const stored = await this.ctx.storage.get("adminToken");
+      if (stored && data.token !== stored) return;
+      const id = String(data.id || "");
+      if (!id) return;
+      state.players = state.players.filter((p: any) => p.id !== id);
+      if (state.scores) delete state.scores[id];
+      await this.ctx.storage.put("state", state);
+      this.broadcast({ type: "state", state });
     } else if (data.type === "setMode") {
       if (data.game === "sixes" && (data.mode === "points" || data.mode === "skins")) {
         state.sixesMode = data.mode;

@@ -114,10 +114,21 @@ export function useRound(code: string) {
     } : s);
   }, []);
 
-  const sendTeamMode = useCallback((mode: "bestball" | "best2" | "scramble") => {
-    wsRef.current?.send(JSON.stringify({ type: "setTeamMode", mode }));
+  const sendTeamMode = useCallback((token: string, mode: "bestball" | "best2" | "scramble") => {
+    wsRef.current?.send(JSON.stringify({ type: "setTeamMode", token, mode }));
     setState((s) => (s ? { ...s, teamMode: mode } : s));
   }, []);
 
-  return { state, connected, missing, sendScore, sendWolfPick, sendBbb, sendPress, sendSixesMode, sendAddPlayer, sendTeamScore, sendTeamMode };
+  const sendDeleteGroup = useCallback((token: string, group: string) => {
+    wsRef.current?.send(JSON.stringify({ type: "deleteGroup", token, group }));
+  }, []);
+  const sendRemovePlayer = useCallback((token: string, id: string) => {
+    wsRef.current?.send(JSON.stringify({ type: "removePlayer", token, id }));
+  }, []);
+  const sendSetRules = useCallback((token: string, rules: { handicapMode?: string }) => {
+    wsRef.current?.send(JSON.stringify({ type: "setRules", token, ...rules }));
+    setState((s) => (s && rules.handicapMode ? { ...s, handicapMode: rules.handicapMode as any } : s));
+  }, []);
+
+  return { state, connected, missing, sendScore, sendWolfPick, sendBbb, sendPress, sendSixesMode, sendAddPlayer, sendTeamScore, sendTeamMode, sendDeleteGroup, sendRemovePlayer, sendSetRules };
 }

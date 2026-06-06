@@ -7,7 +7,7 @@ import { computeStandings, computeGames, computeTeams, strokesOn, toParClass, fm
 const FORMAT_LABELS: Record<string, string> = { net: "Net", gross: "Gross", stableford: "Stableford", chicago: "Chicago", skins: "Skins", card: "Full card", games: "Games", teams: "Teams" };
 
 export default function Round({ code, joinGroup }: { code: string; joinGroup?: string | null }) {
-  const { state, connected, missing, sendScore, sendWolfPick, sendBbb, sendPress, sendSixesMode, sendAddPlayer, sendTeamScore, sendTeamMode } = useRound(code);
+  const { state, connected, missing, sendScore, sendWolfPick, sendBbb, sendPress, sendSixesMode, sendAddPlayer, sendTeamScore, sendTeamMode, sendDeleteGroup, sendRemovePlayer, sendSetRules } = useRound(code);
   const [tab, setTab] = useState<"board" | "score">("board");
   const [view, setView] = useState("net"); // a scoring format (leaderboard side)
   const [scView, setScView] = useState<"hole" | "card" | "games">("hole"); // scorecard side
@@ -16,6 +16,8 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
   const [me, setMe] = useState<string | null>(() => localStorage.getItem(`gs:me:${code}`));
   const [claimed, setClaimed] = useState(() => localStorage.getItem(`gs:claimed:${code}`) === "1");
   const isCreator = localStorage.getItem(`gs:creator:${code}`) === "1";
+  const adminToken = localStorage.getItem(`gs:admin:${code}`) || "";
+  const isAdmin = !!adminToken || isCreator;
   const [copied, setCopied] = useState(false);
   const [leaving, setLeaving] = useState(false);
   // self-join (outings)
@@ -76,11 +78,15 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
       : "Each foursome’s 2 best net scores per hole";
     return (
       <>
-        <div className="modetoggle teamtoggle">
-          <button className={tm === "bestball" ? "on" : ""} onClick={() => sendTeamMode("bestball")}>Best Ball</button>
-          <button className={tm === "best2" ? "on" : ""} onClick={() => sendTeamMode("best2")}>Best 2</button>
-          <button className={tm === "scramble" ? "on" : ""} onClick={() => sendTeamMode("scramble")}>Scramble</button>
-        </div>
+        {isAdmin ? (
+          <div className="modetoggle teamtoggle">
+            <button className={tm === "bestball" ? "on" : ""} onClick={() => sendTeamMode(adminToken, "bestball")}>Best Ball</button>
+            <button className={tm === "best2" ? "on" : ""} onClick={() => sendTeamMode(adminToken, "best2")}>Best 2</button>
+            <button className={tm === "scramble" ? "on" : ""} onClick={() => sendTeamMode(adminToken, "scramble")}>Scramble</button>
+          </div>
+        ) : (
+          <p className="modelabel">{tm === "bestball" ? "Best Ball" : tm === "scramble" ? "Scramble" : "Best 2"}</p>
+        )}
         <div className="board">
           {rows.map((t, i) => (
             <div key={t.group} className={`row ${i === 0 && t.thru > 0 ? "lead" : ""} ${t.group === myGroup ? "self" : ""}`}>
@@ -588,6 +594,41 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
                   <button className="glcopy" onClick={() => copyGroupLink(shareGrp)}>{gCopied ? "Copied" : "Copy link"}</button>
                 </div>
                 <p className="gl-hint">They open it, type their name, and land on Group {shareGrp}.</p>
+              </div>
+            )}
+            {state.outing && isAdmin && (
+              <div className="adminpanel">
+                <span className="gl-label">Outing admin</span>
+                <div className="adminrules">
+                  <span>Handicaps</span>
+                  <div className="modetoggle">
+                    <button className={state.handicapMode === "perHole" ? "on" : ""} onClick={() => sendSetRules(adminToken, { handicapMode: "perHole" })}>Per-hole</button>
+                    <button className={state.handicapMode === "course" ? "on" : ""} onClick={() => sendSetRules(adminToken, { handicapMode: "course" })}>Course</button>
+                    <button className={state.handicapMode === "gross" ? "on" : ""} onClick={() => sendSetRules(adminToken, { handicapMode: "gross" })}>Off</button>
+                  </div>
+                </div>
+                {groups.length === 0 ? <p className="gl-hint">No foursomes have joined yet.</p> : (
+                  <div className="admingroups">
+                    {groups.map((g) => {
+                      const members = state.players.filter((p) => (p.group || "1") === g);
+                      return (
+                        <div className="admingroup" key={g}>
+                          <div className="ag-head"><b>Group {g}</b>
+                            <button className="ag-del" onClick={() => { if (window.confirm(`Delete Group ${g} and its scores?`)) sendDeleteGroup(adminToken, g); }}>Delete</button>
+                          </div>
+                          <div className="ag-members">
+                            {members.map((p) => (
+                              <span className="ag-chip" key={p.id}>{p.name}
+                                <button onClick={() => { if (window.confirm(`Remove ${p.name}?`)) sendRemovePlayer(adminToken, p.id); }} aria-label="remove">×</button>
+                              </span>
+                            ))}
+                            {members.length === 0 && <em className="gl-hint">empty</em>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
             <p>Leaving keeps this round on your phone so you can jump back in. Ending it removes it from your Resume when you’re done for the day.</p>

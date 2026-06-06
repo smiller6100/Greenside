@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v23";
+const BUILD = "v24";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -290,15 +290,16 @@ export default {
     if (path === "/api/round" && request.method === "POST") {
       const cfg = await request.json<any>();
       const code = genCode();
+      const adminToken = genCode(20);
       const stub = env.GOLF_ROUND.get(env.GOLF_ROUND.idFromName(code));
-      await stub.fetch("https://do/init", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...cfg, code }) });
+      await stub.fetch("https://do/init", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...cfg, code, adminToken }) });
       if (cfg.courseName && Array.isArray(cfg.course) && cfg.course.length) {
         try {
           await catalog(env).fetch("https://do/upsert", { method: "POST", headers: { "content-type": "application/json" },
             body: JSON.stringify({ name: cfg.courseName, where: cfg.courseWhere || "", lat: cfg.lat ?? null, lng: cfg.lng ?? null, holes: cfg.course, tees: cfg.tees || null, defaultTee: cfg.teeName || cfg.defaultTee || null }) });
         } catch { /* non-fatal */ }
       }
-      return Response.json({ code });
+      return Response.json({ code, adminToken });
     }
 
     // ---- A round's live object ----

@@ -3,7 +3,7 @@ import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw } fro
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole } from "../lib/golf";
 
-const VERSION = "v23";
+const VERSION = "v24";
 
 const FORMAT_DEFS = [
   { id: "net", label: "Net" }, { id: "gross", label: "Gross" },
@@ -243,7 +243,8 @@ export default function Home() {
     };
     try {
       const r = await fetch("/api/round", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
-      const { code } = await r.json();
+      const { code, adminToken } = await r.json();
+      if (adminToken) localStorage.setItem(`gs:admin:${code}`, adminToken);
       if (outing) {
         localStorage.setItem(`gs:creator:${code}`, "1");
         localStorage.setItem(`gs:claimed:${code}`, "1"); // organizer view; can join a foursome later

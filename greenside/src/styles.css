@@ -427,3 +427,17 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 /* Team-scoring toggle (Best Ball / Best 2 / Scramble) */
 .teamtoggle { display: flex; width: 100%; margin: 0 0 14px; }
 .teamtoggle button { flex: 1; }
+
+/* Outing admin panel */
+.modelabel { font-size: 13px; font-weight: 700; color: var(--pine); margin-bottom: 12px; }
+.adminpanel { margin: 14px 0 4px; padding: 14px; border: 1px solid var(--line); border-radius: 13px; background: rgba(176,125,12,.05); }
+.adminrules { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.adminrules > span { font-size: 13px; font-weight: 700; color: var(--ink); }
+.admingroups { display: flex; flex-direction: column; gap: 9px; }
+.admingroup { border: 1px solid var(--line); border-radius: 11px; padding: 9px 11px; background: #fff; }
+.ag-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; }
+.ag-head b { font-size: 13.5px; color: var(--pine); }
+.ag-del { border: none; background: rgba(216,63,47,.1); color: var(--over); font: inherit; font-size: 12px; font-weight: 700; padding: 5px 11px; border-radius: 8px; cursor: pointer; }
+.ag-members { display: flex; flex-wrap: wrap; gap: 6px; }
+.ag-chip { display: inline-flex; align-items: center; gap: 6px; background: rgba(15,58,40,.06); border-radius: 8px; padding: 4px 6px 4px 10px; font-size: 13px; font-weight: 600; color: var(--ink); }
+.ag-chip button { border: none; background: rgba(216,63,47,.14); color: var(--over); width: 19px; height: 19px; border-radius: 6px; font-size: 14px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; }
