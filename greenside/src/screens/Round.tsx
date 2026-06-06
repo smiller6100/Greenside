@@ -343,40 +343,39 @@ export default function Round({ code }: { code: string }) {
             {(state.games?.sixes || state.games?.nassau) && state.players.length === 4 && (() => {
               const blocks: any[] = [];
               const teamNames = (t: any[]) => t.map((p) => p.name).join("/");
-              if (state.games?.sixes) {
-                const seg = sixesSegs(state.players).find((s) => hole.num >= s.lo && hole.num <= s.hi);
-                if (seg) {
-                  const up = holesUp(state, seg.a, seg.b, seg.lo, seg.hi);
-                  const down = up > 0 ? seg.b : up < 0 ? seg.a : null;
-                  const pressed = ((state.presses?.sixes) || []).includes(hole.num);
-                  blocks.push(
-                    <div className="pressbar" key="sixes">
-                      <div className="wolf-head">Sixes · {seg.label}: <b>{up === 0 ? "all square" : `${teamNames(up > 0 ? seg.a : seg.b)} ${Math.abs(up)} up`}</b></div>
-                      {up !== 0 && hole.num < seg.hi && (
-                        <button className={`pressbtn ${pressed ? "on" : ""}`} onClick={() => sendPress("sixes", hole.num)}>
-                          {pressed ? `Pressed from ${hole.num} — tap to undo` : `Press: ${teamNames(down!)} start a new bet from here`}
-                        </button>
-                      )}
-                    </div>
-                  );
-                }
-              }
-              if (state.games?.nassau) {
-                const t1 = [state.players[0], state.players[1]], t2 = [state.players[2], state.players[3]];
-                const lo = hole.num <= 9 ? 1 : 10, hi = hole.num <= 9 ? 9 : 18, label = hole.num <= 9 ? "Front 9" : "Back 9";
-                const up = holesUp(state, t1, t2, lo, hi);
-                const down = up > 0 ? t2 : up < 0 ? t1 : null;
-                const pressed = ((state.presses?.nassau) || []).includes(hole.num);
+              const statusOf = (a: any[], b: any[], lo: number, hi: number) => {
+                const u = holesUp(state, a, b, lo, hi);
+                return u === 0 ? "all square" : `${teamNames(u > 0 ? a : b)} ${Math.abs(u)} up`;
+              };
+              const render = (key: string, label: string, a: any[], b: any[], lo: number, hi: number, game: "sixes" | "nassau") => {
+                const up = holesUp(state, a, b, lo, hi);
+                const all = ((state.presses as any)?.[game] || []) as number[];
+                const pressList = all.filter((h) => h >= lo && h <= hi).sort((x, y) => x - y)
+                  .map((start) => ({ start, status: statusOf(a, b, start, hi) }));
+                if (up === 0 && pressList.length === 0) return; // hide until a team is down
+                const down = up > 0 ? b : up < 0 ? a : null;
+                const iCanPress = !!me && !!down && down.some((p: any) => p.id === me) && hole.num < hi;
+                const pressedHere = all.includes(hole.num);
                 blocks.push(
-                  <div className="pressbar" key="nassau">
-                    <div className="wolf-head">Nassau · {label}: <b>{up === 0 ? "all square" : `${teamNames(up > 0 ? t1 : t2)} ${Math.abs(up)} up`}</b></div>
-                    {up !== 0 && hole.num < hi && (
-                      <button className={`pressbtn ${pressed ? "on" : ""}`} onClick={() => sendPress("nassau", hole.num)}>
-                        {pressed ? `Pressed from ${hole.num} — tap to undo` : `Press: ${teamNames(down!)} start a new bet from here`}
+                  <div className="pressbar" key={key}>
+                    <div className="wolf-head">{label}: <b>{up === 0 ? "all square" : `${teamNames(up > 0 ? a : b)} ${Math.abs(up)} up`}</b></div>
+                    {pressList.map((pr, i) => (<div className="presrow light" key={i}>Press from {pr.start}: {pr.status}</div>))}
+                    {iCanPress && (
+                      <button className={`pressbtn ${pressedHere ? "on" : ""}`} onClick={() => sendPress(game, hole.num)}>
+                        {pressedHere ? `Pressed from ${hole.num} — tap to undo` : "Press — start a new bet from here"}
                       </button>
                     )}
                   </div>
                 );
+              };
+              if (state.games?.sixes) {
+                const seg = sixesSegs(state.players).find((s) => hole.num >= s.lo && hole.num <= s.hi);
+                if (seg) render("sixes", `Sixes · ${seg.label}`, seg.a, seg.b, seg.lo, seg.hi, "sixes");
+              }
+              if (state.games?.nassau) {
+                const t1 = [state.players[0], state.players[1]], t2 = [state.players[2], state.players[3]];
+                const lo = hole.num <= 9 ? 1 : 10, hi = hole.num <= 9 ? 9 : 18, label = hole.num <= 9 ? "Front 9" : "Back 9";
+                render("nassau", `Nassau · ${label}`, t1, t2, lo, hi, "nassau");
               }
               return blocks;
             })()}

@@ -386,3 +386,5 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .segstatus { display: block; color: var(--pine); font-weight: 800; margin-top: 3px; }
 .presrow { display: block; color: var(--brass); font-size: 12px; font-weight: 600; margin-top: 2px; }
 .grow.presrowline span, .grow.presrowline b { color: var(--brass); font-size: 12.5px; }
+
+.pressbar .presrow { color: #fdf6e8; opacity: .92; font-weight: 600; font-size: 12.5px; margin-top: 6px; }
