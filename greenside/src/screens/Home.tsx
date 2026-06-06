@@ -3,7 +3,7 @@ import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw } fro
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole } from "../lib/golf";
 
-const VERSION = "v43";
+const VERSION = "v44";
 
 const FORMAT_DEFS = [
   { id: "net", label: "Net" }, { id: "gross", label: "Gross" },
@@ -62,6 +62,7 @@ export default function Home() {
   const [adminMsg, setAdminMsg] = useState("");
   const [coverage, setCoverage] = useState<any[] | null>(null);
   const [covRunning, setCovRunning] = useState(false);
+  const [covTotal, setCovTotal] = useState(0);
 
   // course
   const [query, setQuery] = useState("");
@@ -216,12 +217,13 @@ export default function Home() {
     } catch { setAdminMsg("Delete failed."); }
   };
   const runCoverage = async () => {
-    setCovRunning(true); setCoverage([]); setAdminMsg("");
+    setCovRunning(true); setCoverage([]); setAdminMsg(""); setCovTotal(0);
     try {
       let offset = 0; const acc: any[] = [];
-      for (let page = 0; page < 12; page++) {
-        const r = await fetch(`/api/admin/coverage?offset=${offset}&limit=25`, { headers: { "x-admin-key": adminKey } });
+      for (let page = 0; page < 40; page++) {
+        const r = await fetch(`/api/admin/coverage?offset=${offset}&limit=4`, { headers: { "x-admin-key": adminKey } });
         const d: any = await r.json();
+        if (d.total != null) setCovTotal(d.total);
         acc.push(...(d.courses || []));
         setCoverage([...acc]);
         if (d.nextOffset == null) break;
@@ -230,7 +232,7 @@ export default function Home() {
     } catch { setAdminMsg("Coverage check failed — try again."); }
     setCovRunning(false);
   };
-  const closeAdmin = () => { setAdminOpen(false); setAdminAuthed(false); setAdminKey(""); setAdminCourses([]); setAdminMsg(""); setCoverage(null); setCovRunning(false); };
+  const closeAdmin = () => { setAdminOpen(false); setAdminAuthed(false); setAdminKey(""); setAdminCourses([]); setAdminMsg(""); setCoverage(null); setCovRunning(false); setCovTotal(0); };
 
   const parTotal = course.reduce((s, h) => s + h.par, 0);
   const selTee = tees.find((t) => t.name === teeName) || tees[0];
@@ -511,7 +513,7 @@ export default function Home() {
                     </div>
                   ))}
                 </div>
-                <button className="ghostbtn" onClick={runCoverage} disabled={covRunning}>{covRunning ? "Checking coverage…" : "Check hole-map coverage"}</button>
+                <button className="ghostbtn" onClick={runCoverage} disabled={covRunning}>{covRunning ? `Checking coverage… ${coverage ? coverage.length : 0}${covTotal ? "/" + covTotal : ""}` : "Check hole-map coverage"}</button>
                 {coverage && (
                   <div className="adminlist">
                     {coverage.length === 0 && !covRunning && <p className="hint left">No courses.</p>}
