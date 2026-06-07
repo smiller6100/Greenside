@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from "react";
-import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw } from "lucide-react";
+import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw, ClipboardList, Trash2, ChevronLeft } from "lucide-react";
+import { computeStandings, fmtToPar } from "../lib/golf";
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, GAME_HELP, composeNines, ninesFromHoles } from "../lib/golf";
 
-const VERSION = "v64";
+const VERSION = "v66";
 
 
 
@@ -35,6 +36,27 @@ export default function Home() {
   const [last] = useState(() => ({ code: localStorage.getItem("gs:lastRound") || "", name: localStorage.getItem("gs:lastRoundName") || "" }));
   const [confirmNew, setConfirmNew] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
+  const [roundsOpen, setRoundsOpen] = useState(false);
+  const [myRounds, setMyRounds] = useState<any[]>([]);
+  const [viewRound, setViewRound] = useState<any | null>(null);
+  const [delCode, setDelCode] = useState<string>("");
+  const loadMyRounds = () => { try { setMyRounds(JSON.parse(localStorage.getItem("gs:rounds") || "[]")); } catch { setMyRounds([]); } };
+  useEffect(() => { loadMyRounds(); }, []);
+  const deleteMyRound = (code: string) => {
+    const next = myRounds.filter((r) => r.code !== code);
+    setMyRounds(next); setDelCode(""); if (viewRound?.code === code) setViewRound(null);
+    try { localStorage.setItem("gs:rounds", JSON.stringify(next)); } catch { /* */ }
+  };
+  const roundResult = (snap: any) => {
+    const fmt = ["net", "gross", "stableford", "chicago", "skins"].find((f) => snap.formats?.[f]) || "net";
+    try {
+      const st = computeStandings(snap, fmt);
+      if (!st.length) return null;
+      const winner = st[0];
+      const wname = snap.players.find((p: any) => p.id === winner.id)?.name || "—";
+      return { fmt, winner: wname, st };
+    } catch { return null; }
+  };
   const [adminKey, setAdminKey] = useState("");
   const [adminAuthed, setAdminAuthed] = useState(false);
   const [adminCourses, setAdminCourses] = useState<{ id: string; name: string; where: string; plays: number }[]>([]);
@@ -379,6 +401,12 @@ export default function Home() {
           </div>
         )}
 
+        {myRounds.length > 0 && (
+          <button className="myrounds-btn" onClick={() => { loadMyRounds(); setRoundsOpen(true); }}>
+            <ClipboardList size={16} /> My rounds<span className="myrounds-n">{myRounds.length}</span>
+          </button>
+        )}
+
         <div className="seg big">
           <button className={`seg-btn ${mode === "create" ? "on" : ""}`} onClick={() => { setMode("create"); setErr(""); }}>Start a round</button>
           <button className={`seg-btn ${mode === "join" ? "on" : ""}`} onClick={() => { setMode("join"); setErr(""); }}>Join a round</button>
@@ -607,6 +635,106 @@ export default function Home() {
 
         <div className="ver">Greenside {VERSION}</div>
 
+        {roundsOpen && (
+          <div className="roundswrap" onClick={() => { setRoundsOpen(false); setViewRound(null); setDelCode(""); }}>
+            <div className="roundscard" onClick={(e) => e.stopPropagation()}>
+              {!viewRound ? (
+                <>
+                  <div className="rounds-head"><h3>My rounds</h3><button className="xbtn" onClick={() => setRoundsOpen(false)}>✕</button></div>
+                  <p className="hint left">Saved on this device — no account. Clearing your browser data removes them.</p>
+                  <div className="rounds-list">
+                    {myRounds.length === 0 && <p className="hint left">No rounds yet.</p>}
+                    {myRounds.map((r) => {
+                      const res = roundResult(r);
+                      const thru = res ? Math.max(0, ...res.st.map((s: any) => s.thru)) : 0;
+                      return (
+                        <div className="roundrow" key={r.code}>
+                          {delCode === r.code ? (
+                            <div className="roundrow-del">
+                              <span>Delete this round?</span>
+                              <button className="delbtn" onClick={() => deleteMyRound(r.code)}>Delete</button>
+                              <button className="ghostbtn sm" onClick={() => setDelCode("")}>Cancel</button>
+                            </div>
+                          ) : (
+                            <>
+                              <button className="roundrow-main" onClick={() => setViewRound(r)}>
+                                <div className="rr-top"><b>{r.name || r.code}</b><span className="rr-date">{new Date(r.savedAt).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}</span></div>
+                                <div className="rr-sub">{r.courseName || "Course"}{res ? ` · 🏆 ${res.winner}` : ""}{thru ? ` · thru ${thru}` : ""}</div>
+                              </button>
+                              <button className="rr-trash" onClick={() => setDelCode(r.code)} aria-label="delete"><Trash2 size={16} /></button>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <button className="ghostbtn" onClick={() => setRoundsOpen(false)}>Done</button>
+                </>
+              ) : (() => {
+                const snap = viewRound;
+                const res = roundResult(snap);
+                const useHcp = snap.handicapMode !== "gross";
+                const course = snap.course || [];
+                const labeled = course.some((h: any) => h.nine);
+                let chunks: { label: string; holes: any[] }[] = [];
+                if (labeled) {
+                  let s = 0; for (let i = 1; i <= course.length; i++) { if (i === course.length || course[i].nine !== course[s].nine) { chunks.push({ label: course[s].nine || "", holes: course.slice(s, i) }); s = i; } }
+                } else { for (let i = 0; i < course.length; i += 9) chunks.push({ label: course.length <= 9 ? "Out" : ["Out", "In", "Third"][i / 9] || "", holes: course.slice(i, i + 9) }); }
+                const sumSc = (pid: string, hs: any[]) => hs.reduce((t, h) => t + ((snap.scores[pid] || {})[h.num] || 0), 0);
+                return (
+                  <>
+                    <div className="rounds-head">
+                      <button className="backbtn" onClick={() => setViewRound(null)}><ChevronLeft size={18} /></button>
+                      <h3 className="rd-title">{snap.name || snap.code}</h3>
+                      <button className="xbtn" onClick={() => { setRoundsOpen(false); setViewRound(null); }}>✕</button>
+                    </div>
+                    <p className="hint left">{snap.courseName || "Course"} · {new Date(snap.savedAt).toLocaleDateString([], { month: "long", day: "numeric", year: "numeric" })}</p>
+
+                    {res && (
+                      <div className="rd-board">
+                        {res.st.map((s: any, i: number) => (
+                          <div className={`rd-brow ${snap.me && s.id === snap.me ? "me" : ""}`} key={s.id}>
+                            <span className="rd-rank">{i + 1}</span>
+                            <span className="rd-name">{s.name}</span>
+                            <span className="rd-score">{s.gross || "–"}{useHcp ? <em> ({fmtToPar(s.toParNet)})</em> : <em> ({fmtToPar(s.toParGross)})</em>}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="rd-cards">
+                      {chunks.map((c, ci) => (
+                        <div className="rd-chunk" key={ci}>
+                          {c.label && <div className="rd-ninelabel">{c.label}</div>}
+                          <div className="rd-scroll">
+                            <table className="rd-grid">
+                              <thead>
+                                <tr><th>Hole</th>{c.holes.map((h) => <th key={h.num}>{h.num}</th>)}<th className="tot">Tot</th></tr>
+                                <tr className="rd-par"><th>Par</th>{c.holes.map((h) => <th key={h.num}>{h.par}</th>)}<th className="tot">{c.holes.reduce((t, h) => t + h.par, 0)}</th></tr>
+                              </thead>
+                              <tbody>
+                                {snap.players.map((p: any) => (
+                                  <tr key={p.id} className={snap.me && p.id === snap.me ? "me" : ""}>
+                                    <th>{p.name.split(" ")[0]}</th>
+                                    {c.holes.map((h) => <td key={h.num}>{(snap.scores[p.id] || {})[h.num] || "·"}</td>)}
+                                    <td className="tot">{sumSc(p.id, c.holes) || "–"}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <button className="ghostbtn" onClick={() => { location.hash = `#/r/${snap.code}`; }}>Open round</button>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        )}
+
         {adminOpen && (
           <div className="modal"><div className="sheet">
             {!adminAuthed ? (
@@ -657,6 +785,7 @@ export default function Home() {
                       const ok = c.holesMapped > 0;
                       const status = ok ? `✓ ${c.holesMapped}/${c.holesExpected} holes mapped`
                         : c.source === "no-coords" ? "no location found"
+                        : c.mapErr ? `map error: ${c.mapErr}`
                         : "not in OpenStreetMap";
                       return (
                         <div className="adminrow" key={c.id}>

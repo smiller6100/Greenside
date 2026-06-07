@@ -98,6 +98,24 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
   };
   useEffect(() => () => { stopWatch(); if (shareRef.current && me) sendPosClear(me); }, []);
 
+  // Keep a device-local log of this round (no account) so it shows up under "My rounds".
+  useEffect(() => {
+    if (!state || !state.players?.length) return;
+    try {
+      const raw = localStorage.getItem("gs:rounds");
+      const list = raw ? JSON.parse(raw) : [];
+      const snap = {
+        code, savedAt: Date.now(), me: me || "",
+        name: state.name, courseName: (state as any).courseName || "",
+        course: state.course, players: state.players, scores: (state as any).scores || {},
+        formats: state.formats, handicapMode: state.handicapMode,
+      };
+      const i = list.findIndex((r: any) => r.code === code);
+      if (i >= 0) list[i] = snap; else list.unshift(snap);
+      localStorage.setItem("gs:rounds", JSON.stringify(list.slice(0, 60)));
+    } catch { /* storage full or unavailable */ }
+  }, [state]);
+
   const [chatOpen, setChatOpen] = useState(false);
   const [chatUnread, setChatUnread] = useState(0);
   const [chatText, setChatText] = useState("");

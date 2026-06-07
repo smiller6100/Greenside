@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v64";
+const BUILD = "v65";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -20,7 +20,7 @@ const catalog = (env: Env) => env.COURSE_CATALOG.get(env.COURSE_CATALOG.idFromNa
 
 // Produce (and cache) a hole map for a coordinate. Shared by the public route and the admin probe.
 async function holeMapFor(lat: number, lng: number, wantHoles: number): Promise<Response> {
-  return cachedJson(`https://cache/holemap/v11/${lat.toFixed(4)},${lng.toFixed(4)},${wantHoles}`, 7 * 86400, async () => {
+  return cachedJson(`https://cache/holemap/v12/${lat.toFixed(4)},${lng.toFixed(4)},${wantHoles}`, 7 * 86400, async () => {
     const q = `[out:json][timeout:25];(way["golf"](around:2800,${lat},${lng});relation["golf"](around:2800,${lat},${lng});way["leisure"="golf_course"](around:2800,${lat},${lng});relation["leisure"="golf_course"](around:2800,${lat},${lng}););out geom;`;
     const servers = [
       "https://overpass.private.coffee/api/interpreter",
@@ -38,7 +38,12 @@ async function holeMapFor(lat: number, lng: number, wantHoles: number): Promise<
         });
         if (!r.ok) { lastErr = "overpass-" + r.status + "@" + host; continue; }
         const data = await r.json();
-        return Response.json(parseHoleMap(data, lat, lng, wantHoles));
+        const result: any = parseHoleMap(data, lat, lng, wantHoles);
+        // Only cache a map that actually came back with holes. An empty/failed parse returns a
+        // non-200 so it is NOT cached — a later retry re-fetches instead of sticking for a week.
+        if (result && result.available) return Response.json(result);
+        lastErr = "parsed-empty(found " + ((result && result.counts && result.counts.found) || 0) + ")@" + host;
+        return new Response(JSON.stringify({ available: false, error: lastErr, counts: result && result.counts }), { status: 503, headers: { "content-type": "application/json" } });
       } catch { lastErr = "fetch-failed@" + host; }
     }
     return new Response(JSON.stringify({ available: false, error: lastErr }), { status: 503, headers: { "content-type": "application/json" } });
