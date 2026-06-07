@@ -3,7 +3,7 @@ import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw } fro
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, GAME_HELP } from "../lib/golf";
 
-const VERSION = "v56";
+const VERSION = "v57";
 
 
 

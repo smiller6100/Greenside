@@ -474,11 +474,11 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
         <div className="topbar">
           <div className="mark"><LogoMark size={22} /><span>GREENSIDE</span></div>
           <div className="topbar-right">
-            <button className="gearbtn" onClick={shareRound} aria-label="Share scorecard"><Share2 size={20} strokeWidth={2.4} /></button>
+            <button className="gearbtn" onClick={shareRound} aria-label="Share scorecard"><Share2 size={18} /></button>
             <button className="gearbtn chatbtn" onClick={() => { setChatOpen(true); setChatUnread(0); }} aria-label="Group chat">
-              <MessageCircle size={20} strokeWidth={2.4} />{chatUnread > 0 && <span className="chatbadge">{chatUnread > 9 ? "9+" : chatUnread}</span>}
+              <MessageCircle size={18} />{chatUnread > 0 && <span className="chatbadge">{chatUnread > 9 ? "9+" : chatUnread}</span>}
             </button>
-            {(!state.outing || isAdmin) && <button className="gearbtn" onClick={openEdit} aria-label="Edit round"><Settings size={20} strokeWidth={2.4} /></button>}
+            {(!state.outing || isAdmin) && <button className="gearbtn" onClick={openEdit} aria-label="Edit round"><Settings size={18} /></button>}
             <div className={`live ${connected ? "on" : ""}`}><span className="dot" />{connected ? "LIVE" : "···"}</div>
           </div>
         </div>
