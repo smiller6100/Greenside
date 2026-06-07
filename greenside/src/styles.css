@@ -597,3 +597,15 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .ninepresets { display:flex; flex-wrap:wrap; gap:6px; }
 .ninepreset { border:1px solid var(--line,#e7ece3); background:#fff; color:#3a5340; border-radius:9px; padding:6px 10px; font:inherit; font-size:12.5px; font-weight:700; cursor:pointer; }
 .ninepreset.on { border-color:#2f7a3a; color:#15643d; background:#eaf4e6; }
+
+/* Per-nine label above each setup scorecard block */
+.cg-ninelabel { font-weight:800; font-size:14px; color:#15643d; margin:2px 2px 6px; }
+
+/* Scan card-type chooser */
+.scanchoose { border:1px solid var(--line,#e7ece3); border-radius:14px; padding:12px; background:#f7faf3; display:flex; flex-direction:column; gap:8px; }
+.scanchoose-h { font-size:13px; font-weight:800; color:var(--ink); margin:2px 0 2px; }
+.scanopt { display:flex; flex-direction:column; align-items:flex-start; gap:1px; border:1.5px solid var(--line,#e7ece3); background:#fff; border-radius:11px; padding:11px 14px; font:inherit; cursor:pointer; text-align:left; }
+.scanopt b { font-size:15px; font-weight:800; color:var(--ink); }
+.scanopt small { font-size:12px; font-weight:600; color:#8aa18c; }
+.scanopt:active { border-color:#2f7a3a; background:#eaf4e6; }
+.scanchoose-x { border:none; background:none; color:#8aa18c; font:inherit; font-size:13px; font-weight:700; cursor:pointer; padding:4px; align-self:center; }

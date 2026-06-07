@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v58";
+const BUILD = "v62";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -694,8 +694,10 @@ export default {
       await stub.fetch("https://do/init", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...cfg, code, adminToken }) });
       if (cfg.courseName && Array.isArray(cfg.course) && cfg.course.length) {
         try {
+          const catHoles = Array.isArray(cfg.catalogHoles) && cfg.catalogHoles.length ? cfg.catalogHoles : cfg.course;
+          const catTees = Array.isArray(cfg.catalogTees) && cfg.catalogTees.length ? cfg.catalogTees : (cfg.tees || null);
           await catalog(env).fetch("https://do/upsert", { method: "POST", headers: { "content-type": "application/json" },
-            body: JSON.stringify({ name: cfg.courseName, where: cfg.courseWhere || "", lat: cfg.lat ?? null, lng: cfg.lng ?? null, holes: cfg.course, tees: cfg.tees || null, defaultTee: cfg.teeName || cfg.defaultTee || null }) });
+            body: JSON.stringify({ name: cfg.courseName, where: cfg.courseWhere || "", lat: cfg.lat ?? null, lng: cfg.lng ?? null, holes: catHoles, tees: catTees, defaultTee: cfg.teeName || cfg.defaultTee || null }) });
         } catch { /* non-fatal */ }
       }
       return Response.json({ code, adminToken });

@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw } from "lucide-react";
 import { FullLogo } from "../components/Logo";
-import { DEFAULT_COURSE, type Hole, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, GAME_HELP, composeNines, ninePresets } from "../lib/golf";
+import { DEFAULT_COURSE, type Hole, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, GAME_HELP, composeNines, ninesFromHoles } from "../lib/golf";
 
-const VERSION = "v58";
+const VERSION = "v62";
 
 
 
@@ -60,6 +60,12 @@ export default function Home() {
   const [courseName, setCourseName] = useState("");
   const [courseWhere, setCourseWhere] = useState("");
   const [nines3, setNines3] = useState(false);
+  const nines3Ref = useRef(false);
+  const [scanChoose, setScanChoose] = useState(false);
+  const chooseScan = (is27: boolean) => {
+    nines3Ref.current = is27; setNines3(is27); setScanChoose(false);
+    setTimeout(() => fileIn.current?.click(), 0);
+  };
   const [ninesRaw, setNinesRaw] = useState<{ name: string; par: number[]; si: number[]; tees: { name: string; yards: number[] }[] }[] | null>(null);
   const [ninePick, setNinePick] = useState<number[]>([]);
   const composeFromPick = (raw: typeof ninesRaw, pick: number[]) => {
@@ -116,8 +122,29 @@ export default function Home() {
       const r = await fetch(`/api/courses/${hit.id}`);
       if (!r.ok) throw new Error();
       const data = await r.json();
-      const holes: Hole[] = (data.holes || []).map((h: any) => ({ num: h.num, par: h.par, yards: h.yards, si: h.si }));
-      if (!holes.length) { setMsg("That course had no scorecard data. Try another or scan it."); setSearching(false); return; }
+      const rawHoles: any[] = (data.holes || []).map((h: any) => ({ num: h.num, par: h.par, yards: h.yards, si: h.si, nine: h.nine }));
+      if (!rawHoles.length) { setMsg("That course had no scorecard data. Try another or scan it."); setSearching(false); return; }
+      // A saved 27-hole / three-nines course: rebuild the nine picker instead of a flat load.
+      const labels = new Set(rawHoles.map((h) => h.nine).filter(Boolean));
+      if (labels.size >= 2) {
+        const grouped = ninesFromHoles(rawHoles as any);
+        const teesIn = (data.tees || []).map((t: any) => ({ name: t.name, holes: (t.holes || []).map((h: any) => ({ ...h })) }));
+        const raw = grouped.map((g) => ({
+          name: g.name,
+          par: g.holes.map((h) => h.par),
+          si: g.holes.map((h) => (h as any).si),
+          tees: teesIn.map((t: any) => ({ name: t.name, yards: t.holes.filter((h: any) => h.nine === g.name).map((h: any) => h.yards) })).filter((t: any) => t.yards.length === g.holes.length),
+        }));
+        const pick = raw.length >= 2 ? [0, 1] : raw.map((_, i) => i);
+        setNinesRaw(raw); setNinePick(pick); composeFromPick(raw, pick);
+        setCourseName(data.name || hit.name); setCourseWhere(data.where || hit.where || "");
+        setLoc({ lat: data.lat ?? hit.lat, lng: data.lng ?? hit.lng });
+        setSiEstimated(false); setScanned(false); setLoaded(true); setEditing(false);
+        if (!nameTouched) setRoundName(data.name || hit.name);
+        setSearching(false);
+        return;
+      }
+      const holes: Hole[] = rawHoles.map((h) => ({ num: h.num, par: h.par, yards: h.yards, si: h.si }));
       const tlist = (data.tees || []).map((t: any) => ({ name: t.name, total: t.total, holes: (t.holes || []).map((h: any) => ({ num: h.num, par: h.par, yards: h.yards, si: h.si })) }));
       const tfinal = tlist.length ? tlist : [{ name: "Tees", total: holes.reduce((s: number, h: Hole) => s + (h.yards || 0), 0), holes }];
       setTees(tfinal); setTeeName(data.defaultTee || tfinal[0]?.name || "");
@@ -134,7 +161,7 @@ export default function Home() {
     setScanning(true); setMsg("");
     try {
       const blob = await fileToJpeg(file);
-      const r = await fetch(nines3 ? "/api/courses/scan?nines=3" : "/api/courses/scan", { method: "POST", headers: { "content-type": "image/jpeg" }, body: blob });
+      const r = await fetch(nines3Ref.current ? "/api/courses/scan?nines=3" : "/api/courses/scan", { method: "POST", headers: { "content-type": "image/jpeg" }, body: blob });
       if (!r.ok) {
         setMsg("Couldn't read that photo clearly — enter the holes by hand below, or try a flatter, brighter shot.");
         const blank = DEFAULT_COURSE.map((h) => ({ ...h, yards: 0, si: 0 }));
@@ -281,12 +308,26 @@ export default function Home() {
   async function doCreate() {
     setConfirmNew(false); setBusy(true);
     const named = players.map((p) => ({ name: p.name.trim(), hcp: p.hcp, group: p.group })).filter((p) => p.name);
+    // For a three-nines course, save ALL nines to the catalog (raw, per-nine SI) so it stays a
+    // 27-hole course on future searches — the round itself still uses the composed selection.
+    let catalogHoles: any = null, catalogTees: any = null;
+    if (ninesRaw && ninesRaw.length) {
+      catalogHoles = ninesRaw.flatMap((n) => n.par.map((p, k) => ({ num: k + 1, par: Number(p) || 4, yards: 0, si: Number(n.si[k]) || 0, nine: n.name })));
+      const lists = ninesRaw.map((n) => n.tees.map((t) => t.name));
+      let names = lists[0] || []; for (const a of lists.slice(1)) names = names.filter((nm) => a.includes(nm));
+      if (!names.length) names = lists[0] || [];
+      catalogTees = names.map((tn) => {
+        const holes = ninesRaw.flatMap((n) => { const tee = n.tees.find((t) => t.name === tn); return n.par.map((p, k) => ({ num: k + 1, par: Number(p) || 4, yards: tee ? Number(tee.yards[k]) || 0 : 0, si: Number(n.si[k]) || 0, nine: n.name })); });
+        return { name: tn, total: holes.reduce((s, h) => s + h.yards, 0), holes };
+      });
+    }
     const payload = {
       name: roundName.trim() || "Round", formats, games: outing ? { wolf: false, nines: false, sixes: false, vegas: false, nassau: false, bbb: false, bestball: false } : games,
       outing, groupCount, handicapMode: hcpMode,
       course, lat: loc.lat, lng: loc.lng,
       courseName: loaded ? courseName.trim() : "", courseWhere, teeName: loaded ? teeName : "",
       tees: loaded && tees.length ? tees : null, defaultTee: loaded ? teeName : "",
+      catalogHoles, catalogTees,
       players: named.map((p, i) => ({ id: `p${i + 1}`, name: p.name.trim(), hcp: Math.max(0, Math.min(54, parseInt(p.hcp) || 0)), ...(outing ? { group: p.group } : {}) })),
     };
     try {
@@ -355,10 +396,18 @@ export default function Home() {
                   ))}
                   {msg && <div className="srow muted">{msg}</div>}
                   <input ref={fileIn} type="file" accept="image/*" onChange={onScan} style={{ display: "none" }} />
-                  <label className="nines-check"><input type="checkbox" checked={nines3} onChange={(e) => setNines3(e.target.checked)} /> 27-hole card (three nines)</label>
-                  <button className="scanbtn" disabled={scanning} onClick={() => fileIn.current?.click()}>
-                    <Camera size={16} /> {scanning ? "Reading scorecard…" : nines3 ? "Scan the 3-nine card" : "Scan a scorecard"}
-                  </button>
+                  {!scanChoose ? (
+                    <button className="scanbtn" disabled={scanning} onClick={() => setScanChoose(true)}>
+                      <Camera size={16} /> {scanning ? "Reading scorecard…" : "Scan a scorecard"}
+                    </button>
+                  ) : (
+                    <div className="scanchoose">
+                      <div className="scanchoose-h">What kind of scorecard?</div>
+                      <button className="scanopt" onClick={() => chooseScan(false)}><b>Standard card</b><small>9 or 18 holes</small></button>
+                      <button className="scanopt" onClick={() => chooseScan(true)}><b>27-hole card</b><small>three nines on one card</small></button>
+                      <button className="scanchoose-x" onClick={() => setScanChoose(false)}>Cancel</button>
+                    </div>
+                  )}
                   <p className="hint left">No course? Snap the scorecard and we'll read it — and save it for everyone. Or leave blank for the demo Par 72.</p>
                 </>
               ) : (
@@ -383,12 +432,6 @@ export default function Home() {
                           );
                         })}
                       </div>
-                      <div className="ninepresets">
-                        {ninePresets(ninesRaw.map((n) => ({ name: n.name, holes: [] as any }))).map((p, i) => {
-                          const active = p.pick.length === ninePick.length && p.pick.every((x, k) => x === ninePick[k]);
-                          return <button key={i} className={`ninepreset ${active ? "on" : ""}`} onClick={() => pickNines(p.pick)}>{p.label}</button>;
-                        })}
-                      </div>
                     </div>
                   )}
                   {scanned && <p className="hint left warn">Scanned — tap a tee name to use it, and double-check the numbers (especially the S.I. row).</p>}
@@ -398,8 +441,21 @@ export default function Home() {
                   </button>
                   {editing && (
                     <div className="cardgrid">
-                      {(course.length > 9 ? [[0, 9], [9, course.length]] : [[0, course.length]]).map(([from, to], seg) => (
+                      {(() => {
+                        const labeled = course.some((h) => (h as any).nine);
+                        let segs: { label: string; from: number; to: number }[];
+                        if (labeled) {
+                          segs = []; let start = 0;
+                          for (let i = 1; i <= course.length; i++) {
+                            if (i === course.length || (course[i] as any).nine !== (course[start] as any).nine) { segs.push({ label: (course[start] as any).nine || "", from: start, to: i }); start = i; }
+                          }
+                        } else if (course.length > 9) { segs = []; for (let i = 0; i < course.length; i += 9) segs.push({ label: "", from: i, to: Math.min(i + 9, course.length) }); }
+                        else segs = [{ label: "", from: 0, to: course.length }];
+                        return segs.map((sg, seg) => {
+                          const [from, to] = [sg.from, sg.to];
+                          return (
                         <div className="cg-wrap" key={seg}>
+                          {sg.label && <div className="cg-ninelabel">{sg.label}</div>}
                           <table className="cg">
                             <thead>
                               <tr>
@@ -433,7 +489,9 @@ export default function Home() {
                             </tbody>
                           </table>
                         </div>
-                      ))}
+                          );
+                        });
+                      })()}
                       <p className="hint left">Tap a tee name to use it for this round. Tap any number to fix it — Par and S.I. apply to every tee.</p>
                     </div>
                   )}
