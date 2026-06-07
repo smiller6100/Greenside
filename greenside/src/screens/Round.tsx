@@ -1,9 +1,9 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Minus, Plus, Crown, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Trophy, ClipboardList, Copy, Check, Home, Settings, MapPin, Users, Share2, MessageCircle, Send } from "lucide-react";
+import { Minus, Plus, Crown, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Trophy, ClipboardList, Copy, Check, Home, Settings, MapPin, Users, Share2, MessageCircle, Send, Wallet } from "lucide-react";
 import { LogoMark } from "../components/Logo";
 import HoleMap from "../components/HoleMap";
 import { useRound } from "../lib/useRound";
-import { computeStandings, computeGames, computeTeams, strokesOn, toParClass, fmtToPar, holesUp, sixesSegs, scoreTone, FORMAT_DEFS, HCP_DEFS, GAME_DEFS } from "../lib/golf";
+import { computeStandings, computeGames, computeTeams, strokesOn, toParClass, fmtToPar, holesUp, sixesSegs, scoreTone, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, computeMoney, netFromGames, settleUp } from "../lib/golf";
 
 const FORMAT_LABELS: Record<string, string> = { net: "Net", gross: "Gross", stableford: "Stableford", chicago: "Chicago", skins: "Skins", card: "Full card", games: "Games", teams: "Teams" };
 
@@ -25,16 +25,21 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
   const [edFormats, setEdFormats] = useState<Record<string, boolean>>({});
   const [edGames, setEdGames] = useState<Record<string, boolean>>({});
   const [edHcp, setEdHcp] = useState("perHole");
+  const [edStakes, setEdStakes] = useState<Record<string, string>>({});
   const openEdit = () => {
     if (!state) return;
     setEdFormats({ ...(state.formats as any) });
     setEdGames({ ...((state.games as any) || {}) });
     setEdHcp(state.handicapMode || "perHole");
+    const st = (state.stakes as any) || {};
+    setEdStakes(Object.fromEntries(Object.entries(st).map(([k, v]) => [k, String(v)])));
     setEditing(true);
   };
   const saveEdit = () => {
     if (!Object.values(edFormats).some(Boolean)) return; // keep at least one format
-    sendSetRules(adminToken, { handicapMode: edHcp, formats: edFormats, games: state?.outing ? undefined : edGames });
+    const stakes: Record<string, number> = {};
+    for (const [k, v] of Object.entries(edStakes)) { const num = parseFloat(v); if (isFinite(num) && num > 0) stakes[k] = num; }
+    sendSetRules(adminToken, { handicapMode: edHcp, formats: edFormats, games: state?.outing ? undefined : edGames, stakes });
     setEditing(false);
   };
   const editFlag = useRef(false);
@@ -114,6 +119,9 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
     setChatText("");
   };
 
+  const [settleOpen, setSettleOpen] = useState(false);
+  const [paid, setPaid] = useState<Record<string, boolean>>({});
+
   // Fetch the OSM hole-map data once, when the round first loads.
   const hmFetched = useRef(false);
   useEffect(() => {
@@ -149,6 +157,16 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
 
   const standings = useMemo(() => (state && view !== "card" ? computeStandings(state, view) : []), [state, view]);
   const games = useMemo(() => (state ? computeGames(state) : null), [state]);
+  const settle = useMemo(() => {
+    if (!state) return null;
+    const stakes = (state.stakes as any) || {};
+    if (!Object.values(stakes).some((v: any) => v > 0)) return null;
+    const byGame = computeMoney(state, stakes);
+    if (!Object.keys(byGame).length) return null;
+    const net = netFromGames(byGame);
+    const tx = settleUp(net);
+    return { byGame, net, tx };
+  }, [state]);
 
   if (missing) {
     return (
@@ -456,14 +474,71 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
         <div className="topbar">
           <div className="mark"><LogoMark size={22} /><span>GREENSIDE</span></div>
           <div className="topbar-right">
-            <button className="gearbtn" onClick={shareRound} aria-label="Share scorecard"><Share2 size={18} /></button>
+            <button className="gearbtn" onClick={shareRound} aria-label="Share scorecard"><Share2 size={20} strokeWidth={2.4} /></button>
             <button className="gearbtn chatbtn" onClick={() => { setChatOpen(true); setChatUnread(0); }} aria-label="Group chat">
-              <MessageCircle size={18} />{chatUnread > 0 && <span className="chatbadge">{chatUnread > 9 ? "9+" : chatUnread}</span>}
+              <MessageCircle size={20} strokeWidth={2.4} />{chatUnread > 0 && <span className="chatbadge">{chatUnread > 9 ? "9+" : chatUnread}</span>}
             </button>
-            {(!state.outing || isAdmin) && <button className="gearbtn" onClick={openEdit} aria-label="Edit round"><Settings size={18} /></button>}
+            {(!state.outing || isAdmin) && <button className="gearbtn" onClick={openEdit} aria-label="Edit round"><Settings size={20} strokeWidth={2.4} /></button>}
             <div className={`live ${connected ? "on" : ""}`}><span className="dot" />{connected ? "LIVE" : "···"}</div>
           </div>
         </div>
+
+        {settleOpen && settle && (() => {
+          const nameOf = (id: string) => state.players.find((p) => p.id === id)?.name || "Player";
+          const money = (v: number) => (v < 0 ? "−$" : "$") + Math.abs(v).toFixed(Number.isInteger(v) ? 0 : 2);
+          const venmo = (to: string, amt: number) => {
+            const url = `https://venmo.com/?txn=pay&amount=${amt.toFixed(2)}&note=${encodeURIComponent((state.name || "Golf") + " — settle up")}`;
+            window.open(url, "_blank");
+          };
+          const netSorted = Object.entries(settle.net).sort((a, b) => b[1] - a[1]);
+          return (
+            <div className="chatwrap" onClick={() => setSettleOpen(false)}>
+              <div className="settlecard" onClick={(e) => e.stopPropagation()}>
+                <div className="chathead">
+                  <div><h3>Settle up</h3><span className="chatsub">{Object.keys(settle.byGame).length} game{Object.keys(settle.byGame).length === 1 ? "" : "s"} · live as scores come in</span></div>
+                  <button className="xbtn" onClick={() => setSettleOpen(false)}>✕</button>
+                </div>
+                <div className="settlebody">
+                  <div className="set-h">Who pays whom <span>{settle.tx.length} payment{settle.tx.length === 1 ? "" : "s"}</span></div>
+                  {settle.tx.length === 0 ? <div className="set-allsquare">All square — nobody owes anything yet.</div> : settle.tx.map((t, i) => {
+                    const key = `${t.from}-${t.to}-${i}`;
+                    const done = paid[key];
+                    return (
+                      <div className={`payrow ${done ? "paid" : ""}`} key={key}>
+                        <div className="paywho"><b>{nameOf(t.from)}</b> <span className="payarr">→</span> <b>{nameOf(t.to)}</b></div>
+                        <span className="payamt">${t.amount.toFixed(Number.isInteger(t.amount) ? 0 : 2)}</span>
+                        {done ? <span className="paiddone"><Check size={15} /> Paid</span> : (
+                          <span className="payacts">
+                            <button className="vbtn" onClick={() => venmo(t.to, t.amount)}>Venmo</button>
+                            <button className="mbtn" onClick={() => setPaid({ ...paid, [key]: true })}>Mark paid</button>
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  <div className="set-h">Net for the round</div>
+                  {netSorted.map(([id, v]) => (
+                    <div className="netrow" key={id}><span className="netnm">{nameOf(id)}{id === me ? <small> · you</small> : ""}</span><span className={`netv ${v >= 0 ? "up" : "down"}`}>{money(v)}</span></div>
+                  ))}
+
+                  <div className="set-h">By game</div>
+                  {Object.entries(settle.byGame).map(([label, m]) => (
+                    <div className="setgame" key={label}>
+                      <div className="setgame-h">{label}</div>
+                      <div className="setgame-chips">
+                        {Object.entries(m).sort((a, b) => b[1] - a[1]).map(([id, v]) => (
+                          <span className="setchip" key={id}>{nameOf(id).split(" ")[0]} <b className={v >= 0 ? "up" : "down"}>{money(v)}</b></span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  <div className="set-note">Venmo opens prefilled with the amount — pick the person there — or use Mark paid for cash. Updates live; settle once the round's done.</div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {chatOpen && (
           <div className="chatwrap" onClick={() => setChatOpen(false)}>
@@ -527,6 +602,36 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
                 ))}
               </div>
 
+              {(() => {
+                const money: { id: string; label: string; unit: string }[] = [];
+                if (edFormats.skins) money.push({ id: "skins", label: "Skins", unit: "/ skin" });
+                if (!state.outing) {
+                  if (edGames.nassau) money.push({ id: "nassau", label: "Nassau", unit: "/ segment" });
+                  if (edGames.wolf) money.push({ id: "wolf", label: "Wolf", unit: "/ point" });
+                  if (edGames.nines) money.push({ id: "nines", label: "Nines", unit: "/ point" });
+                  if (edGames.vegas) money.push({ id: "vegas", label: "Vegas", unit: "/ point" });
+                  if (edGames.sixes) money.push({ id: "sixes", label: "Sixes", unit: "/ point" });
+                  if (edGames.bestball) money.push({ id: "bestball", label: "Best Ball", unit: "/ match" });
+                }
+                if (!money.length) return null;
+                return (
+                  <>
+                    <label className="edlabel">Stakes <span className="edlabel-opt">— for settle-up, optional</span></label>
+                    <div className="stakerows">
+                      {money.map((m) => (
+                        <div className="stakerow" key={m.id}>
+                          <span className="stake-nm">{m.label}</span>
+                          <span className="stake-dollar">$</span>
+                          <input className="stake-in" inputMode="decimal" placeholder="0" value={edStakes[m.id] || ""}
+                            onChange={(e) => setEdStakes({ ...edStakes, [m.id]: e.target.value.replace(/[^0-9.]/g, "") })} />
+                          <span className="stake-unit">{m.unit}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                );
+              })()}
+
               <div className="editbtns">
                 <button className="ghostbtn" onClick={() => setEditing(false)}>Cancel</button>
                 <button className="primary" onClick={saveEdit} disabled={!Object.values(edFormats).some(Boolean)}>Save changes</button>
@@ -537,6 +642,11 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
 
         {tab === "board" ? (
           <main className="body">
+            {settle && (
+              <button className="settlebtn" onClick={() => setSettleOpen(true)}>
+                <Wallet size={16} /> Settle up<span className="settlebtn-sub">{settle.tx.length} payment{settle.tx.length === 1 ? "" : "s"}</span>
+              </button>
+            )}
             <div className="seg wrap">
               {enabledFormats.map((f) => (
                 <button key={f} className={`seg-btn ${view === f ? "on" : ""}`} onClick={() => setView(f)}>{FORMAT_LABELS[f]}</button>

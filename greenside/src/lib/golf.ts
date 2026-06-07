@@ -26,6 +26,7 @@ export interface RoundState {
   lat?: number | null;
   lng?: number | null;
   chat?: ChatMsg[];
+  stakes?: Stakes;
 }
 
 export interface ChatMsg { id: string; name: string; text: string; ts: number }
@@ -423,4 +424,72 @@ export function settleUp(net: Record<string, number>): { from: string; to: strin
     if (cred[j].c === 0) j++;
   }
   return tx;
+}
+
+// ---- Per-game money (auto settle-up) ----
+export interface Stakes { skins?: number; nassau?: number; wolf?: number; nines?: number; vegas?: number; sixes?: number; bestball?: number }
+
+// Turn each active game's live result into a zero-sum dollar result per player, using the round's
+// stakes. Point games settle at $/point vs. the field average; match games pay the stake per player
+// per segment; skins pays per-skin (with carryovers) from everyone. Returns a {game: {pid:$}} map.
+export function computeMoney(state: RoundState, stakes: Stakes): Record<string, Record<string, number>> {
+  const P = state.players, n = P.length;
+  const g = state.games || ({} as any);
+  const f = state.formats || ({} as any);
+  const course = state.course;
+  const t1 = [P[0], P[1]], t2 = [P[2], P[3]];
+  const zero = (): Record<string, number> => Object.fromEntries(P.map((p) => [p.id, 0]));
+  const games: Record<string, Record<string, number>> = {};
+  const add = (label: string, m: Record<string, number>) => { if (Object.values(m).some((v) => Math.abs(v) > 1e-9)) games[label] = m; };
+  const gm = computeGames(state);
+
+  // $/point vs. the field average — inherently zero-sum.
+  const ptsMoney = (pts: Record<string, number>, stake: number) => {
+    const ids = P.map((p) => p.id);
+    const mean = ids.reduce((a, id) => a + (pts[id] || 0), 0) / (ids.length || 1);
+    const m = zero();
+    ids.forEach((id) => { m[id] = ((pts[id] || 0) - mean) * stake; });
+    return m;
+  };
+
+  // Skins: a won hole pays (carried+1) × stake from every other player.
+  if (f.skins && stakes.skins) {
+    const m = zero(); let carry = 0;
+    course.forEach((h) => {
+      const e = P.map((p) => ({ id: p.id, net: rawNet(state, p, h) })).filter((x) => x.net != null) as { id: string; net: number }[];
+      if (e.length !== n || n < 2) return;
+      const min = Math.min(...e.map((x) => x.net));
+      const low = e.filter((x) => x.net === min);
+      if (low.length === 1) { const sk = carry + 1, w = low[0].id; P.forEach((p) => { if (p.id === w) m[p.id] += sk * stakes.skins! * (n - 1); else m[p.id] -= sk * stakes.skins!; }); carry = 0; }
+      else carry++;
+    });
+    add("Skins", m);
+  }
+
+  if (g.wolf && (n === 3 || n === 4) && stakes.wolf && gm.wolf) add("Wolf", ptsMoney(gm.wolf.points, stakes.wolf));
+  if (g.nines && n === 3 && stakes.nines && gm.nines) add("Nines", ptsMoney(gm.nines.points, stakes.nines));
+  if (g.sixes && n === 4 && stakes.sixes && gm.sixes) add("Sixes", ptsMoney(gm.sixes.points, stakes.sixes));
+
+  if (g.vegas && n === 4 && stakes.vegas && gm.vegas) {
+    const diff = ((gm.vegas.pts[0] || 0) - (gm.vegas.pts[1] || 0)) * stakes.vegas;
+    const m = zero(); t1.forEach((p) => (m[p.id] = diff / 2)); t2.forEach((p) => (m[p.id] = -diff / 2));
+    add("Vegas", m);
+  }
+
+  if (g.nassau && n === 4 && stakes.nassau) {
+    const m = zero(); const S = stakes.nassau;
+    const seg = (lo: number, hi: number) => { const u = holesUp(state, t1, t2, lo, hi); if (u > 0) { t1.forEach((p) => (m[p.id] += S)); t2.forEach((p) => (m[p.id] -= S)); } else if (u < 0) { t1.forEach((p) => (m[p.id] -= S)); t2.forEach((p) => (m[p.id] += S)); } };
+    seg(1, 9); seg(10, 18); seg(1, 18);
+    ((state.presses?.nassau) || []).forEach((start) => { if (start <= 9) seg(start, 9); else seg(start, 18); });
+    add("Nassau", m);
+  }
+
+  if (g.bestball && n === 4 && stakes.bestball && gm.bestball) {
+    const m = zero(); const S = stakes.bestball, at = gm.bestball.a.toPar, bt = gm.bestball.b.toPar;
+    if (at < bt) { t1.forEach((p) => (m[p.id] += S)); t2.forEach((p) => (m[p.id] -= S)); }
+    else if (bt < at) { t1.forEach((p) => (m[p.id] -= S)); t2.forEach((p) => (m[p.id] += S)); }
+    add("Best Ball", m);
+  }
+
+  return games;
 }

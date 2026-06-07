@@ -129,7 +129,7 @@ export function useRound(code: string) {
   const sendRemovePlayer = useCallback((token: string, id: string) => {
     wsRef.current?.send(JSON.stringify({ type: "removePlayer", token, id }));
   }, []);
-  const sendSetRules = useCallback((token: string, rules: { handicapMode?: string; formats?: Record<string, boolean>; games?: Record<string, boolean> }) => {
+  const sendSetRules = useCallback((token: string, rules: { handicapMode?: string; formats?: Record<string, boolean>; games?: Record<string, boolean>; stakes?: Record<string, number> }) => {
     wsRef.current?.send(JSON.stringify({ type: "setRules", token, ...rules }));
     setState((s) => (s && rules.handicapMode ? { ...s, handicapMode: rules.handicapMode as any } : s));
   }, []);
