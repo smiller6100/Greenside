@@ -78,6 +78,17 @@ export class GolfRound implements DurableObject {
     const state = await this.ctx.storage.get<any>("state");
     if (!state) return;
 
+    if (data.type === "chat") {
+      const text = String(data.text || "").trim().slice(0, 280);
+      const name = String(data.name || "").trim().slice(0, 24) || "Guest";
+      if (!text) return;
+      const msg = { id: Math.random().toString(36).slice(2, 9), name, text, ts: Date.now() };
+      state.chat = [...(state.chat || []), msg].slice(-80); // keep last 80
+      await this.ctx.storage.put("state", state);
+      this.broadcast({ type: "chatMsg", msg });
+      return;
+    }
+
     if (data.type === "addPlayer") {
       const id = String(data.id || "");
       const name = String(data.name || "").trim().slice(0, 24);

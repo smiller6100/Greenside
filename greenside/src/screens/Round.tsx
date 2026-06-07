@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Minus, Plus, Crown, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Trophy, ClipboardList, Copy, Check, Home, Settings, MapPin, Users } from "lucide-react";
+import { Minus, Plus, Crown, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Trophy, ClipboardList, Copy, Check, Home, Settings, MapPin, Users, Share2, MessageCircle, Send } from "lucide-react";
 import { LogoMark } from "../components/Logo";
 import HoleMap from "../components/HoleMap";
 import { useRound } from "../lib/useRound";
@@ -10,7 +10,7 @@ const FORMAT_LABELS: Record<string, string> = { net: "Net", gross: "Gross", stab
 const GROUP_COLORS = ["#e8833a", "#1f9d6b", "#d24b6a", "#8b5cf6", "#0ea5a4", "#d4a017", "#2563eb", "#db2777", "#65a30d", "#c2410c"];
 
 export default function Round({ code, joinGroup }: { code: string; joinGroup?: string | null }) {
-  const { state, connected, missing, positions, sendScore, sendWolfPick, sendBbb, sendPress, sendSixesMode, sendAddPlayer, sendTeamScore, sendTeamMode, sendDeleteGroup, sendRemovePlayer, sendSetRules, sendPos, sendPosClear } = useRound(code);
+  const { state, connected, missing, positions, sendScore, sendWolfPick, sendBbb, sendPress, sendSixesMode, sendAddPlayer, sendTeamScore, sendTeamMode, sendDeleteGroup, sendRemovePlayer, sendSetRules, sendPos, sendPosClear, sendChat } = useRound(code);
   const [tab, setTab] = useState<"board" | "score">("board");
   const [view, setView] = useState("net"); // a scoring format (leaderboard side)
   const [scView, setScView] = useState<"hole" | "card" | "games">("hole"); // scorecard side
@@ -92,6 +92,27 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
     if (gps && me) { lastSent.current = Date.now(); sendPos(me, gps.lat, gps.lng, gps.acc); }
   };
   useEffect(() => () => { stopWatch(); if (shareRef.current && me) sendPosClear(me); }, []);
+
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatUnread, setChatUnread] = useState(0);
+  const [chatText, setChatText] = useState("");
+  const chatLen = useRef<number | null>(null);
+  const chatEnd = useRef<HTMLDivElement | null>(null);
+  const chatMsgs = (state?.chat as any[]) || [];
+  useEffect(() => {
+    const n = chatMsgs.length;
+    if (chatLen.current === null) { chatLen.current = n; return; } // ignore initial history load
+    if (n > chatLen.current) { if (!chatOpen) setChatUnread((u) => u + (n - chatLen.current!)); }
+    chatLen.current = n;
+  }, [chatMsgs.length]);
+  useEffect(() => { if (chatOpen) chatEnd.current?.scrollIntoView({ block: "end" }); }, [chatOpen, chatMsgs.length]);
+  const myName = () => { const p = state?.players.find((x) => x.id === me); return p ? p.name : "Guest"; };
+  const sendChatMsg = () => {
+    const t = chatText.trim();
+    if (!t) return;
+    sendChat(myName(), t);
+    setChatText("");
+  };
 
   // Fetch the OSM hole-map data once, when the round first loads.
   const hmFetched = useRef(false);
@@ -299,6 +320,15 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
   const copyCode = () => {
     navigator.clipboard?.writeText(`${location.origin}/#/r/${code}`).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1600); }).catch(() => {});
   };
+  const shareRound = async () => {
+    const url = `${location.origin}/#/r/${code}`;
+    const title = state?.name ? `${state.name} — live scorecard` : "Greenside scorecard";
+    const text = `Follow our live scorecard on Greenside. Join with code ${code}.`;
+    if (navigator.share) {
+      try { await navigator.share({ title, text, url }); return; } catch { /* cancelled or unsupported */ }
+    }
+    copyCode();
+  };
   const adjust = (pid: string, delta: number) => {
     const cur = (state.scores[pid] || {})[hole.num];
     sendScore(pid, hole.num, Math.max(1, (cur ?? hole.par) + delta));
@@ -426,10 +456,45 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
         <div className="topbar">
           <div className="mark"><LogoMark size={22} /><span>GREENSIDE</span></div>
           <div className="topbar-right">
+            <button className="gearbtn" onClick={shareRound} aria-label="Share scorecard"><Share2 size={18} /></button>
+            <button className="gearbtn chatbtn" onClick={() => { setChatOpen(true); setChatUnread(0); }} aria-label="Group chat">
+              <MessageCircle size={18} />{chatUnread > 0 && <span className="chatbadge">{chatUnread > 9 ? "9+" : chatUnread}</span>}
+            </button>
             {(!state.outing || isAdmin) && <button className="gearbtn" onClick={openEdit} aria-label="Edit round"><Settings size={18} /></button>}
             <div className={`live ${connected ? "on" : ""}`}><span className="dot" />{connected ? "LIVE" : "···"}</div>
           </div>
         </div>
+
+        {chatOpen && (
+          <div className="chatwrap" onClick={() => setChatOpen(false)}>
+            <div className="chatcard" onClick={(e) => e.stopPropagation()}>
+              <div className="chathead">
+                <div><h3>Group chat</h3><span className="chatsub">Everyone in {code} · keep it quick</span></div>
+                <button className="xbtn" onClick={() => setChatOpen(false)}>✕</button>
+              </div>
+              <div className="chatlog">
+                {chatMsgs.length === 0 && <div className="chatempty">No messages yet. Say hi to the group, share where you are, or wave the foursome behind through.</div>}
+                {chatMsgs.map((m: any) => {
+                  const mine = m.name === myName() && myName() !== "Guest";
+                  return (
+                    <div key={m.id} className={`chatmsg ${mine ? "mine" : ""}`}>
+                      {!mine && <span className="chatname">{m.name}</span>}
+                      <span className="chatbubble">{m.text}</span>
+                      <span className="chatts">{new Date(m.ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>
+                    </div>
+                  );
+                })}
+                <div ref={chatEnd} />
+              </div>
+              <div className="chatinput">
+                <input value={chatText} maxLength={280} placeholder={me ? "Message your group…" : "Claim your name to chat"} disabled={!me}
+                  onChange={(e) => setChatText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") sendChatMsg(); }} />
+                <button onClick={sendChatMsg} disabled={!me || !chatText.trim()} aria-label="Send"><Send size={18} /></button>
+              </div>
+              {!me && <div className="chatclaim">Pick your name on the scorecard to join the chat.</div>}
+            </div>
+          </div>
+        )}
 
         {editing && (
           <div className="editwrap" onClick={() => setEditing(false)}>
@@ -752,6 +817,7 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
           <div className="modal"><div className="sheet">
             <h3>{roundTitle}</h3>
             <button className="codepill sheetcode" onClick={copyCode}>{copied ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Code {code}</>}</button>
+            <button className="sharebig" onClick={shareRound}><Share2 size={16} /> Share live scorecard</button>
             {state.outing && (
               <div className="grouplink">
                 <span className="gl-label">Send a foursome their join link</span>

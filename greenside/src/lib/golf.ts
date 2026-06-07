@@ -25,7 +25,10 @@ export interface RoundState {
   createdAt: number;
   lat?: number | null;
   lng?: number | null;
+  chat?: ChatMsg[];
 }
+
+export interface ChatMsg { id: string; name: string; text: string; ts: number }
 
 export interface Standing {
   id: string;
