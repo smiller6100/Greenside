@@ -364,6 +364,21 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
   // ---- full scorecard grid ----
   const front = course.filter((h) => h.num <= 9);
   const back = course.filter((h) => h.num > 9);
+  // Group holes into nines for the scorecard: by nine name when present (27-hole / mix-and-match
+  // courses), otherwise in plain blocks of 9. Supports 9, 18 and 27 hole rounds.
+  const nineChunks = (() => {
+    const labeled = course.some((h) => (h as any).nine);
+    const fallback = (i: number, len: number) => (len <= 9 ? "Out" : ["Out", "In", "Third"][i] || `Holes ${i * 9 + 1}-${i * 9 + 9}`);
+    if (labeled) {
+      const order: string[] = []; const map = new Map<string, typeof course>();
+      course.forEach((h) => { const k = (h as any).nine || ""; if (!map.has(k)) { map.set(k, []); order.push(k); } map.get(k)!.push(h); });
+      return order.map((k, i) => ({ label: k || fallback(i, course.length), holes: map.get(k)! }));
+    }
+    const out: { label: string; holes: typeof course }[] = [];
+    for (let i = 0; i < course.length; i += 9) out.push({ label: fallback(i / 9, course.length), holes: course.slice(i, i + 9) });
+    return out;
+  })();
+  const shortLabel = (s: string) => (s === "Out" || s === "In" || s === "Third" ? s : s.replace(/^the\s+/i, "").slice(0, 6));
   const sp = (pid: string, n: number) => (state.scores[pid] || {})[n];
   const sumPar = (arr: typeof course) => arr.reduce((s, h) => s + h.par, 0);
   const sumYards = (arr: typeof course) => arr.reduce((s, h) => s + (h.yards || 0), 0);
@@ -403,21 +418,22 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
       {((state as any).teeName || sumYards(course) > 0) && (
         <div className="cardtee">{(state as any).teeName ? `${(state as any).teeName} tees` : "Scorecard"}{sumYards(course) > 0 ? ` · ${sumYards(course).toLocaleString()} yds · Par ${sumPar(course)}` : ""}</div>
       )}
-      {nineTable(front, "Out")}
-      {back.length > 0 && nineTable(back, "In")}
+      {nineChunks.map((c, i) => <div key={i}>{nineTable(c.holes, shortLabel(c.label))}</div>)}
       <table className="nine totals">
-        <thead><tr><th className="stik">Totals</th><th>Out</th>{back.length > 0 && <th>In</th>}<th className="tot">Gross</th></tr></thead>
+        <thead><tr><th className="stik">Totals</th>{nineChunks.map((c, i) => <th key={i}>{shortLabel(c.label)}</th>)}<th className="tot">Gross</th></tr></thead>
         <tbody>
           {state.players.map((p) => (
             <tr key={p.id} className={p.id === me ? "meRow" : ""}>
               <th className="stik">{p.name}</th>
-              <td>{sumSc(p.id, front) || "–"}</td>
-              {back.length > 0 && <td>{sumSc(p.id, back) || "–"}</td>}
+              {nineChunks.map((c, i) => <td key={i}>{sumSc(p.id, c.holes) || "–"}</td>)}
               <td className="tot grand">{sumSc(p.id, course) || "–"}</td>
             </tr>
           ))}
         </tbody>
       </table>
+      {nineChunks.length > 1 && nineChunks.some((c) => c.label !== "Out" && c.label !== "In") && (
+        <p className="foot">{nineChunks.map((c) => c.label).join(" · ")}</p>
+      )}
       {useHcp && <p className="foot dotlegend"><span className="popdemo"><i /></span> a dot marks a hole where that player gets a handicap stroke</p>}
     </div>
   );

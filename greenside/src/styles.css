@@ -583,3 +583,17 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .stake-dollar { color:#8aa18c; font-weight:700; }
 .stake-in { width:70px; border:1px solid var(--line,#e7ece3); border-radius:10px; padding:9px 11px; font:inherit; font-size:15px; text-align:right; }
 .stake-unit { color:#8aa18c; font-size:13px; font-weight:600; width:74px; }
+
+/* Three-nines: scan toggle + nine picker */
+.nines-check { display:flex; align-items:center; gap:8px; font-size:13.5px; font-weight:600; color:#3a5340; margin:4px 2px 8px; cursor:pointer; }
+.nines-check input { width:17px; height:17px; accent-color:#2f7a3a; }
+.ninepick { border:1px solid var(--line,#e7ece3); border-radius:14px; padding:12px; margin:10px 0; background:#f7faf3; }
+.ninepick-h { font-size:13px; font-weight:800; color:var(--ink); margin-bottom:9px; }
+.ninepick-h span { font-weight:600; color:#8aa18c; text-transform:none; }
+.ninechips { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:9px; }
+.ninechip { display:inline-flex; align-items:center; gap:6px; border:1.5px solid var(--line,#e7ece3); background:#fff; color:var(--ink); border-radius:999px; padding:8px 14px; font:inherit; font-size:14px; font-weight:700; cursor:pointer; }
+.ninechip.on { border-color:#2f7a3a; background:#2f7a3a; color:#fff; }
+.ninechip-n { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:50%; background:rgba(255,255,255,.3); font-size:11px; font-weight:800; }
+.ninepresets { display:flex; flex-wrap:wrap; gap:6px; }
+.ninepreset { border:1px solid var(--line,#e7ece3); background:#fff; color:#3a5340; border-radius:9px; padding:6px 10px; font:inherit; font-size:12.5px; font-weight:700; cursor:pointer; }
+.ninepreset.on { border-color:#2f7a3a; color:#15643d; background:#eaf4e6; }

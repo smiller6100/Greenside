@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v56";
+const BUILD = "v58";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -486,6 +486,7 @@ export default {
     // ---- Scan a scorecard photo with Cloudflare AI ----
     if (path === "/api/courses/scan" && request.method === "POST") {
       try {
+        const wantNines = !!url.searchParams.get("nines"); // ?nines=3 → read a 27-hole / three-nines card
         const buf = await request.arrayBuffer();
         const bytes = new Uint8Array(buf);
         const image = [...bytes]; // byte array for the small vision model
@@ -497,6 +498,10 @@ export default {
           '"par" = the Par for holes 1 to 18 in order. "handicap" = the stroke-index / handicap rank (1 to 18) for holes 1 to 18 in order; if men and women rows both exist use the first row. ' +
           '"tees" = ONE entry for EACH tee box / colored row on the card (for example Black, Blue, White, Gold, Red, Orange, Teal); "yards" = that row\'s yardage for holes 1 to 18 in order. ' +
           'Read left to right, front nine then back nine. Ignore the OUT, IN and TOTAL subtotal columns — give only the 18 real hole numbers. If a value is unreadable use 0. Return only the JSON.';
+        const ninePrompt =
+          'You read golf scorecards. This card is a 27-hole course made of SEPARATE nine-hole courses, each with its OWN name (for example "The Callow", "The Meath", "The Birr"), its own Par row (9 values), its own Handicap / stroke-index row (values 1 to 9), and one or more tee rows (e.g. Black, Blue, White, Red) each with 9 yardages. ' +
+          'Return STRICT JSON only — no prose, no code fences — in exactly this shape: {"nines":[{"name":"<nine name>","par":[9 numbers],"handicap":[9 numbers],"tees":[{"name":"<tee>","yards":[9 numbers]}]}]}. ' +
+          'Include one object per nine, in the order they appear. Each "par", "handicap" and "yards" array has exactly 9 values for holes 1 to 9 of THAT nine. Ignore OUT / IN / TOTAL columns. If a value is unreadable use 0. Return only the JSON.';
 
         const numArr = (a: any): number[] => (Array.isArray(a) ? a.map((v) => Number(v) || 0) : []);
         const flat = (one: any, f: any, b: any): number[] => {
@@ -505,6 +510,26 @@ export default {
         };
         const strip = (arr: number[], isTotal: (v: number) => boolean): number[] => arr.filter((v) => !isTotal(v)).slice(0, 18);
         const clampPar = (p: number) => (p >= 3 && p <= 6 ? p : 4);
+
+        // Build per-nine data from a {nines:[...]} reply for a 27-hole card.
+        const buildNines = (parsed: any) => {
+          const ninesIn = Array.isArray(parsed?.nines) ? parsed.nines : [];
+          if (!ninesIn.length) return null;
+          const nn = ninesIn.slice(0, 4).map((nine: any, idx: number) => {
+            const par = numArr(nine.par).filter((v) => v >= 3 && v <= 6).slice(0, 9);
+            const hcp = numArr(nine.handicap).filter((v) => v >= 1 && v <= 9).slice(0, 9);
+            const teesIn = Array.isArray(nine.tees) ? nine.tees : [];
+            const tees = teesIn.map((t: any) => ({ name: String(t.name || "Tee").trim() || "Tee", yards: numArr(t.yards).filter((v) => v < 800).slice(0, 9).map((y) => Math.max(0, Math.min(899, y))) })).filter((t: any) => t.yards.some((y: number) => y > 0));
+            let si = Array.from({ length: 9 }, () => 0);
+            if (hcp.length === 9 && new Set(hcp).size === 9) si = hcp.slice();
+            else if (tees.length) { const longest = [...tees].sort((a, b) => b.yards.reduce((s: number, y: number) => s + y, 0) - a.yards.reduce((s: number, y: number) => s + y, 0))[0]; longest.yards.map((y: number, i: number) => ({ y, i })).sort((a, b) => b.y - a.y).forEach((o, r) => (si[o.i] = r + 1)); }
+            else si = si.map((_, i) => i + 1);
+            return { name: String(nine.name || `Nine ${idx + 1}`).trim() || `Nine ${idx + 1}`, par: Array.from({ length: 9 }, (_, i) => clampPar(par[i])), si, tees };
+          }).filter((n: any) => n.tees.length || n.par.length);
+          if (!nn.length) return null;
+          const cells = nn.reduce((s: number, n: any) => s + n.tees.reduce((a: number, t: any) => a + t.yards.filter((y: number) => y > 0).length, 0), 0);
+          return { score: 5000 + cells, payload: { multiNine: true, name: typeof parsed?.name === "string" ? parsed.name : "", nines: nn } };
+        };
 
         // Turn one model JSON reply into tee data plus a quality score (or null if nothing usable).
         const build = (parsed: any) => {
@@ -557,17 +582,33 @@ export default {
           },
           required: ["par", "tees"],
         };
+        const ninesSchema = {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            nines: { type: "array", items: { type: "object", properties: {
+              name: { type: "string" },
+              par: { type: "array", items: { type: "number" } },
+              handicap: { type: "array", items: { type: "number" } },
+              tees: { type: "array", items: { type: "object", properties: { name: { type: "string" }, yards: { type: "array", items: { type: "number" } } }, required: ["name", "yards"] } },
+            }, required: ["name", "par", "tees"] } },
+          },
+          required: ["nines"],
+        };
+        const usePrompt = wantNines ? ninePrompt : prompt;
+        const useSchema = wantNines ? ninesSchema : schema;
+        const useBuild = wantNines ? buildNines : build;
         const asText = (resp: any) => (typeof resp === "string" ? resp : resp ? JSON.stringify(resp) : "");
         // Primary: Llama 4 Scout (far stronger vision). Fallback: the small vision model.
         const runScout = async () => {
           const out: any = await env.AI.run("@cf/meta/llama-4-scout-17b-16e-instruct", {
-            messages: [{ role: "user", content: [{ type: "text", text: prompt }, { type: "image_url", image_url: { url: dataUrl } }] }],
-            max_tokens: 2400, temperature: 0.1, guided_json: schema,
+            messages: [{ role: "user", content: [{ type: "text", text: usePrompt }, { type: "image_url", image_url: { url: dataUrl } }] }],
+            max_tokens: 2400, temperature: 0.1, guided_json: useSchema,
           });
           return asText(out?.response);
         };
         const runSmall = async () => {
-          const out: any = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", { image, prompt, max_tokens: 2200 });
+          const out: any = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", { image, prompt: usePrompt, max_tokens: 2200 });
           return asText(out?.response);
         };
 
@@ -576,9 +617,9 @@ export default {
         for (const run of attempts) {
           let text = "";
           try { text = await run(); } catch { continue; }
-          const r = build(extractJson(text));
+          const r = useBuild(extractJson(text));
           if (r && (!best || r.score > best.score)) best = r;
-          if (best && best.score >= 2000) break; // two or more tees with real yardages — good enough
+          if (best && best.score >= (wantNines ? 5000 : 2000)) break;
         }
         if (!best || best.score === 0) return Response.json({ error: "unreadable" }, { status: 422 });
         return Response.json(best.payload);

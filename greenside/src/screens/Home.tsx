@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw } from "lucide-react";
 import { FullLogo } from "../components/Logo";
-import { DEFAULT_COURSE, type Hole, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, GAME_HELP } from "../lib/golf";
+import { DEFAULT_COURSE, type Hole, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, GAME_HELP, composeNines, ninePresets } from "../lib/golf";
 
-const VERSION = "v57";
+const VERSION = "v58";
 
 
 
@@ -59,6 +59,34 @@ export default function Home() {
   const [teeName, setTeeName] = useState("");
   const [courseName, setCourseName] = useState("");
   const [courseWhere, setCourseWhere] = useState("");
+  const [nines3, setNines3] = useState(false);
+  const [ninesRaw, setNinesRaw] = useState<{ name: string; par: number[]; si: number[]; tees: { name: string; yards: number[] }[] }[] | null>(null);
+  const [ninePick, setNinePick] = useState<number[]>([]);
+  const composeFromPick = (raw: typeof ninesRaw, pick: number[]) => {
+    if (!raw || !pick.length) return;
+    const structNines = pick.map((i) => ({ name: raw[i].name, holes: raw[i].par.map((p, k) => ({ num: k + 1, par: Number(p) || 4, yards: 0, si: Number(raw[i].si[k]) || 0 })) }));
+    const composed = composeNines(structNines);
+    const lists = pick.map((i) => raw[i].tees.map((t) => t.name));
+    let names = lists[0] || [];
+    for (const a of lists.slice(1)) names = names.filter((nm) => a.includes(nm));
+    if (!names.length) names = lists[0] || ["Tees"];
+    const composedTees = names.map((tn) => {
+      const holes = composed.map((h, k) => {
+        const ni = Math.floor(k / 9), hi = k % 9;
+        const tee = raw[pick[ni]].tees.find((t) => t.name === tn);
+        return { ...h, yards: tee ? (Number(tee.yards[hi]) || 0) : 0 };
+      });
+      return { name: tn, total: holes.reduce((s, h) => s + h.yards, 0), holes };
+    });
+    setTees(composedTees.length ? composedTees : [{ name: "Tees", total: 0, holes: composed }]);
+    setTeeName(composedTees[0]?.name || "Tees");
+  };
+  const pickNines = (next: number[]) => { setNinePick(next); composeFromPick(ninesRaw, next); };
+  const toggleNine = (i: number) => {
+    const has = ninePick.includes(i);
+    const next = has ? ninePick.filter((x) => x !== i) : [...ninePick, i];
+    if (next.length) pickNines(next);
+  };
   const [loc, setLoc] = useState<{ lat: number | null; lng: number | null }>({ lat: null, lng: null });
   const [siEstimated, setSiEstimated] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -106,7 +134,7 @@ export default function Home() {
     setScanning(true); setMsg("");
     try {
       const blob = await fileToJpeg(file);
-      const r = await fetch("/api/courses/scan", { method: "POST", headers: { "content-type": "image/jpeg" }, body: blob });
+      const r = await fetch(nines3 ? "/api/courses/scan?nines=3" : "/api/courses/scan", { method: "POST", headers: { "content-type": "image/jpeg" }, body: blob });
       if (!r.ok) {
         setMsg("Couldn't read that photo clearly — enter the holes by hand below, or try a flatter, brighter shot.");
         const blank = DEFAULT_COURSE.map((h) => ({ ...h, yards: 0, si: 0 }));
@@ -114,7 +142,15 @@ export default function Home() {
         setCourse(blank); setCourseName(""); setCourseWhere("");
         setLoc({ lat: null, lng: null }); setSiEstimated(false); setScanned(true); setLoaded(true); setEditing(true);
       } else {
-        const data = await r.json();
+        const data: any = await r.json();
+        if (data.multiNine && Array.isArray(data.nines) && data.nines.length) {
+          const raw = data.nines.map((n: any) => ({ name: String(n.name || "Nine"), par: n.par || [], si: n.si || [], tees: (n.tees || []).map((t: any) => ({ name: t.name, yards: t.yards || [] })) }));
+          const pick = raw.length >= 2 ? [0, 1] : raw.map((_: any, i: number) => i);
+          setNinesRaw(raw); setNinePick(pick); composeFromPick(raw, pick);
+          setCourseName(data.name || ""); setCourseWhere("");
+          setLoc({ lat: null, lng: null }); setSiEstimated(false); setScanned(true); setLoaded(true); setEditing(false);
+          if (!nameTouched && data.name) setRoundName(data.name);
+        } else {
         const holes: Hole[] = (data.holes || []).map((h: any) => ({ num: h.num, par: h.par, yards: h.yards, si: h.si }));
         const tlist = (data.tees || []).map((t: any) => ({ name: t.name, total: t.total, holes: (t.holes || []).map((h: any) => ({ num: h.num, par: h.par, yards: h.yards, si: h.si })) }));
         const base = holes.length ? holes : DEFAULT_COURSE;
@@ -123,6 +159,7 @@ export default function Home() {
         setCourse(base); setCourseName(data.name || ""); setCourseWhere("");
         setLoc({ lat: null, lng: null }); setSiEstimated(!!data.siEstimated); setScanned(true); setLoaded(true); setEditing(true);
         if (!nameTouched && data.name) setRoundName(data.name);
+        }
       }
     } catch { setMsg("Couldn't process that image."); }
     setScanning(false);
@@ -131,7 +168,7 @@ export default function Home() {
 
   function clearCourse() {
     setLoaded(false); setScanned(false); setCourse(DEFAULT_COURSE); setCourseName(""); setCourseWhere("");
-    setTees([]); setTeeName("");
+    setTees([]); setTeeName(""); setNinesRaw(null); setNinePick([]);
     setLoc({ lat: null, lng: null }); setSiEstimated(false); setEditing(false); setMsg("");
   }
   // The selected tee always feeds the round's course (par/SI are shared across tees).
@@ -318,8 +355,9 @@ export default function Home() {
                   ))}
                   {msg && <div className="srow muted">{msg}</div>}
                   <input ref={fileIn} type="file" accept="image/*" onChange={onScan} style={{ display: "none" }} />
+                  <label className="nines-check"><input type="checkbox" checked={nines3} onChange={(e) => setNines3(e.target.checked)} /> 27-hole card (three nines)</label>
                   <button className="scanbtn" disabled={scanning} onClick={() => fileIn.current?.click()}>
-                    <Camera size={16} /> {scanning ? "Reading scorecard…" : "Scan a scorecard"}
+                    <Camera size={16} /> {scanning ? "Reading scorecard…" : nines3 ? "Scan the 3-nine card" : "Scan a scorecard"}
                   </button>
                   <p className="hint left">No course? Snap the scorecard and we'll read it — and save it for everyone. Or leave blank for the demo Par 72.</p>
                 </>
@@ -332,6 +370,27 @@ export default function Home() {
                     </div>
                     <button className="rm" onClick={clearCourse} aria-label="clear course"><X size={15} /></button>
                   </div>
+                  {ninesRaw && ninesRaw.length >= 2 && (
+                    <div className="ninepick">
+                      <div className="ninepick-h">Which nines are you playing? <span>tap in the order you'll play</span></div>
+                      <div className="ninechips">
+                        {ninesRaw.map((nine, i) => {
+                          const pos = ninePick.indexOf(i);
+                          return (
+                            <button key={i} className={`ninechip ${pos >= 0 ? "on" : ""}`} onClick={() => toggleNine(i)}>
+                              {pos >= 0 && <span className="ninechip-n">{pos + 1}</span>}{nine.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="ninepresets">
+                        {ninePresets(ninesRaw.map((n) => ({ name: n.name, holes: [] as any }))).map((p, i) => {
+                          const active = p.pick.length === ninePick.length && p.pick.every((x, k) => x === ninePick[k]);
+                          return <button key={i} className={`ninepreset ${active ? "on" : ""}`} onClick={() => pickNines(p.pick)}>{p.label}</button>;
+                        })}
+                      </div>
+                    </div>
+                  )}
                   {scanned && <p className="hint left warn">Scanned — tap a tee name to use it, and double-check the numbers (especially the S.I. row).</p>}
                   {siEstimated && !scanned && <p className="hint left warn">Stroke index was estimated — fine-tune below if needed.</p>}
                   <button className="addp" onClick={() => setEditing(!editing)}>
