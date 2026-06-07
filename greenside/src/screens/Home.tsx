@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from "react";
-import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw, ClipboardList, Trash2, ChevronLeft } from "lucide-react";
+import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw, Trash2, ChevronLeft } from "lucide-react";
 import { computeStandings, fmtToPar } from "../lib/golf";
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, GAME_HELP, composeNines, ninesFromHoles } from "../lib/golf";
 
-const VERSION = "v66";
+const VERSION = "v67";
 
 
 
@@ -401,12 +401,6 @@ export default function Home() {
           </div>
         )}
 
-        {myRounds.length > 0 && (
-          <button className="myrounds-btn" onClick={() => { loadMyRounds(); setRoundsOpen(true); }}>
-            <ClipboardList size={16} /> My rounds<span className="myrounds-n">{myRounds.length}</span>
-          </button>
-        )}
-
         <div className="seg big">
           <button className={`seg-btn ${mode === "create" ? "on" : ""}`} onClick={() => { setMode("create"); setErr(""); }}>Start a round</button>
           <button className={`seg-btn ${mode === "join" ? "on" : ""}`} onClick={() => { setMode("join"); setErr(""); }}>Join a round</button>
@@ -608,6 +602,11 @@ export default function Home() {
             {err && <p className="err">{err}</p>}
             <button className="primary" disabled={busy} onClick={onCreatePress}>{busy ? "Creating…" : "Create round"}</button>
             <p className="hint">You'll get a short code to share with the group.</p>
+            {myRounds.length > 0 && (
+              <div className="myrounds-wrap">
+                <button className="myrounds-btn" onClick={() => { loadMyRounds(); setRoundsOpen(true); }}>My rounds<span className="myrounds-n">{myRounds.length}</span></button>
+              </div>
+            )}
           </div>
         ) : (
           <div className="panel">
@@ -659,7 +658,7 @@ export default function Home() {
                             <>
                               <button className="roundrow-main" onClick={() => setViewRound(r)}>
                                 <div className="rr-top"><b>{r.name || r.code}</b><span className="rr-date">{new Date(r.savedAt).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}</span></div>
-                                <div className="rr-sub">{r.courseName || "Course"}{res ? ` · 🏆 ${res.winner}` : ""}{thru ? ` · thru ${thru}` : ""}</div>
+                                <div className="rr-sub">{r.courseName || "Course"}{res ? ` · Won: ${res.winner}` : ""}{thru ? ` · thru ${thru}` : ""}</div>
                               </button>
                               <button className="rr-trash" onClick={() => setDelCode(r.code)} aria-label="delete"><Trash2 size={16} /></button>
                             </>
