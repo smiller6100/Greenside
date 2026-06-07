@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v63";
+const BUILD = "v64";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -20,7 +20,7 @@ const catalog = (env: Env) => env.COURSE_CATALOG.get(env.COURSE_CATALOG.idFromNa
 
 // Produce (and cache) a hole map for a coordinate. Shared by the public route and the admin probe.
 async function holeMapFor(lat: number, lng: number, wantHoles: number): Promise<Response> {
-  return cachedJson(`https://cache/holemap/v10/${lat.toFixed(4)},${lng.toFixed(4)},${wantHoles}`, 7 * 86400, async () => {
+  return cachedJson(`https://cache/holemap/v11/${lat.toFixed(4)},${lng.toFixed(4)},${wantHoles}`, 7 * 86400, async () => {
     const q = `[out:json][timeout:25];(way["golf"](around:2800,${lat},${lng});relation["golf"](around:2800,${lat},${lng});way["leisure"="golf_course"](around:2800,${lat},${lng});relation["leisure"="golf_course"](around:2800,${lat},${lng}););out geom;`;
     const servers = [
       "https://overpass.private.coffee/api/interpreter",
@@ -306,32 +306,39 @@ function parseHoleMap(data: any, qLat: number, qLng: number, wantHoles: number) 
   const groups = new Map<number[][], any[]>();
   for (const w of holeWays) { const o = ownerOf(w); if (!o) continue; const arr = groups.get(o) || []; arr.push(w); groups.set(o, arr); }
   const courses = [...groups.entries()].map(([ring, holes]) => ({ ring, holes }));
-  let chosen: { ring: number[][]; holes: any[] } | null = null;
+  let chosenGroups: { ring: number[][]; holes: any[] }[] = [];
   if (courses.length) {
     const distToCourse = (c: any) => Math.min(...c.holes.map((w: any) => hmHav(q, teeOf(w))));
     let relevant = courses.filter((c) => hmInside(q, c.ring) || distToCourse(c) < 400);
     if (!relevant.length) relevant = courses;
-    let bestScore = -Infinity;
-    for (const c of relevant) {
-      const countMatch = wantHoles ? -Math.abs(c.holes.length - wantHoles) : 0; // 0 = exact match
-      const contains = hmInside(q, c.ring) ? 1 : 0;
-      const score = countMatch * 100 + c.holes.length + contains * 5 - distToCourse(c) / 1000;
-      if (score > bestScore) { bestScore = score; chosen = c; }
+    // Order: the course under the query point first, then nearest, then larger.
+    const scored = relevant.map((c) => ({ c, contains: hmInside(q, c.ring) ? 1 : 0, dist: distToCourse(c), n: c.holes.length }));
+    scored.sort((a, b) => b.contains - a.contains || a.dist - b.dist || b.n - a.n);
+    // Accumulate boundaries that move the running hole count TOWARD wantHoles. A 27/36-hole
+    // facility is often drawn as separate pieces (an 18 plus a 9, or three 9s); this gathers all
+    // of them while still stopping before it pulls in a genuinely different course nearby.
+    let cum = 0;
+    for (const s of scored) {
+      const after = cum + s.n;
+      if (chosenGroups.length && wantHoles && Math.abs(after - wantHoles) > Math.abs(cum - wantHoles)) break;
+      chosenGroups.push(s.c); cum = after;
+      if (!wantHoles || cum >= wantHoles) break;
     }
   }
 
   const rawFairways = fairways.length, rawRough = rough.length;
-  const overlapsRing = (x: any, ring: number[][]) => hmInside(x.c, ring) || x.poly.some((p: number[]) => hmInside(p, ring));
-  if (chosen) {
-    const ring = chosen.ring;
-    holeWays = chosen.holes;
-    greens = greens.filter((x: any) => hmInside(x.c, ring));
+  const insideRings = (c: number[], rings: number[][][]) => rings.some((ring) => hmInside(c, ring));
+  const overlapsRings = (x: any, rings: number[][][]) => rings.some((ring) => hmInside(x.c, ring) || x.poly.some((p: number[]) => hmInside(p, ring)));
+  if (chosenGroups.length) {
+    const rings = chosenGroups.map((c) => c.ring);
+    holeWays = chosenGroups.flatMap((c) => c.holes);
+    greens = greens.filter((x: any) => insideRings(x.c, rings));
     // A big fairway/rough can straddle an imperfect boundary, so keep it if its centroid OR any vertex is inside.
-    fairways = fairways.filter((x: any) => overlapsRing(x, ring));
-    rough = rough.filter((x: any) => overlapsRing(x, ring));
-    tees = tees.filter((x: any) => hmInside(x.c, ring));
-    bunkers = bunkers.filter((x: any) => hmInside(x.c, ring));
-    water = water.filter((x: any) => hmInside(x.c, ring));
+    fairways = fairways.filter((x: any) => overlapsRings(x, rings));
+    rough = rough.filter((x: any) => overlapsRings(x, rings));
+    tees = tees.filter((x: any) => insideRings(x.c, rings));
+    bunkers = bunkers.filter((x: any) => insideRings(x.c, rings));
+    water = water.filter((x: any) => insideRings(x.c, rings));
   }
 
   const counts = { found: g("hole").length, courses: boundaries.length, holes: holeWays.length, greens: greens.length, fairways: fairways.length, rawFairways, rough: rough.length, rawRough, tees: tees.length, bunkers: bunkers.length, water: water.length };
