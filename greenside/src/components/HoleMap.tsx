@@ -30,7 +30,7 @@ type Hole = {
 
 const BOXW = 300, BOXH = 380, PAD = 8;
 
-export default function HoleMap({ hole, me }: { hole: Hole; me?: { lat: number; lng: number; acc?: number } | null }) {
+export default function HoleMap({ hole, me, others }: { hole: Hole; me?: { lat: number; lng: number; acc?: number } | null; others?: { lat: number; lng: number; name: string; color: string }[] }) {
   const fairways = hole.fairways || [];
   const rough = hole.rough || [];
   const tees = hole.tees || [];
@@ -105,6 +105,10 @@ export default function HoleMap({ hole, me }: { hole: Hole; me?: { lat: number; 
     meInfo = { x: X(me.lng), y: Y(me.lat), center, front, back };
   }
 
+  const others2 = (others || []).filter((o) => o && isFinite(o.lat) && isFinite(o.lng)).map((o) => ({
+    x: X(o.lng), y: Y(o.lat), name: o.name, color: o.color, yds: yds(hav([o.lat, o.lng], hole.greenC)),
+  }));
+
   const svg = (
     <svg className="holemap" viewBox={`0 0 ${BOXW} ${BOXH}`} preserveAspectRatio="xMidYMid meet">
       {rough.map((r, i) => (
@@ -137,6 +141,13 @@ export default function HoleMap({ hole, me }: { hole: Hole; me?: { lat: number; 
 
       {/* tee marker */}
       <circle className="hm-tee" cx={teeX} cy={teeY} r={5} />
+
+      {others2.map((o, i) => (
+        <g key={"o" + i}>
+          <circle className="hm-them" cx={o.x} cy={o.y} r={5} style={{ fill: o.color }} />
+          <text className="hm-themlabel" x={o.x} y={o.y - 8} textAnchor="middle">{o.name} {o.yds}</text>
+        </g>
+      ))}
 
       {meInfo && (
         <>

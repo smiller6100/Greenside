@@ -513,3 +513,9 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .locbtn { display: inline-flex; align-items: center; gap: 7px; margin: 10px auto 0; padding: 9px 16px; border: 1.5px solid #2a6cf0; background: rgba(42,108,240,.08); color: #2a6cf0; font: inherit; font-size: 14px; font-weight: 700; border-radius: 999px; cursor: pointer; }
 .locbtn.on { background: #2a6cf0; color: #fff; }
 .loc-err { text-align: center; font-size: 12px; color: var(--over, #b03a2e); margin-top: 6px; }
+
+/* Group GPS — other players */
+.hm-them { stroke: #fff; stroke-width: 2; }
+.hm-themlabel { font-size: 10.5px; font-weight: 800; fill: #1c3322; paint-order: stroke; stroke: #fff; stroke-width: 3px; }
+.sharebtn { display: inline-flex; align-items: center; gap: 7px; margin: 8px auto 0; padding: 9px 16px; border: 1.5px solid #1f9d6b; background: rgba(31,157,107,.08); color: #14794f; font: inherit; font-size: 14px; font-weight: 700; border-radius: 999px; cursor: pointer; }
+.sharebtn.on { background: #1f9d6b; color: #fff; border-color: #1f9d6b; }

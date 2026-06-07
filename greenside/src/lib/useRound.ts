@@ -5,6 +5,7 @@ export function useRound(code: string) {
   const [state, setState] = useState<RoundState | null>(null);
   const [connected, setConnected] = useState(false);
   const [missing, setMissing] = useState(false);
+  const [positions, setPositions] = useState<Record<string, { lat: number; lng: number; acc?: number; ts: number }>>({});
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
@@ -28,6 +29,8 @@ export function useRound(code: string) {
         try {
           const d = JSON.parse(e.data);
           if (d.type === "state") setState(d.state);
+          else if (d.type === "pos") setPositions((p) => ({ ...p, [d.id]: { lat: d.lat, lng: d.lng, acc: d.acc, ts: Date.now() } }));
+          else if (d.type === "posClear") setPositions((p) => { const n = { ...p }; delete n[d.id]; return n; });
         } catch { /* ignore */ }
       };
       sock.onclose = (e) => {
@@ -130,5 +133,12 @@ export function useRound(code: string) {
     setState((s) => (s && rules.handicapMode ? { ...s, handicapMode: rules.handicapMode as any } : s));
   }, []);
 
-  return { state, connected, missing, sendScore, sendWolfPick, sendBbb, sendPress, sendSixesMode, sendAddPlayer, sendTeamScore, sendTeamMode, sendDeleteGroup, sendRemovePlayer, sendSetRules };
+  const sendPos = useCallback((id: string, lat: number, lng: number, acc?: number) => {
+    wsRef.current?.send(JSON.stringify({ type: "pos", id, lat, lng, acc }));
+  }, []);
+  const sendPosClear = useCallback((id: string) => {
+    wsRef.current?.send(JSON.stringify({ type: "posClear", id }));
+  }, []);
+
+  return { state, connected, missing, positions, sendScore, sendWolfPick, sendBbb, sendPress, sendSixesMode, sendAddPlayer, sendTeamScore, sendTeamMode, sendDeleteGroup, sendRemovePlayer, sendSetRules, sendPos, sendPosClear };
 }

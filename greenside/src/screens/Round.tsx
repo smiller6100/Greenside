@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Minus, Plus, Crown, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Trophy, ClipboardList, Copy, Check, Home, Settings, MapPin } from "lucide-react";
+import { Minus, Plus, Crown, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Trophy, ClipboardList, Copy, Check, Home, Settings, MapPin, Users } from "lucide-react";
 import { LogoMark } from "../components/Logo";
 import HoleMap from "../components/HoleMap";
 import { useRound } from "../lib/useRound";
@@ -7,8 +7,10 @@ import { computeStandings, computeGames, computeTeams, strokesOn, toParClass, fm
 
 const FORMAT_LABELS: Record<string, string> = { net: "Net", gross: "Gross", stableford: "Stableford", chicago: "Chicago", skins: "Skins", card: "Full card", games: "Games", teams: "Teams" };
 
+const GROUP_COLORS = ["#e8833a", "#1f9d6b", "#d24b6a", "#8b5cf6", "#0ea5a4", "#d4a017", "#2563eb", "#db2777", "#65a30d", "#c2410c"];
+
 export default function Round({ code, joinGroup }: { code: string; joinGroup?: string | null }) {
-  const { state, connected, missing, sendScore, sendWolfPick, sendBbb, sendPress, sendSixesMode, sendAddPlayer, sendTeamScore, sendTeamMode, sendDeleteGroup, sendRemovePlayer, sendSetRules } = useRound(code);
+  const { state, connected, missing, positions, sendScore, sendWolfPick, sendBbb, sendPress, sendSixesMode, sendAddPlayer, sendTeamScore, sendTeamMode, sendDeleteGroup, sendRemovePlayer, sendSetRules, sendPos, sendPosClear } = useRound(code);
   const [tab, setTab] = useState<"board" | "score">("board");
   const [view, setView] = useState("net"); // a scoring format (leaderboard side)
   const [scView, setScView] = useState<"hole" | "card" | "games">("hole"); // scorecard side
@@ -53,22 +55,43 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
   const [holeMap, setHoleMap] = useState<any>(null);
   const [gps, setGps] = useState<{ lat: number; lng: number; acc?: number } | null>(null);
   const [gpsErr, setGpsErr] = useState("");
+  const [share, setShare] = useState(false);
   const watchId = useRef<number | null>(null);
-  const toggleGps = () => {
-    if (gps || watchId.current != null) {
-      if (watchId.current != null) navigator.geolocation.clearWatch(watchId.current);
-      watchId.current = null; setGps(null); setGpsErr("");
-      return;
-    }
+  const shareRef = useRef(false);
+  const lastSent = useRef(0);
+  const startWatch = () => {
+    if (watchId.current != null) return;
     if (!("geolocation" in navigator)) { setGpsErr("Location isn't available on this device."); return; }
     setGpsErr("locating");
     watchId.current = navigator.geolocation.watchPosition(
-      (p) => { setGpsErr(""); setGps({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy }); },
+      (p) => {
+        const c = { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy };
+        setGpsErr(""); setGps(c);
+        if (shareRef.current && me) { const now = Date.now(); if (now - lastSent.current > 4000) { lastSent.current = now; sendPos(me, c.lat, c.lng, c.acc); } }
+      },
       (e) => { setGpsErr(e.code === 1 ? "Location permission denied." : "Couldn't get your location."); if (watchId.current != null) { navigator.geolocation.clearWatch(watchId.current); watchId.current = null; } },
       { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 }
     );
   };
-  useEffect(() => () => { if (watchId.current != null) navigator.geolocation.clearWatch(watchId.current); }, []);
+  const stopWatch = () => {
+    if (watchId.current != null) navigator.geolocation.clearWatch(watchId.current);
+    watchId.current = null;
+  };
+  const toggleGps = () => {
+    if (gps || watchId.current != null) {
+      stopWatch(); setGps(null); setGpsErr("");
+      if (shareRef.current && me) sendPosClear(me);
+      shareRef.current = false; setShare(false);
+      return;
+    }
+    startWatch();
+  };
+  const toggleShare = () => {
+    if (share) { shareRef.current = false; setShare(false); if (me) sendPosClear(me); return; }
+    shareRef.current = true; setShare(true); lastSent.current = 0;
+    if (gps && me) { lastSent.current = Date.now(); sendPos(me, gps.lat, gps.lng, gps.acc); }
+  };
+  useEffect(() => () => { stopWatch(); if (shareRef.current && me) sendPosClear(me); }, []);
 
   // Fetch the OSM hole-map data once, when the round first loads.
   const hmFetched = useRef(false);
@@ -568,10 +591,19 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
               }
               const hm = holeMap.holes.find((h: any) => h.ref === hole.num);
               if (!hm) return <div className="holemap-empty">Hole map unavailable for this hole.</div>;
+              const fresh = Date.now() - 30000;
+              const groupOthers = Object.entries(positions)
+                .filter(([id, p]) => id !== me && (p as any).ts >= fresh)
+                .map(([id, p]) => {
+                  const pi = state.players.findIndex((x: any) => x.id === id);
+                  if (pi < 0) return null;
+                  return { lat: (p as any).lat, lng: (p as any).lng, name: state.players[pi].name.split(" ")[0], color: GROUP_COLORS[pi % GROUP_COLORS.length] };
+                })
+                .filter(Boolean) as { lat: number; lng: number; name: string; color: string }[];
               return (
                 <div className="holemap-wrap">
                   <div className="holemap-head">Hole {hole.num}{hm.par ? ` · Par ${hm.par}` : ""} · {hm.teeToGreenYds} yds tee→green</div>
-                  <HoleMap hole={hm} me={gps} />
+                  <HoleMap hole={hm} me={gps} others={groupOthers} />
                   <div className="holemap-legend">
                     <span className="lg lg-t">Tee</span><span className="lg lg-f">Fairway</span>
                     <span className="lg lg-r">Rough</span><span className="lg lg-g">Green</span>
@@ -580,7 +612,14 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
                   <button className={`locbtn ${gps ? "on" : ""}`} onClick={toggleGps}>
                     <MapPin size={15} />{gps ? "Stop tracking" : gpsErr === "locating" ? "Locating…" : "Show my distance"}
                   </button>
+                  {gps && me && (
+                    <button className={`sharebtn ${share ? "on" : ""}`} onClick={toggleShare}>
+                      <Users size={14} />{share ? "Sharing my spot — tap to stop" : "Share my spot with the group"}
+                    </button>
+                  )}
+                  {gps && !me && <div className="loc-err" style={{ color: "#6a7c6d" }}>Claim your name on the scorecard to share your spot with the group.</div>}
                   {gpsErr && gpsErr !== "locating" && <div className="loc-err">{gpsErr}</div>}
+                  {groupOthers.length > 0 && <div className="hm-note">{groupOthers.length} other{groupOthers.length > 1 ? "s" : ""} sharing position live</div>}
                   <div className="hm-note">Diagram from OpenStreetMap · straight-line yards{gps ? " · live GPS, ±accuracy varies" : ""}</div>
                 </div>
               );

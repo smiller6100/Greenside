@@ -61,6 +61,20 @@ export class GolfRound implements DurableObject {
     let data: any;
     try { data = JSON.parse(message); } catch { return; }
 
+    // Live group positions — relayed to the rest of the group, never stored. Opt-in per player.
+    if (data.type === "pos") {
+      const lat = Number(data.lat), lng = Number(data.lng), id = String(data.id || "");
+      if (!id || !isFinite(lat) || !isFinite(lng)) return;
+      const acc = isFinite(Number(data.acc)) ? Number(data.acc) : undefined;
+      this.relayExcept(ws, { type: "pos", id, lat, lng, acc });
+      return;
+    }
+    if (data.type === "posClear") {
+      const id = String(data.id || "");
+      if (id) this.relayExcept(ws, { type: "posClear", id });
+      return;
+    }
+
     const state = await this.ctx.storage.get<any>("state");
     if (!state) return;
 
@@ -208,6 +222,14 @@ export class GolfRound implements DurableObject {
   broadcast(obj: any) {
     const msg = JSON.stringify(obj);
     for (const ws of this.ctx.getWebSockets()) {
+      try { ws.send(msg); } catch { /* dropped socket */ }
+    }
+  }
+
+  relayExcept(sender: WebSocket, obj: any) {
+    const msg = JSON.stringify(obj);
+    for (const ws of this.ctx.getWebSockets()) {
+      if (ws === sender) continue;
       try { ws.send(msg); } catch { /* dropped socket */ }
     }
   }

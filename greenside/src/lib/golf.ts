@@ -1,5 +1,5 @@
 // ---- Types ----
-export interface Hole { num: number; par: number; yards: number; si: number }
+export interface Hole { num: number; par: number; yards: number; si: number; nine?: string }
 export interface Player { id: string; name: string; hcp: number; group?: string }
 export interface Formats { net: boolean; gross: boolean; stableford: boolean; chicago: boolean; skins: boolean }
 export interface Games { sixes: boolean; wolf: boolean; vegas: boolean; nassau: boolean; nines: boolean; bbb: boolean; bestball: boolean }
@@ -336,3 +336,88 @@ export const GAME_HELP: Record<string, string> = {
   bestball: "4 players. Two fixed teams; each hole counts only the better score of the pair. Lowest team total over 18 wins.",
   bbb: "Any size. 3 points a hole \u2014 Bingo (first on the green), Bango (closest once everyone\u2019s on), Bongo (first in the hole). You award them on the Scorecard tab. Most points wins.",
 };
+
+// ---- Multi-nine (27-hole / three-nines) composition ----
+export interface Nine { name: string; holes: Hole[] }
+
+// Group a flat hole list into nines by their `nine` label, preserving order.
+export function ninesFromHoles(holes: Hole[]): Nine[] {
+  const map = new Map<string, Hole[]>();
+  const order: string[] = [];
+  holes.forEach((h) => {
+    const k = h.nine || "";
+    if (!map.has(k)) { map.set(k, []); order.push(k); }
+    map.get(k)!.push(h);
+  });
+  return order.map((k) => ({ name: k, holes: map.get(k)! }));
+}
+
+// True when a course is really multiple nines a player must choose between.
+export function hasMultipleNines(holes: Hole[]): boolean {
+  const labels = new Set(holes.map((h) => h.nine || ""));
+  return labels.size >= 2 || holes.length > 18;
+}
+
+// Build a round from chosen nines (already in play order). Renumbers the holes 1..N and
+// recomputes a combined stroke index. The classic 18-hole convention is "first nine gets the
+// odd indexes, second nine the evens, each by its own 1-9 ranking"; this generalizes that to
+// any number of nines by dealing the indexes round-robin across the nines by within-nine rank.
+export function composeNines(nines: Nine[]): Hole[] {
+  const k = nines.length;
+  if (!k) return [];
+  const rankMaps = nines.map((n) => {
+    const idx = n.holes.map((h, i) => ({ h, i }));
+    const haveSi = idx.some((x) => x.h.si > 0);
+    const ordered = [...idx].sort((a, b) => (haveSi ? a.h.si - b.h.si : (b.h.par - a.h.par)) || (a.i - b.i));
+    const rank = new Map<number, number>();
+    ordered.forEach((x, r) => rank.set(x.i, r + 1));
+    return rank;
+  });
+  const out: Hole[] = [];
+  let num = 0;
+  nines.forEach((n, j) => {
+    n.holes.forEach((h, i) => {
+      num += 1;
+      const r = rankMaps[j].get(i) || (i + 1);
+      out.push({ ...h, num, si: (r - 1) * k + j + 1, nine: n.name });
+    });
+  });
+  return out;
+}
+
+// The three standard two-nine combinations for a 27-hole course, by nine name.
+export function ninePresets(nines: Nine[]): { label: string; pick: number[] }[] {
+  if (nines.length < 2) return [];
+  const combos: { label: string; pick: number[] }[] = [];
+  for (let a = 0; a < nines.length; a++) for (let b = a + 1; b < nines.length; b++) {
+    combos.push({ label: `${nines[a].name} + ${nines[b].name}`, pick: [a, b] });
+  }
+  if (nines.length >= 3) combos.push({ label: "All " + nines.length * 9 + " holes", pick: nines.map((_, i) => i) });
+  return combos;
+}
+
+// ---- Money settlement (auto settle-up) ----
+// Sum per-game, per-player dollar results into one net balance per player.
+export function netFromGames(games: Record<string, Record<string, number>>): Record<string, number> {
+  const net: Record<string, number> = {};
+  for (const g of Object.values(games)) for (const [pid, amt] of Object.entries(g)) net[pid] = (net[pid] || 0) + amt;
+  return net;
+}
+
+// Reduce net balances (which sum to ~0) to the fewest cash transfers. Greedy largest-debtor /
+// largest-creditor matching — minimal or near-minimal payments, which is all that matters here.
+export function settleUp(net: Record<string, number>): { from: string; to: string; amount: number }[] {
+  const bal = Object.entries(net).map(([id, v]) => ({ id, c: Math.round(v * 100) })).filter((x) => x.c !== 0);
+  const debt = bal.filter((x) => x.c < 0).map((x) => ({ id: x.id, c: -x.c })).sort((a, b) => b.c - a.c);
+  const cred = bal.filter((x) => x.c > 0).map((x) => ({ ...x })).sort((a, b) => b.c - a.c);
+  const tx: { from: string; to: string; amount: number }[] = [];
+  let i = 0, j = 0;
+  while (i < debt.length && j < cred.length) {
+    const m = Math.min(debt[i].c, cred[j].c);
+    if (m > 0) tx.push({ from: debt[i].id, to: cred[j].id, amount: m / 100 });
+    debt[i].c -= m; cred[j].c -= m;
+    if (debt[i].c === 0) i++;
+    if (cred[j].c === 0) j++;
+  }
+  return tx;
+}
