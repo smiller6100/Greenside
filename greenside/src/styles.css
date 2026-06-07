@@ -652,3 +652,11 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .rd-grid .rd-par th { background:#eef3e9; color:#3a5340; font-weight:700; }
 .rd-grid .tot { font-weight:800; background:#fafcf8; }
 .rd-grid tbody tr.me td, .rd-grid tbody tr.me th { background:#eef6ee; }
+
+/* Pair-game team picker (edit panel) */
+.teampick { display:flex; flex-direction:column; gap:7px; margin:4px 0 2px; }
+.teamchip { display:flex; align-items:center; gap:10px; border:1.5px solid var(--line,#e7ece3); border-radius:12px; padding:11px 14px; background:#fff; font:inherit; font-size:15px; font-weight:700; color:var(--ink,#10251a); cursor:pointer; text-align:left; }
+.teamchip-side { font-size:11px; font-weight:800; letter-spacing:.02em; text-transform:uppercase; padding:2px 9px; border-radius:999px; flex:none; }
+.teamchip.t1 { border-color:#2f7a3a; background:#eaf4e6; }
+.teamchip.t1 .teamchip-side { background:#2f7a3a; color:#fff; }
+.teamchip.t2 .teamchip-side { background:#e7ece3; color:#62756a; }

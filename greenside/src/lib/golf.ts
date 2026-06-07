@@ -27,6 +27,7 @@ export interface RoundState {
   lng?: number | null;
   chat?: ChatMsg[];
   stakes?: Stakes;
+  teams?: string[]; // ids of the 2 players on team 1 for pair games (rest = team 2); empty = default
 }
 
 export interface ChatMsg { id: string; name: string; text: string; ts: number }
@@ -167,13 +168,26 @@ function vegasNum(state: RoundState, team: Player[], h: Hole): number | null {
   return Number(`${vals[0]}${vals[1]}`);
 }
 
+// Two fixed teams for pair games (Vegas/Nassau/Best Ball). Honors a chosen split (state.teams =
+// the two ids on team 1); falls back to first-two-vs-last-two.
+export function pairTeams(state: RoundState): [Player[], Player[]] {
+  const P = state.players;
+  const t = state.teams;
+  if (Array.isArray(t) && t.length === 2) {
+    const a = P.filter((p) => t.includes(p.id));
+    const b = P.filter((p) => !t.includes(p.id));
+    if (a.length === 2 && b.length === 2) return [a, b];
+  }
+  return [[P[0], P[1]], [P[2], P[3]]];
+}
+
 export function computeGames(state: RoundState): any {
   const P = state.players;
   const n = P.length;
   const g = state.games || ({} as any);
   const out: any = { n, anyOn: !!(g.sixes || g.wolf || g.vegas || g.nassau || g.nines || g.bbb || g.bestball) };
   const course = state.course;
-  const t1 = [P[0], P[1]], t2 = [P[2], P[3]];
+  const [t1, t2] = pairTeams(state);
 
   const nm = (team: Player[]) => team.map((p) => p.name).join("/");
   const matchStatus = (u: number, a: Player[], b: Player[]) => (u === 0 ? "All square" : u > 0 ? `${nm(a)} ${u} up` : `${nm(b)} ${-u} up`);
@@ -437,7 +451,7 @@ export function computeMoney(state: RoundState, stakes: Stakes): Record<string, 
   const g = state.games || ({} as any);
   const f = state.formats || ({} as any);
   const course = state.course;
-  const t1 = [P[0], P[1]], t2 = [P[2], P[3]];
+  const [t1, t2] = pairTeams(state);
   const zero = (): Record<string, number> => Object.fromEntries(P.map((p) => [p.id, 0]));
   const games: Record<string, Record<string, number>> = {};
   const add = (label: string, m: Record<string, number>) => { if (Object.values(m).some((v) => Math.abs(v) > 1e-9)) games[label] = m; };

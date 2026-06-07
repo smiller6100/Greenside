@@ -26,6 +26,7 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
   const [edGames, setEdGames] = useState<Record<string, boolean>>({});
   const [edHcp, setEdHcp] = useState("perHole");
   const [edStakes, setEdStakes] = useState<Record<string, string>>({});
+  const [edTeams, setEdTeams] = useState<string[]>([]);
   const openEdit = () => {
     if (!state) return;
     setEdFormats({ ...(state.formats as any) });
@@ -33,13 +34,20 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
     setEdHcp(state.handicapMode || "perHole");
     const st = (state.stakes as any) || {};
     setEdStakes(Object.fromEntries(Object.entries(st).map(([k, v]) => [k, String(v)])));
+    const t = (state.teams as string[]) || [];
+    setEdTeams(t.length === 2 ? t : (state.players.slice(0, 2).map((p) => p.id)));
     setEditing(true);
   };
+  const toggleEdTeam = (id: string) => setEdTeams((cur) => {
+    if (cur.includes(id)) return cur.filter((x) => x !== id);
+    if (cur.length >= 2) return [cur[1], id]; // keep last picked + new, drop oldest
+    return [...cur, id];
+  });
   const saveEdit = () => {
     if (!Object.values(edFormats).some(Boolean)) return; // keep at least one format
     const stakes: Record<string, number> = {};
     for (const [k, v] of Object.entries(edStakes)) { const num = parseFloat(v); if (isFinite(num) && num > 0) stakes[k] = num; }
-    sendSetRules(adminToken, { handicapMode: edHcp, formats: edFormats, games: state?.outing ? undefined : edGames, stakes });
+    sendSetRules(adminToken, { handicapMode: edHcp, formats: edFormats, games: state?.outing ? undefined : edGames, stakes, teams: edTeams.length === 2 ? edTeams : [] });
     setEditing(false);
   };
   const editFlag = useRef(false);
@@ -635,6 +643,25 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
                   <button key={h.id} className={`seg-btn ${edHcp === h.id ? "on" : ""}`} onClick={() => setEdHcp(h.id)}>{h.label}</button>
                 ))}
               </div>
+
+              {!state.outing && state.players.length === 4 && (edGames.nassau || edGames.vegas || edGames.bestball) && (
+                <>
+                  <label className="edlabel">Teams <span className="edlabel-opt">— for Nassau, Vegas, Best Ball</span></label>
+                  <div className="teampick">
+                    {state.players.map((p) => {
+                      const on = edTeams.includes(p.id);
+                      return (
+                        <button key={p.id} className={`teamchip ${on ? "t1" : "t2"}`} onClick={() => toggleEdTeam(p.id)}>
+                          <span className="teamchip-side">{on ? "Team 1" : "Team 2"}</span>{p.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="hint left">{edTeams.length === 2
+                    ? `${state.players.filter((p) => edTeams.includes(p.id)).map((p) => p.name).join(" & ")} vs ${state.players.filter((p) => !edTeams.includes(p.id)).map((p) => p.name).join(" & ")}`
+                    : "Tap two players to make Team 1 — the other two are Team 2."}</p>
+                </>
+              )}
 
               {(() => {
                 const money: { id: string; label: string; unit: string }[] = [];

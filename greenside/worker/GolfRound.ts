@@ -195,6 +195,11 @@ export class GolfRound implements DurableObject {
         const s: any = {}; for (const k of ["skins", "nassau", "wolf", "nines", "vegas", "sixes", "bestball"]) { const v = Number(data.stakes[k]); if (isFinite(v) && v >= 0) s[k] = v; }
         state.stakes = s;
       }
+      if ("teams" in data) {
+        const ids = Array.isArray(data.teams) ? data.teams.filter((x: any) => typeof x === "string") : [];
+        const valid = ids.length === 2 && ids.every((id: string) => state.players.some((p: any) => p.id === id));
+        state.teams = valid ? ids : [];
+      }
       await this.ctx.storage.put("state", state);
       this.broadcast({ type: "state", state });
     } else if (data.type === "deleteGroup") {
