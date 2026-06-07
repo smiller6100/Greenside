@@ -4,7 +4,7 @@ import { computeStandings, fmtToPar } from "../lib/golf";
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, GAME_HELP, composeNines, ninesFromHoles } from "../lib/golf";
 
-const VERSION = "v69";
+const VERSION = "v70";
 
 
 
@@ -782,7 +782,7 @@ export default function Home() {
                     {coverage.length === 0 && !covRunning && <p className="hint left">No courses.</p>}
                     {coverage.map((c) => {
                       const ok = c.holesMapped > 0;
-                      const status = ok ? `✓ ${c.holesMapped}/${c.holesExpected} holes mapped`
+                      const status = ok ? `✓ ${c.holesMapped}/${c.holesExpected} holes mapped${c.foundRaw != null && c.foundRaw !== c.holesMapped ? ` · ${c.foundRaw} in OSM` : ""}`
                         : c.source === "no-coords" ? "no location found"
                         : c.mapErr ? `map error: ${c.mapErr}`
                         : "not in OpenStreetMap";

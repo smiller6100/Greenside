@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v69";
+const BUILD = "v70";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -20,7 +20,7 @@ const catalog = (env: Env) => env.COURSE_CATALOG.get(env.COURSE_CATALOG.idFromNa
 
 // Produce (and cache) a hole map for a coordinate. Shared by the public route and the admin probe.
 async function holeMapFor(lat: number, lng: number, wantHoles: number): Promise<Response> {
-  return cachedJson(`https://cache/holemap/v12/${lat.toFixed(4)},${lng.toFixed(4)},${wantHoles}`, 7 * 86400, async () => {
+  return cachedJson(`https://cache/holemap/v13/${lat.toFixed(4)},${lng.toFixed(4)},${wantHoles}`, 7 * 86400, async () => {
     const q = `[out:json][timeout:25];(way["golf"](around:2800,${lat},${lng});relation["golf"](around:2800,${lat},${lng});way["leisure"="golf_course"](around:2800,${lat},${lng});relation["leisure"="golf_course"](around:2800,${lat},${lng}););out geom;`;
     const servers = [
       "https://overpass.private.coffee/api/interpreter",
@@ -316,6 +316,7 @@ function parseHoleMap(data: any, qLat: number, qLng: number, wantHoles: number) 
   // whose hole count matches the round's, then the biggest/nearest.
   const q = [qLat, qLng];
   const teeOf = (w: any) => [w.geometry[0].lat, w.geometry[0].lon];
+  const endOf = (w: any) => [w.geometry[w.geometry.length - 1].lat, w.geometry[w.geometry.length - 1].lon];
   const ringArea = (ring: number[][]) => { let a = 0; for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) a += ring[j][1] * ring[i][0] - ring[i][1] * ring[j][0]; return Math.abs(a / 2); };
   // Each hole belongs to the SMALLEST boundary containing its tee (handles a small course nested in a big one).
   const ownerOf = (w: any) => { let best: number[][] | null = null, ba = Infinity; for (const r of boundaries) { if (hmInside(teeOf(w), r)) { const a = ringArea(r); if (a < ba) { ba = a; best = r; } } } return best; };
@@ -347,14 +348,38 @@ function parseHoleMap(data: any, qLat: number, qLng: number, wantHoles: number) 
   const overlapsRings = (x: any, rings: number[][][]) => rings.some((ring) => hmInside(x.c, ring) || x.poly.some((p: number[]) => hmInside(p, ring)));
   if (chosenGroups.length) {
     const rings = chosenGroups.map((c) => c.ring);
-    holeWays = chosenGroups.flatMap((c) => c.holes);
-    greens = greens.filter((x: any) => insideRings(x.c, rings));
+    let chosen = chosenGroups.flatMap((c) => c.holes);
+    // Rescue orphan holes: a course outline in OSM is often drawn too tight and leaves some tees
+    // just outside it, so those holes get no owner and vanish. Pull back any orphan hole that sits
+    // close to a hole we already have (≤500m), up to the expected count — this recovers the missing
+    // holes of THIS course without reaching across to a different course nearby.
+    const ownedSet = new Set<any>(); courses.forEach((c) => c.holes.forEach((w: any) => ownedSet.add(w)));
+    const orphans = holeWays.filter((w: any) => !ownedSet.has(w));
+    let rescued = false;
+    if (orphans.length && (!wantHoles || chosen.length < wantHoles)) {
+      const near = (w: any) => chosen.some((cw: any) => hmHav(teeOf(w), teeOf(cw)) < 500 || hmHav(endOf(w), teeOf(cw)) < 500);
+      let added = true;
+      while (added && (!wantHoles || chosen.length < wantHoles)) {
+        added = false;
+        for (const w of orphans) {
+          if (chosen.includes(w)) continue;
+          if (wantHoles && chosen.length >= wantHoles) break;
+          if (near(w)) { chosen.push(w); added = true; rescued = true; }
+        }
+      }
+    }
+    const hpts: number[][] = []; chosen.forEach((w: any) => { hpts.push(teeOf(w), endOf(w)); });
+    const nearHole = (c: number[]) => hpts.some((p) => hmHav(c, p) < 90);
+    const keepC = (c: number[]) => insideRings(c, rings) || (rescued && nearHole(c));
+    const keepX = (x: any) => overlapsRings(x, rings) || (rescued && nearHole(x.c));
+    holeWays = chosen;
+    greens = greens.filter((x: any) => keepC(x.c));
     // A big fairway/rough can straddle an imperfect boundary, so keep it if its centroid OR any vertex is inside.
-    fairways = fairways.filter((x: any) => overlapsRings(x, rings));
-    rough = rough.filter((x: any) => overlapsRings(x, rings));
-    tees = tees.filter((x: any) => insideRings(x.c, rings));
-    bunkers = bunkers.filter((x: any) => insideRings(x.c, rings));
-    water = water.filter((x: any) => insideRings(x.c, rings));
+    fairways = fairways.filter((x: any) => keepX(x));
+    rough = rough.filter((x: any) => keepX(x));
+    tees = tees.filter((x: any) => keepC(x.c));
+    bunkers = bunkers.filter((x: any) => keepC(x.c));
+    water = water.filter((x: any) => keepC(x.c));
   }
 
   const counts = { found: g("hole").length, courses: boundaries.length, holes: holeWays.length, greens: greens.length, fairways: fairways.length, rawFairways, rough: rough.length, rawRough, tees: tees.length, bunkers: bunkers.length, water: water.length };
@@ -696,14 +721,15 @@ export default {
               await catalog(env).fetch("https://do/setcoords", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: c.id, lat, lng }) });
             } else { source = "no-coords"; geo = gr.debug; }
           }
-          let holesMapped = 0, mapErr: string | null = null;
+          let holesMapped = 0, mapErr: string | null = null, foundRaw: number | null = null;
           if (lat != null && lng != null) {
             try {
               const hm: any = await (await holeMapFor(lat, lng, c.holesN || 18)).json();
+              foundRaw = hm.counts ? hm.counts.found : null;
               if (hm.available) holesMapped = (hm.holes || []).length; else mapErr = hm.error || "not-mapped";
             } catch { mapErr = "probe-failed"; }
           }
-          out.push({ id: c.id, name: c.name, where: c.where, source, holesExpected: c.holesN, holesMapped, mapErr, geo });
+          out.push({ id: c.id, name: c.name, where: c.where, source, holesExpected: c.holesN, holesMapped, foundRaw, mapErr, geo });
         }
         return Response.json({ total: ids ? slice.length : all.length, offset, returned: slice.length, nextOffset: ids ? null : (offset + slice.length < all.length ? offset + slice.length : null), courses: out });
       }
