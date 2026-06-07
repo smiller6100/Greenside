@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v65";
+const BUILD = "v68";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -27,26 +27,37 @@ async function holeMapFor(lat: number, lng: number, wantHoles: number): Promise<
       "https://overpass.kumi.systems/api/interpreter",
       "https://overpass-api.de/api/interpreter",
     ];
-    let lastErr = "none";
-    for (const ep of servers) {
+    // Hit every mirror at once and take whichever answers first. A hard 10s cutoff per mirror
+    // means a single hung server can't stall the whole thing the way the old serial walk did.
+    const fetchOne = async (ep: string) => {
       const host = ep.split("/")[2];
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 10000);
       try {
         const r = await fetch(ep, {
-          method: "POST",
+          method: "POST", signal: ctrl.signal,
           headers: { "content-type": "application/x-www-form-urlencoded", "accept": "application/json", "user-agent": "GreenSideStrokes/1.0 (+https://greensidestrokes.com; golf hole maps)" },
           body: "data=" + encodeURIComponent(q),
         });
-        if (!r.ok) { lastErr = "overpass-" + r.status + "@" + host; continue; }
+        if (!r.ok) throw new Error("overpass-" + r.status + "@" + host);
         const data = await r.json();
-        const result: any = parseHoleMap(data, lat, lng, wantHoles);
-        // Only cache a map that actually came back with holes. An empty/failed parse returns a
-        // non-200 so it is NOT cached — a later retry re-fetches instead of sticking for a week.
-        if (result && result.available) return Response.json(result);
-        lastErr = "parsed-empty(found " + ((result && result.counts && result.counts.found) || 0) + ")@" + host;
-        return new Response(JSON.stringify({ available: false, error: lastErr, counts: result && result.counts }), { status: 503, headers: { "content-type": "application/json" } });
-      } catch { lastErr = "fetch-failed@" + host; }
+        return { data, host };
+      } finally { clearTimeout(timer); }
+    };
+    let won: { data: any; host: string };
+    try {
+      won = await Promise.any(servers.map(fetchOne));
+    } catch (agg: any) {
+      const errs = ((agg && agg.errors) || []).map((e: any) => String((e && e.message) || e)).join("; ") || "all-mirrors-failed";
+      return new Response(JSON.stringify({ available: false, error: errs }), { status: 503, headers: { "content-type": "application/json" } });
     }
-    return new Response(JSON.stringify({ available: false, error: lastErr }), { status: 503, headers: { "content-type": "application/json" } });
+    // Parse only the winner (all mirrors return the same OSM data, so one parse is enough).
+    const result: any = parseHoleMap(won.data, lat, lng, wantHoles);
+    // Only cache a map that actually came back with holes. An empty/failed parse returns a
+    // non-200 so it is NOT cached — a later retry re-fetches instead of sticking for a week.
+    if (result && result.available) return Response.json(result);
+    const err = "parsed-empty(found " + ((result && result.counts && result.counts.found) || 0) + ")@" + won.host;
+    return new Response(JSON.stringify({ available: false, error: err, counts: result && result.counts }), { status: 503, headers: { "content-type": "application/json" } });
   });
 }
 
@@ -401,7 +412,7 @@ function parseHoleMap(data: any, qLat: number, qLng: number, wantHoles: number) 
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
 
@@ -713,6 +724,11 @@ export default {
           await catalog(env).fetch("https://do/upsert", { method: "POST", headers: { "content-type": "application/json" },
             body: JSON.stringify({ name: cfg.courseName, where: cfg.courseWhere || "", lat: cfg.lat ?? null, lng: cfg.lng ?? null, holes: catHoles, tees: catTees, defaultTee: cfg.teeName || cfg.defaultTee || null }) });
         } catch { /* non-fatal */ }
+      }
+      // Pre-warm the hole map so it's cached before the group reaches the first tee. Fire-and-forget
+      // with the same coords/hole-count the round screen will request, so it lands on the same cache key.
+      if (cfg.lat != null && cfg.lng != null && Array.isArray(cfg.course) && cfg.course.length) {
+        ctx.waitUntil(holeMapFor(cfg.lat, cfg.lng, cfg.course.length).catch(() => {}));
       }
       return Response.json({ code, adminToken });
     }
