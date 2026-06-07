@@ -3,7 +3,7 @@ import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw } fro
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, GAME_HELP, composeNines, ninesFromHoles } from "../lib/golf";
 
-const VERSION = "v62";
+const VERSION = "v63";
 
 
 
@@ -272,23 +272,31 @@ export default function Home() {
       else setAdminMsg("Rename failed.");
     } catch { setAdminMsg("Rename failed."); }
   };
+  const [covSel, setCovSel] = useState<string[]>([]);
+  const toggleCovSel = (id: string) => setCovSel((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
   const runCoverage = async () => {
     setCovRunning(true); setCoverage([]); setAdminMsg(""); setCovTotal(0);
     try {
-      let offset = 0; const acc: any[] = [];
-      for (let page = 0; page < 40; page++) {
-        const r = await fetch(`/api/admin/coverage?offset=${offset}&limit=4`, { headers: { "x-admin-key": adminKey } });
+      if (covSel.length) {
+        const r = await fetch(`/api/admin/coverage?ids=${covSel.join(",")}`, { headers: { "x-admin-key": adminKey } });
         const d: any = await r.json();
-        if (d.total != null) setCovTotal(d.total);
-        acc.push(...(d.courses || []));
-        setCoverage([...acc]);
-        if (d.nextOffset == null) break;
-        offset = d.nextOffset;
+        setCovTotal(d.total || 0); setCoverage(d.courses || []);
+      } else {
+        let offset = 0; const acc: any[] = [];
+        for (let page = 0; page < 40; page++) {
+          const r = await fetch(`/api/admin/coverage?offset=${offset}&limit=4`, { headers: { "x-admin-key": adminKey } });
+          const d: any = await r.json();
+          if (d.total != null) setCovTotal(d.total);
+          acc.push(...(d.courses || []));
+          setCoverage([...acc]);
+          if (d.nextOffset == null) break;
+          offset = d.nextOffset;
+        }
       }
     } catch { setAdminMsg("Coverage check failed — try again."); }
     setCovRunning(false);
   };
-  const closeAdmin = () => { setAdminOpen(false); setAdminAuthed(false); setAdminKey(""); setAdminCourses([]); setAdminMsg(""); setCoverage(null); setCovRunning(false); setCovTotal(0); };
+  const closeAdmin = () => { setAdminOpen(false); setAdminAuthed(false); setAdminKey(""); setAdminCourses([]); setAdminMsg(""); setCoverage(null); setCovRunning(false); setCovTotal(0); setCovSel([]); };
 
   const parTotal = course.reduce((s, h) => s + h.par, 0);
   const selTee = tees.find((t) => t.name === teeName) || tees[0];
@@ -631,6 +639,7 @@ export default function Home() {
                         </div>
                       ) : (
                         <>
+                          <input type="checkbox" className="covpick" checked={covSel.includes(c.id)} onChange={() => toggleCovSel(c.id)} aria-label="select for coverage" />
                           <div className="adminrow-info"><b>{c.name}</b>{c.where ? <span> · {c.where}</span> : null}<span className="dim"> · {c.plays}×</span></div>
                           <button className="editbtn" onClick={() => startEdit(c)}>Edit</button>
                           <button className="delbtn" onClick={() => deleteAdminCourse(c.id)}>Delete</button>
@@ -639,7 +648,8 @@ export default function Home() {
                     </div>
                   ))}
                 </div>
-                <button className="ghostbtn" onClick={runCoverage} disabled={covRunning}>{covRunning ? `Checking coverage… ${coverage ? coverage.length : 0}${covTotal ? "/" + covTotal : ""}` : "Check hole-map coverage"}</button>
+                {covSel.length > 0 && <p className="hint left">{covSel.length} selected — coverage will check just these.</p>}
+                <button className="ghostbtn" onClick={runCoverage} disabled={covRunning}>{covRunning ? `Checking… ${coverage ? coverage.length : 0}${covTotal ? "/" + covTotal : ""}` : covSel.length ? `Check map for ${covSel.length} selected` : "Check hole-map coverage (all)"}</button>
                 {coverage && (
                   <div className="adminlist">
                     {coverage.length === 0 && !covRunning && <p className="hint left">No courses.</p>}

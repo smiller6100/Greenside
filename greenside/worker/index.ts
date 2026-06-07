@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v62";
+const BUILD = "v63";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -657,9 +657,11 @@ export default {
       if (path === "/api/admin/coverage" && request.method === "GET") {
         const offset = parseInt(url.searchParams.get("offset") || "0") || 0;
         const limit = Math.min(parseInt(url.searchParams.get("limit") || "30") || 30, 60);
+        const idsParam = url.searchParams.get("ids");
+        const ids = idsParam ? idsParam.split(",").map((s) => s.trim()).filter(Boolean) : null;
         const lr = await catalog(env).fetch("https://do/listfull");
         const all = (((await lr.json()) as any).courses || []) as any[];
-        const slice = all.slice(offset, offset + limit);
+        const slice = ids ? all.filter((c) => ids.includes(c.id)).slice(0, 12) : all.slice(offset, offset + limit);
         const out: any[] = [];
         for (const c of slice) {
           let lat = c.lat, lng = c.lng, source = "catalog";
@@ -680,7 +682,7 @@ export default {
           }
           out.push({ id: c.id, name: c.name, where: c.where, source, holesExpected: c.holesN, holesMapped, mapErr, geo });
         }
-        return Response.json({ total: all.length, offset, returned: slice.length, nextOffset: offset + slice.length < all.length ? offset + slice.length : null, courses: out });
+        return Response.json({ total: ids ? slice.length : all.length, offset, returned: slice.length, nextOffset: ids ? null : (offset + slice.length < all.length ? offset + slice.length : null), courses: out });
       }
       return new Response("Not found", { status: 404 });
     }
