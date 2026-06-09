@@ -660,3 +660,25 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .teamchip.t1 { border-color:#2f7a3a; background:#eaf4e6; }
 .teamchip.t1 .teamchip-side { background:#2f7a3a; color:#fff; }
 .teamchip.t2 .teamchip-side { background:#e7ece3; color:#62756a; }
+
+/* Course location prompt for scanned/coordless courses */
+.cc-where { margin:8px 0 2px; display:flex; flex-direction:column; gap:5px; }
+.cc-where-l { font-size:13px; font-weight:700; color:var(--ink,#10251a); }
+.cc-where-l span { font-weight:500; color:#8aa18c; }
+.cc-where-in { width:100%; padding:11px 13px; border:1.5px solid var(--line,#e7ece3); border-radius:11px; font:inherit; font-size:15px; background:#fff; }
+.cc-where-in:focus { outline:none; border-color:#2f7a3a; }
+
+/* Admin usage panel */
+.usage { border:1px solid var(--line,#e7ece3); border-radius:14px; padding:14px; margin-bottom:16px; background:#fbfdf9; }
+.usage-h { display:flex; align-items:center; justify-content:space-between; }
+.usage-h h3 { margin:0; font-family:'Fraunces',serif; font-size:20px; color:var(--pine,#15643d); font-weight:600; }
+.usage-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; margin:12px 0; }
+.ustat { background:#fff; border:1px solid var(--line,#e7ece3); border-radius:11px; padding:9px 12px; display:flex; flex-direction:column; }
+.ustat b { font-family:'Fraunces',serif; font-size:22px; color:var(--ink,#10251a); font-weight:700; line-height:1.1; }
+.ustat span { font-size:12px; color:#8aa18c; font-weight:600; margin-top:2px; }
+.usage-chart { margin:6px 0 12px; }
+.uchart-label { font-size:12px; font-weight:700; color:#62756a; margin-bottom:6px; }
+.uchart-bars { display:flex; align-items:flex-end; gap:3px; height:70px; }
+.uchart-col { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; }
+.uchart-bar { width:100%; min-height:2px; background:#2f7a3a; border-radius:3px 3px 0 0; }
+.uchart-d { font-size:9px; color:#9aab9c; margin-top:3px; }

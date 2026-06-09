@@ -26,12 +26,52 @@ export class CourseCatalog implements DurableObject {
       // migrations for older tables — ignore if the column already exists
       try { this.ctx.storage.sql.exec("ALTER TABLE courses ADD COLUMN tees TEXT"); } catch {}
       try { this.ctx.storage.sql.exec("ALTER TABLE courses ADD COLUMN default_tee TEXT"); } catch {}
+      // Lightweight usage counters: one row per (UTC day, event type).
+      this.ctx.storage.sql.exec(
+        `CREATE TABLE IF NOT EXISTS metrics (day TEXT, type TEXT, n INTEGER DEFAULT 0, PRIMARY KEY (day, type))`
+      );
     });
   }
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const sql = this.ctx.storage.sql;
+
+    if (url.pathname.endsWith("/bump") && request.method === "POST") {
+      const b = await request.json<any>().catch(() => ({}));
+      const type = String(b?.type || "").slice(0, 20);
+      const amt = Math.max(1, Math.min(200, Number(b?.n) || 1));
+      if (type) {
+        const day = new Date().toISOString().slice(0, 10);
+        sql.exec("INSERT INTO metrics (day,type,n) VALUES (?,?,?) ON CONFLICT(day,type) DO UPDATE SET n = n + excluded.n", day, type, amt);
+      }
+      return Response.json({ ok: true });
+    }
+
+    if (url.pathname.endsWith("/stats")) {
+      const dayStr = (back: number) => { const d = new Date(); d.setUTCDate(d.getUTCDate() - back); return d.toISOString().slice(0, 10); };
+      const totalsRows = sql.exec("SELECT type, SUM(n) AS s FROM metrics GROUP BY type").toArray();
+      const totals: any = {}; for (const r of totalsRows as any[]) totals[r.type] = r.s;
+      const courses = (sql.exec("SELECT COUNT(*) AS c FROM courses").toArray()[0] as any).c;
+      const sumSince = (from: string, type: string) => ((sql.exec("SELECT SUM(n) AS s FROM metrics WHERE type=? AND day>=?", type, from).toArray()[0] as any).s) || 0;
+      const dailyRows = sql.exec("SELECT day, type, n FROM metrics WHERE day>=? ORDER BY day", dayStr(29)).toArray() as any[];
+      const dmap: any = {}; for (const r of dailyRows) { (dmap[r.day] ||= {})[r.type] = r.n; }
+      const daily: any[] = [];
+      for (let i = 29; i >= 0; i--) { const d = dayStr(i); daily.push({ day: d, round: (dmap[d]?.round) || 0, scan: (dmap[d]?.scan) || 0 }); }
+      const today = dayStr(0);
+      return Response.json({
+        courses, totals,
+        today: { round: sumSince(today, "round"), scan: sumSince(today, "scan") },
+        d7: { round: sumSince(dayStr(6), "round"), scan: sumSince(dayStr(6), "scan") },
+        d30: { round: sumSince(dayStr(29), "round"), scan: sumSince(dayStr(29), "scan") },
+        daily,
+      });
+    }
+
+    if (url.pathname.endsWith("/resetstats") && request.method === "POST") {
+      sql.exec("DELETE FROM metrics");
+      return Response.json({ ok: true });
+    }
 
     if (url.pathname.endsWith("/search")) {
       const q = (url.searchParams.get("q") || "").trim().toLowerCase();

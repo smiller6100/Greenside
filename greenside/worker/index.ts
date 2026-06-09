@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v71";
+const BUILD = "v74";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -20,7 +20,7 @@ const catalog = (env: Env) => env.COURSE_CATALOG.get(env.COURSE_CATALOG.idFromNa
 
 // Produce (and cache) a hole map for a coordinate. Shared by the public route and the admin probe.
 async function holeMapFor(lat: number, lng: number, wantHoles: number): Promise<Response> {
-  return cachedJson(`https://cache/holemap/v14/${lat.toFixed(4)},${lng.toFixed(4)},${wantHoles}`, 7 * 86400, async () => {
+  return cachedJson(`https://cache/holemap/v15/${lat.toFixed(4)},${lng.toFixed(4)},${wantHoles}`, 7 * 86400, async () => {
     const q = `[out:json][timeout:25];(way["golf"](around:5000,${lat},${lng});relation["golf"](around:5000,${lat},${lng});way["leisure"="golf_course"](around:5000,${lat},${lng});relation["leisure"="golf_course"](around:5000,${lat},${lng}););out geom;`;
     const servers = [
       "https://overpass.private.coffee/api/interpreter",
@@ -349,22 +349,24 @@ function parseHoleMap(data: any, qLat: number, qLng: number, wantHoles: number) 
   if (chosenGroups.length) {
     const rings = chosenGroups.map((c) => c.ring);
     let chosen = chosenGroups.flatMap((c) => c.holes);
-    // Rescue orphan holes: a course outline in OSM is often drawn too tight and leaves some tees
-    // just outside it, so those holes get no owner and vanish. Pull back any orphan hole that sits
-    // close to a hole we already have (≤500m), up to the expected count — this recovers the missing
-    // holes of THIS course without reaching across to a different course nearby.
-    const ownedSet = new Set<any>(); courses.forEach((c) => c.holes.forEach((w: any) => ownedSet.add(w)));
-    const orphans = holeWays.filter((w: any) => !ownedSet.has(w));
+    const chosenSet = new Set<any>(chosen);
     let rescued = false;
-    if (orphans.length && (!wantHoles || chosen.length < wantHoles)) {
-      const near = (w: any) => chosen.some((cw: any) => hmHav(teeOf(w), teeOf(cw)) < 500 || hmHav(endOf(w), teeOf(cw)) < 500);
+    // Recover holes of THIS course that the selection missed — whether they were left out by a
+    // too-tight outline (orphans) or drawn as a separate OSM piece. We chain outward: a candidate
+    // is pulled in if it sits within ~550m of a hole we already have, up to the expected count. A
+    // genuinely different course nearby (e.g. Spyglass next to Pebble) is >550m away and never chains.
+    if (wantHoles && chosen.length < wantHoles) {
+      const candidates = holeWays.filter((w: any) => !chosenSet.has(w));
+      const near = (w: any) => chosen.some((cw: any) =>
+        hmHav(teeOf(w), teeOf(cw)) < 550 || hmHav(teeOf(w), endOf(cw)) < 550 ||
+        hmHav(endOf(w), teeOf(cw)) < 550 || hmHav(endOf(w), endOf(cw)) < 550);
       let added = true;
-      while (added && (!wantHoles || chosen.length < wantHoles)) {
+      while (added && chosen.length < wantHoles) {
         added = false;
-        for (const w of orphans) {
-          if (chosen.includes(w)) continue;
-          if (wantHoles && chosen.length >= wantHoles) break;
-          if (near(w)) { chosen.push(w); added = true; rescued = true; }
+        for (const w of candidates) {
+          if (chosenSet.has(w)) continue;
+          if (chosen.length >= wantHoles) break;
+          if (near(w)) { chosen.push(w); chosenSet.add(w); added = true; rescued = true; }
         }
       }
     }
@@ -533,8 +535,11 @@ export default {
 
     // ---- Scan a scorecard photo with Cloudflare AI ----
     if (path === "/api/courses/scan" && request.method === "POST") {
+      ctx.waitUntil(catalog(env).fetch("https://do/bump", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: "scan" }) }).catch(() => {}));
       try {
         const wantNines = !!url.searchParams.get("nines"); // ?nines=3 → read a 27-hole / three-nines card
+        const want9 = url.searchParams.get("holes") === "9"; // ?holes=9 → a nine-hole course
+        const HOLES = want9 ? 9 : 18;
         const buf = await request.arrayBuffer();
         const bytes = new Uint8Array(buf);
         const image = [...bytes]; // byte array for the small vision model
@@ -546,6 +551,12 @@ export default {
           '"par" = the Par for holes 1 to 18 in order. "handicap" = the stroke-index / handicap rank (1 to 18) for holes 1 to 18 in order; if men and women rows both exist use the first row. ' +
           '"tees" = ONE entry for EACH tee box / colored row on the card (for example Black, Blue, White, Gold, Red, Orange, Teal); "yards" = that row\'s yardage for holes 1 to 18 in order. ' +
           'Read left to right, front nine then back nine. Ignore the OUT, IN and TOTAL subtotal columns — give only the 18 real hole numbers. If a value is unreadable use 0. Return only the JSON.';
+        const prompt9 =
+          'You read golf scorecards. This card is a NINE-hole course — holes 1 to 9 only. Return STRICT JSON only — no prose, no code fences — in exactly this shape: ' +
+          '{"name":"<course name>","par":[9 numbers],"handicap":[9 numbers],"tees":[{"name":"<tee or color name>","yards":[9 numbers]}]}. ' +
+          '"par" = the Par for holes 1 to 9 in order. "handicap" = the stroke-index / handicap rank for holes 1 to 9 in order. ' +
+          '"tees" = ONE entry for EACH tee box / colored row, each with 9 yardages for holes 1 to 9. ' +
+          'Do NOT invent a back nine or holes 10 to 18 — this course has only 9 holes. Ignore the OUT and TOTAL subtotal columns. If a value is unreadable use 0. Return only the JSON.';
         const ninePrompt =
           'You read golf scorecards. This card is a 27-hole course made of SEPARATE nine-hole courses, each with its OWN name (for example "The Callow", "The Meath", "The Birr"), its own Par row (9 values), its own Handicap / stroke-index row (values 1 to 9), and one or more tee rows (e.g. Black, Blue, White, Red) each with 9 yardages. ' +
           'Return STRICT JSON only — no prose, no code fences — in exactly this shape: {"nines":[{"name":"<nine name>","par":[9 numbers],"handicap":[9 numbers],"tees":[{"name":"<tee>","yards":[9 numbers]}]}]}. ' +
@@ -556,7 +567,7 @@ export default {
           if (Array.isArray(one) && one.length) return numArr(one);
           return [...numArr(f), ...numArr(b)];
         };
-        const strip = (arr: number[], isTotal: (v: number) => boolean): number[] => arr.filter((v) => !isTotal(v)).slice(0, 18);
+        const strip = (arr: number[], isTotal: (v: number) => boolean): number[] => arr.filter((v) => !isTotal(v)).slice(0, HOLES);
         const clampPar = (p: number) => (p >= 3 && p <= 6 ? p : 4);
 
         // Build per-nine data from a {nines:[...]} reply for a 27-hole card.
@@ -643,7 +654,7 @@ export default {
           },
           required: ["nines"],
         };
-        const usePrompt = wantNines ? ninePrompt : prompt;
+        const usePrompt = wantNines ? ninePrompt : want9 ? prompt9 : prompt;
         const useSchema = wantNines ? ninesSchema : schema;
         const useBuild = wantNines ? buildNines : build;
         const asText = (resp: any) => (typeof resp === "string" ? resp : resp ? JSON.stringify(resp) : "");
@@ -684,6 +695,14 @@ export default {
         return Response.json({ ok, configured: !!env.ADMIN_KEY });
       }
       if (!ok) return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
+      if (path === "/api/admin/stats" && request.method === "GET") {
+        const r = await catalog(env).fetch("https://do/stats");
+        return new Response(await r.text(), { headers: { "content-type": "application/json" } });
+      }
+      if (path === "/api/admin/stats/reset" && request.method === "POST") {
+        const r = await catalog(env).fetch("https://do/resetstats", { method: "POST" });
+        return new Response(await r.text(), { headers: { "content-type": "application/json" } });
+      }
       if (path === "/api/admin/courses" && request.method === "GET") {
         const r = await catalog(env).fetch("https://do/list");
         return new Response(await r.text(), { headers: { "content-type": "application/json" } });
@@ -741,20 +760,30 @@ export default {
       const cfg = await request.json<any>();
       const code = genCode();
       const adminToken = genCode(20);
+      let lat = cfg.lat, lng = cfg.lng;
+      // A freshly scanned course has no coordinates. If the creator gave a city/state, geocode it
+      // now so the round (and the saved course) gets a hole map automatically — no admin step.
+      if ((lat == null || lng == null) && cfg.courseName && cfg.courseWhere) {
+        try { const gg = await geocodeCourse(env, cfg.courseName, cfg.courseWhere); if (gg) { lat = gg.lat; lng = gg.lng; } } catch { /* non-fatal */ }
+      }
       const stub = env.GOLF_ROUND.get(env.GOLF_ROUND.idFromName(code));
-      await stub.fetch("https://do/init", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...cfg, code, adminToken }) });
+      await stub.fetch("https://do/init", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...cfg, code, adminToken, lat, lng }) });
+      // Usage counters (fire-and-forget).
+      const players = Array.isArray(cfg.players) ? cfg.players.length : 0;
+      ctx.waitUntil(catalog(env).fetch("https://do/bump", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: "round" }) }).catch(() => {}));
+      if (players) ctx.waitUntil(catalog(env).fetch("https://do/bump", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: "players", n: players }) }).catch(() => {}));
       if (cfg.courseName && Array.isArray(cfg.course) && cfg.course.length) {
         try {
           const catHoles = Array.isArray(cfg.catalogHoles) && cfg.catalogHoles.length ? cfg.catalogHoles : cfg.course;
           const catTees = Array.isArray(cfg.catalogTees) && cfg.catalogTees.length ? cfg.catalogTees : (cfg.tees || null);
           await catalog(env).fetch("https://do/upsert", { method: "POST", headers: { "content-type": "application/json" },
-            body: JSON.stringify({ name: cfg.courseName, where: cfg.courseWhere || "", lat: cfg.lat ?? null, lng: cfg.lng ?? null, holes: catHoles, tees: catTees, defaultTee: cfg.teeName || cfg.defaultTee || null }) });
+            body: JSON.stringify({ name: cfg.courseName, where: cfg.courseWhere || "", lat: lat ?? null, lng: lng ?? null, holes: catHoles, tees: catTees, defaultTee: cfg.teeName || cfg.defaultTee || null }) });
         } catch { /* non-fatal */ }
       }
       // Pre-warm the hole map so it's cached before the group reaches the first tee. Fire-and-forget
       // with the same coords/hole-count the round screen will request, so it lands on the same cache key.
-      if (cfg.lat != null && cfg.lng != null && Array.isArray(cfg.course) && cfg.course.length) {
-        ctx.waitUntil(holeMapFor(cfg.lat, cfg.lng, cfg.course.length).catch(() => {}));
+      if (lat != null && lng != null && Array.isArray(cfg.course) && cfg.course.length) {
+        ctx.waitUntil(holeMapFor(lat, lng, cfg.course.length).catch(() => {}));
       }
       return Response.json({ code, adminToken });
     }

@@ -4,7 +4,7 @@ import { computeStandings, fmtToPar } from "../lib/golf";
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, GAME_HELP, composeNines, ninesFromHoles } from "../lib/golf";
 
-const VERSION = "v71";
+const VERSION = "v74";
 
 
 
@@ -83,9 +83,10 @@ export default function Home() {
   const [courseWhere, setCourseWhere] = useState("");
   const [nines3, setNines3] = useState(false);
   const nines3Ref = useRef(false);
+  const scanModeRef = useRef<"9" | "18" | "27">("18");
   const [scanChoose, setScanChoose] = useState(false);
-  const chooseScan = (is27: boolean) => {
-    nines3Ref.current = is27; setNines3(is27); setScanChoose(false);
+  const chooseScan = (mode: "9" | "18" | "27") => {
+    scanModeRef.current = mode; nines3Ref.current = mode === "27"; setNines3(mode === "27"); setScanChoose(false);
     setTimeout(() => fileIn.current?.click(), 0);
   };
   const [ninesRaw, setNinesRaw] = useState<{ name: string; par: number[]; si: number[]; tees: { name: string; yards: number[] }[] }[] | null>(null);
@@ -183,7 +184,8 @@ export default function Home() {
     setScanning(true); setMsg("");
     try {
       const blob = await fileToJpeg(file);
-      const r = await fetch(nines3Ref.current ? "/api/courses/scan?nines=3" : "/api/courses/scan", { method: "POST", headers: { "content-type": "image/jpeg" }, body: blob });
+      const q = scanModeRef.current === "27" ? "?nines=3" : scanModeRef.current === "9" ? "?holes=9" : "";
+      const r = await fetch(`/api/courses/scan${q}`, { method: "POST", headers: { "content-type": "image/jpeg" }, body: blob });
       if (!r.ok) {
         setMsg("Couldn't read that photo clearly — enter the holes by hand below, or try a flatter, brighter shot.");
         const blank = DEFAULT_COURSE.map((h) => ({ ...h, yards: 0, si: 0 }));
@@ -266,9 +268,18 @@ export default function Home() {
     try {
       const r = await fetch("/api/admin/check", { method: "POST", headers: { "x-admin-key": adminKey } });
       const d: any = await r.json();
-      if (d.ok) { setAdminAuthed(true); loadAdminCourses(); }
+      if (d.ok) { setAdminAuthed(true); loadAdminCourses(); loadStats(); }
       else setAdminMsg(d.configured === false ? "Admin isn't set up yet — add the ADMIN_KEY secret in Cloudflare." : "Wrong password.");
     } catch { setAdminMsg("Couldn't reach the server."); }
+  };
+  const [stats, setStats] = useState<any>(null);
+  const [statsReset, setStatsReset] = useState(false);
+  const loadStats = async () => {
+    try { const r = await fetch("/api/admin/stats", { headers: { "x-admin-key": adminKey } }); setStats(await r.json()); } catch { /* */ }
+  };
+  const resetStats = async () => {
+    setStatsReset(false);
+    try { await fetch("/api/admin/stats/reset", { method: "POST", headers: { "x-admin-key": adminKey } }); loadStats(); } catch { /* */ }
   };
   const loadAdminCourses = async () => {
     try {
@@ -432,9 +443,10 @@ export default function Home() {
                     </button>
                   ) : (
                     <div className="scanchoose">
-                      <div className="scanchoose-h">What kind of scorecard?</div>
-                      <button className="scanopt" onClick={() => chooseScan(false)}><b>Standard card</b><small>9 or 18 holes</small></button>
-                      <button className="scanopt" onClick={() => chooseScan(true)}><b>27-hole card</b><small>three nines on one card</small></button>
+                      <div className="scanchoose-h">How many holes on the card?</div>
+                      <button className="scanopt" onClick={() => chooseScan("9")}><b>9-hole course</b><small>holes 1–9 only</small></button>
+                      <button className="scanopt" onClick={() => chooseScan("18")}><b>18-hole course</b><small>standard front & back nine</small></button>
+                      <button className="scanopt" onClick={() => chooseScan("27")}><b>27-hole course</b><small>three nines on one card</small></button>
                       <button className="scanchoose-x" onClick={() => setScanChoose(false)}>Cancel</button>
                     </div>
                   )}
@@ -449,6 +461,12 @@ export default function Home() {
                     </div>
                     <button className="rm" onClick={clearCourse} aria-label="clear course"><X size={15} /></button>
                   </div>
+                  {loc.lat == null && (
+                    <div className="cc-where">
+                      <label className="cc-where-l">Course location <span>— so the hole map loads automatically</span></label>
+                      <input className="cc-where-in" value={courseWhere} onChange={(e) => setCourseWhere(e.target.value)} placeholder="City, State (e.g. Pewaukee, WI)" />
+                    </div>
+                  )}
                   {ninesRaw && ninesRaw.length >= 2 && (
                     <div className="ninepick">
                       <div className="ninepick-h">Which nines are you playing? <span>tap in the order you'll play</span></div>
@@ -748,6 +766,42 @@ export default function Home() {
               </>
             ) : (
               <>
+                {stats && (
+                  <div className="usage">
+                    <div className="usage-h"><h3>Usage</h3><button className="ghostbtn sm" onClick={loadStats}>Refresh</button></div>
+                    <div className="usage-grid">
+                      <div className="ustat"><b>{stats.totals?.round || 0}</b><span>rounds all-time</span></div>
+                      <div className="ustat"><b>{stats.today?.round || 0}</b><span>rounds today</span></div>
+                      <div className="ustat"><b>{stats.d7?.round || 0}</b><span>rounds · 7d</span></div>
+                      <div className="ustat"><b>{stats.d30?.round || 0}</b><span>rounds · 30d</span></div>
+                      <div className="ustat"><b>{stats.totals?.scan || 0}</b><span>cards scanned</span></div>
+                      <div className="ustat"><b>{stats.totals?.players || 0}</b><span>player slots</span></div>
+                      <div className="ustat"><b>{stats.courses || 0}</b><span>courses saved</span></div>
+                    </div>
+                    {Array.isArray(stats.daily) && (() => {
+                      const last = stats.daily.slice(-14);
+                      const max = Math.max(1, ...last.map((d: any) => d.round));
+                      return (
+                        <div className="usage-chart">
+                          <div className="uchart-label">Rounds · last 14 days</div>
+                          <div className="uchart-bars">
+                            {last.map((d: any) => (
+                              <div key={d.day} className="uchart-col" title={`${d.day}: ${d.round}`}>
+                                <div className="uchart-bar" style={{ height: `${Math.round((d.round / max) * 100)}%` }} />
+                                <span className="uchart-d">{d.day.slice(8)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                    {!statsReset ? (
+                      <button className="ghostbtn sm" onClick={() => setStatsReset(true)}>Reset usage stats</button>
+                    ) : (
+                      <div className="roundrow-del"><span>Reset all usage counts? (Use before launch to clear test data.)</span><button className="delbtn" onClick={resetStats}>Reset</button><button className="ghostbtn sm" onClick={() => setStatsReset(false)}>Cancel</button></div>
+                    )}
+                  </div>
+                )}
                 <h3>Manage courses</h3>
                 <p className="hint left">Tap Delete to remove a bad saved card. This can't be undone.</p>
                 {adminMsg && <p className="err">{adminMsg}</p>}
