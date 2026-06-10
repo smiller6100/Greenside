@@ -103,11 +103,25 @@ export class CourseCatalog implements DurableObject {
       const holes = JSON.stringify(c.holes);
       const teesJson = c.tees && Array.isArray(c.tees) && c.tees.length ? JSON.stringify(c.tees) : null;
       const defTee = c.defaultTee || null;
-      const existing = sql.exec("SELECT id FROM courses WHERE key = ?", key).toArray();
+      const existing = sql.exec("SELECT id, holes, tees FROM courses WHERE key = ?", key).toArray();
       if (existing.length) {
-        const id = (existing[0] as any).id;
-        sql.exec("UPDATE courses SET name=?,where_txt=?,lat=?,lng=?,holes=?,tees=?,default_tee=? WHERE id=?", c.name, c.where || "", c.lat ?? null, c.lng ?? null, holes, teesJson, defTee, id);
-        return Response.json({ id });
+        const ex: any = existing[0];
+        const yardSum = (hsJson: string, tsJson: string) => {
+          let s = 0;
+          try { for (const h of JSON.parse(hsJson || "[]")) s += Number(h.yards) || 0; } catch {}
+          try { for (const t of (JSON.parse(tsJson || "null") || [])) for (const h of (t.holes || [])) s += Number(h.yards) || 0; } catch {}
+          return s;
+        };
+        const inYards = yardSum(holes, teesJson || "null");
+        const exYards = yardSum(ex.holes, ex.tees);
+        // A blank/par-only re-scan shouldn't wipe out a richer saved card. Keep the existing
+        // holes/tees (which have yardages) and just refresh name/location.
+        if (inYards === 0 && exYards > 0) {
+          sql.exec("UPDATE courses SET name=?,where_txt=?,lat=?,lng=? WHERE id=?", c.name, c.where || "", c.lat ?? null, c.lng ?? null, ex.id);
+          return Response.json({ id: ex.id, kept: true });
+        }
+        sql.exec("UPDATE courses SET name=?,where_txt=?,lat=?,lng=?,holes=?,tees=?,default_tee=? WHERE id=?", c.name, c.where || "", c.lat ?? null, c.lng ?? null, holes, teesJson, defTee, ex.id);
+        return Response.json({ id: ex.id });
       }
       const id = "c_" + crypto.randomUUID().slice(0, 8);
       sql.exec("INSERT INTO courses (id,key,name,where_txt,lat,lng,holes,tees,default_tee,plays,created) VALUES (?,?,?,?,?,?,?,?,?,0,?)",

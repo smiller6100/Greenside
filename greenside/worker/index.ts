@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v74";
+const BUILD = "v75";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -555,7 +555,7 @@ export default {
           'You read golf scorecards. This card is a NINE-hole course — holes 1 to 9 only. Return STRICT JSON only — no prose, no code fences — in exactly this shape: ' +
           '{"name":"<course name>","par":[9 numbers],"handicap":[9 numbers],"tees":[{"name":"<tee or color name>","yards":[9 numbers]}]}. ' +
           '"par" = the Par for holes 1 to 9 in order. "handicap" = the stroke-index / handicap rank for holes 1 to 9 in order. ' +
-          '"tees" = ONE entry for EACH tee box / colored row, each with 9 yardages for holes 1 to 9. ' +
+          '"tees" = ONE entry for EACH tee box / colored row, each with 9 yardages for holes 1 to 9. There may be SEVERAL yardage rows stacked beneath each other (one per tee) even if only the first is labelled "YARDS" or "YARDAGE" — return EACH full row as its own tee entry, in top-to-bottom order. SKIP any row that is blank or has only one or two numbers. ' +
           'Do NOT invent a back nine or holes 10 to 18 — this course has only 9 holes. Ignore the OUT and TOTAL subtotal columns. If a value is unreadable use 0. Return only the JSON.';
         const ninePrompt =
           'You read golf scorecards. This card is a 27-hole course made of SEPARATE nine-hole courses, each with its OWN name (for example "The Callow", "The Meath", "The Birr"), its own Par row (9 values), its own Handicap / stroke-index row (values 1 to 9), and one or more tee rows (e.g. Black, Blue, White, Red) each with 9 yardages. ' +
@@ -609,6 +609,17 @@ export default {
             return { name: (String(t.name || "Tee").trim() || "Tee"), total: holes.reduce((s, h) => s + h.yards, 0), holes };
           }).filter((t) => t.holes.length);
           if (!teeData.length) teeData = [{ name: "Scanned", total: 0, holes: Array.from({ length: n }, (_, i) => ({ num: i + 1, par: clampPar(par[i]), yards: 0, si: 0 })) }];
+          // Drop partial/stray rows (e.g. a lone "124" in an unfinished row) once we have a real tee.
+          const filledOf = (t: any) => t.holes.filter((h: any) => h.yards > 0).length;
+          const maxFilled = Math.max(0, ...teeData.map(filledOf));
+          if (maxFilled >= Math.ceil(n / 2)) teeData = teeData.filter((t) => filledOf(t) >= Math.ceil(n / 2) || t.total === 0);
+          // Auto-name unlabeled or duplicate tees (cards often label only the first row) longest→shortest.
+          const blankName = (nm: string) => !nm || /^(tee|tees|scanned|yards?|yardage)$/i.test(nm);
+          const nm = teeData.map((t) => t.name);
+          if (teeData.length > 1 && (nm.some(blankName) || new Set(nm).size !== nm.length)) {
+            const order = [...teeData].sort((a, b) => b.total - a.total);
+            order.forEach((t, i) => { t.name = `Tee ${i + 1}`; });
+          }
 
           const siByNum: Record<number, number> = {};
           const hValid = hcp.filter((x) => x >= 1 && x <= n);
