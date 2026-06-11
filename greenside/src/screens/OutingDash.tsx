@@ -28,8 +28,11 @@ export default function OutingDash() {
   const [cQuery, setCQuery] = useState("");
   const [cResults, setCResults] = useState<any[]>([]);
   const [cCourse, setCCourse] = useState<PickedCourse | null>(null);
+  const [cTitle, setCTitle] = useState("");
+  const [cDate, setCDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [cGroups, setCGroups] = useState(4);
   const [cFormats, setCFormats] = useState<Record<string, boolean>>({ net: true, gross: true });
+  const [showPairings, setShowPairings] = useState(false);
   const [creating, setCreating] = useState(false);
   const [cMsg, setCMsg] = useState("");
   const [copied, setCopied] = useState("");
@@ -91,9 +94,9 @@ export default function OutingDash() {
   const createOuting = async () => {
     if (!cCourse) { setCMsg("Pick a course first."); return; }
     setCreating(true); setCMsg("");
-    const dateStr = new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" });
     const payload = {
-      name: `${cCourse.name} · ${dateStr} · Outing`,
+      name: cTitle.trim() || `${cCourse.name} Outing`,
+      date: cDate,
       formats: cFormats,
       games: { wolf: false, nines: false, sixes: false, vegas: false, nassau: false, bbb: false, bestball: false },
       outing: true, roundType: "outing", groupCount: cGroups, handicapMode: "perhole",
@@ -147,6 +150,9 @@ export default function OutingDash() {
   const val = (s: any) => (s ? `${s.gross || "–"} (${fmtToPar(useNet ? s.toParNet : s.toParGross)})` : "—");
   const gc = state?.groupCount || groupKeys.length || 1;
   const joinBase = `${location.origin}${location.pathname}#/r/${codeRef.current}`;
+  const dateLabel = state?.date ? new Date(state.date + "T00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "";
+  const registered = state?.players?.length || 0;
+  const anyScores = standings.some((s: any) => s.thru > 0);
 
   return (
     <div className="gs"><div className="frame home">
@@ -174,6 +180,10 @@ export default function OutingDash() {
 
             {mode === "new" && (
               <>
+                <div className="field"><span>Outing name</span>
+                  <input className="dash-pw" style={{ margin: 0 }} value={cTitle} onChange={(e) => setCTitle(e.target.value)} placeholder="e.g. Riverside Charity Scramble" />
+                </div>
+
                 <div className="field"><span>Course</span>
                   {!cCourse ? (
                     <>
@@ -190,12 +200,16 @@ export default function OutingDash() {
                   {cMsg && <p className="err">{cMsg}</p>}
                 </div>
 
+                <div className="field"><span>Date</span>
+                  <input className="dash-pw" style={{ margin: 0 }} type="date" value={cDate} onChange={(e) => setCDate(e.target.value)} />
+                </div>
+
                 <div className="field"><span>Foursomes</span>
                   <div className="stepper">
                     <button onClick={() => setCGroups((n) => Math.max(2, n - 1))}>−</button>
                     <b>{cGroups}</b>
                     <button onClick={() => setCGroups((n) => Math.min(16, n + 1))}>+</button>
-                    <span className="stepnote">groups · up to {cGroups * 4} players</span>
+                    <span className="stepnote">players pick theirs at sign-up · up to {cGroups * 4}</span>
                   </div>
                 </div>
 
@@ -216,49 +230,58 @@ export default function OutingDash() {
         {state && (
           <>
             <div className="dash-meta">
-              <div className="dm-title">{state.courseName || state.name || codeRef.current}</div>
-              <div className="dm-sub">Code <b>{codeRef.current}</b> · {state.players?.length || 0} players · {gc} groups{updated ? ` · updated ${new Date(updated).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""}</div>
+              <div className="dm-title">{state.name || codeRef.current}</div>
+              <div className="dm-sub">{[state.courseName, dateLabel].filter(Boolean).join(" · ")}{updated ? ` · updated ${new Date(updated).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""}</div>
               <button className="linkbtn" style={{ marginTop: 6 }} onClick={() => { setState(null); codeRef.current = ""; setMode("new"); }}>← New / open another</button>
             </div>
 
-            <div className="field"><span>Foursome join codes</span>
-              <p className="hint" style={{ margin: "0 0 11px" }}>Each group scans its own QR (or types the code) to join that foursome.</p>
-              <div className="joingrid">
-                {Array.from({ length: gc }).map((_, i) => {
-                  const n = i + 1; const url = `${joinBase}-${n}`; const k = `g${n}`;
-                  return (
-                    <div className="joincard" key={n}>
-                      <div className="qrwrap"><QRCodeSVG value={url} size={104} bgColor="#ffffff" fgColor="#0f5a37" level="M" /></div>
-                      <div className="joinmeta">
-                        <b>Group {n}</b>
-                        <span className="joincode">{codeRef.current}-{n}</span>
-                        <button className="copybtn" onClick={() => copy(k, url)}>{copied === k ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Copy link</>}</button>
-                      </div>
-                    </div>
-                  );
-                })}
+            <div className="field"><span>Registration</span>
+              <div className="regcard">
+                <div className="qrwrap"><QRCodeSVG value={joinBase} size={132} bgColor="#ffffff" fgColor="#0f5a37" level="M" /></div>
+                <div className="regmeta">
+                  <b>{registered} registered</b><span>of {gc * 4} spots</span>
+                  <button className="copybtn" onClick={() => copy("reg", joinBase)}>{copied === "reg" ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Copy sign-up link</>}</button>
+                </div>
               </div>
-            </div>
-
-            {groupKeys.length > 0 && (
-              <div className="field"><span>Groups · pace</span>
-                <div className="dash-groups">
-                  {groupKeys.map((g) => {
-                    const thru = groupThru(g); const pace = paceOf(thru);
-                    const mem = groups[g].map((p) => byId[p.id]).filter(Boolean).sort((a, b) => (useNet ? a.toParNet - b.toParNet : a.toParGross - b.toParGross));
+              <p className="hint" style={{ margin: "10px 0 0" }}>Share this one link or QR. Players scan it, pick their foursome, add their name — and they're on the live scorecard.</p>
+              <button className="linkbtn" style={{ marginTop: 9 }} onClick={() => setShowPairings((s) => !s)}>{showPairings ? "Hide" : "Pre-assigning pairings? Per-foursome codes"}</button>
+              {showPairings && (
+                <div className="joingrid" style={{ marginTop: 11 }}>
+                  {Array.from({ length: gc }).map((_, i) => {
+                    const n = i + 1; const url = `${joinBase}-${n}`; const k = `g${n}`;
                     return (
-                      <div className="grpcard" key={g}>
-                        <div className="grpcard-top"><b>Group {g}</b><span className={`pacebadge ${pace.cls}`}>{pace.label}</span><span className="grpthru">thru {thru}</span></div>
-                        <div className="grpmem">{mem.map((s) => (<div className="grpm" key={s.id}><span>{s.name}</span><em>{val(s)}</em></div>))}</div>
+                      <div className="joincard" key={n}>
+                        <div className="qrwrap"><QRCodeSVG value={url} size={92} bgColor="#ffffff" fgColor="#0f5a37" level="M" /></div>
+                        <div className="joinmeta"><b>Group {n}</b><span className="joincode">{codeRef.current}-{n}</span>
+                          <button className="copybtn" onClick={() => copy(k, url)}>{copied === k ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Copy</>}</button>
+                        </div>
                       </div>
                     );
                   })}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
+
+            <div className="field"><span>Roster</span>
+              {registered === 0 ? (
+                <p className="hint" style={{ margin: 0 }}>No one's registered yet. Share the sign-up link above to fill the field.</p>
+              ) : (
+                <div className="dash-groups">
+                  {groupKeys.map((g) => {
+                    const thru = groupThru(g); const pace = paceOf(thru);
+                    return (
+                      <div className="grpcard" key={g}>
+                        <div className="grpcard-top"><b>Group {g}</b>{anyScores ? <span className={`pacebadge ${pace.cls}`}>{pace.label}</span> : null}<span className="grpthru">{anyScores ? `thru ${thru} · ` : ""}{groups[g].length}/4</span></div>
+                        <div className="grpmem">{groups[g].map((p) => { const s = byId[p.id]; return (<div className="grpm" key={p.id}><span>{p.name}</span><em>{s && s.thru ? val(s) : `${p.hcp ?? 0} hcp`}</em></div>); })}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
 
             {standings.length > 0 && (
-              <div className="field"><span>Leaderboard</span>
+              <div className="field"><span>Live scoring</span>
                 <div className="dash-board">
                   {standings.map((s: any, i: number) => {
                     const p = (state.players || []).find((x: any) => x.id === s.id);

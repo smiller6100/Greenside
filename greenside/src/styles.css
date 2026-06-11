@@ -747,3 +747,10 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .joincode { font-size: 13px; letter-spacing: .1em; color: var(--mut); font-weight: 700; }
 .copybtn { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); background: #fbfdf9; color: var(--pine); font: inherit; font-size: 12.5px; font-weight: 700; padding: 6px 11px; border-radius: 999px; cursor: pointer; }
 @media (max-width: 360px) { .joingrid { grid-template-columns: 1fr; } }
+
+/* Outing registration card */
+.regcard { display: flex; align-items: center; gap: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); padding: 16px; }
+.regmeta { display: flex; flex-direction: column; gap: 3px; }
+.regmeta b { font-family: 'Fraunces', serif; font-size: 21px; color: var(--ink); }
+.regmeta span { font-size: 13px; color: var(--mut); }
+.regmeta .copybtn { margin-top: 8px; align-self: flex-start; }
