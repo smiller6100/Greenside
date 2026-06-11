@@ -725,3 +725,25 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .db-grp { font-style:normal; font-size:11px; font-weight:800; color:var(--mut); background:#eef3e9; padding:1px 6px; border-radius:999px; margin-left:6px; }
 .db-thru { font-size:12px; color:var(--mut); font-weight:600; }
 .db-score { font-family:'Fraunces',serif; font-weight:700; font-size:15px; color:var(--pine); }
+
+/* Outing dashboard — builder + join cards */
+.dash-head h2 + .backbtn { color: var(--ink); }
+.stepper b { min-width: 30px; text-align: center; font-size: 20px; font-weight: 800; color: var(--ink); }
+.stepper > button { font-size: 22px; font-weight: 700; line-height: 1; }
+.stepnote { margin-left: 10px; font-size: 13px; color: var(--mut); font-weight: 600; }
+.hitlist { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.hit { text-align: left; border: 1px solid var(--line); background: var(--card); border-radius: 11px; padding: 11px 13px; cursor: pointer; }
+.hit b { display: block; font-size: 15px; color: var(--ink); }
+.hit em { font-style: normal; font-size: 12.5px; color: var(--mut); }
+.picked { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); background: #fbfdf9; border-radius: 12px; padding: 12px 14px; }
+.picked > div { flex: 1; }
+.picked b { font-size: 15.5px; color: var(--ink); } .picked em { display: block; font-style: normal; font-size: 12.5px; color: var(--mut); }
+.linkbtn { border: none; background: none; color: var(--pine); font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer; padding: 0; }
+.joingrid { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
+.joincard { display: flex; flex-direction: column; align-items: center; gap: 9px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); padding: 14px 10px; }
+.qrwrap { background: #fff; padding: 6px; border-radius: 10px; line-height: 0; }
+.joinmeta { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.joinmeta b { font-size: 15px; color: var(--ink); }
+.joincode { font-size: 13px; letter-spacing: .1em; color: var(--mut); font-weight: 700; }
+.copybtn { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); background: #fbfdf9; color: var(--pine); font: inherit; font-size: 12.5px; font-weight: 700; padding: 6px 11px; border-radius: 999px; cursor: pointer; }
+@media (max-width: 360px) { .joingrid { grid-template-columns: 1fr; } }

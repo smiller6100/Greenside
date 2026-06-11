@@ -4,7 +4,7 @@ import { computeStandings, fmtToPar } from "../lib/golf";
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, GAME_HELP, composeNines, ninesFromHoles } from "../lib/golf";
 
-const VERSION = "v80";
+const VERSION = "v81";
 
 
 
@@ -557,7 +557,6 @@ export default function Home() {
               <div className="seg sub">
                 <button className={`seg-btn ${roundType === "casual" ? "on" : ""}`} onClick={() => chooseType("casual")}>Casual</button>
                 <button className={`seg-btn ${roundType === "league" ? "on" : ""}`} onClick={() => chooseType("league")}>League</button>
-                <button className={`seg-btn ${roundType === "outing" ? "on" : ""}`} onClick={() => chooseType("outing")}>Outing</button>
               </div>
               {outing && <p className="hint">One outing code, and each foursome gets its own join link — Group 1, Group 2, and so on, up to 36. Players open their link, type their name, and they're on that team. You'll get the links to share the moment you create it.</p>}
             </div>
