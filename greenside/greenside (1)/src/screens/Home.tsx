@@ -4,7 +4,7 @@ import { computeStandings, fmtToPar } from "../lib/golf";
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, GAME_HELP, composeNines, ninesFromHoles } from "../lib/golf";
 
-const VERSION = "v74";
+const VERSION = "v79";
 
 
 
@@ -25,7 +25,10 @@ export default function Home() {
   const [roundName, setRoundName] = useState("Saturday Round");
   const [nameTouched, setNameTouched] = useState(false);
   const [players, setPlayers] = useState<{ name: string; hcp: string; group: string }[]>([{ name: "", hcp: "12", group: "A" }]);
-  const [outing, setOuting] = useState(false);
+  const [roundType, setRoundType] = useState<"casual" | "league" | "outing">("casual");
+  const outing = roundType === "outing";
+  const [advOpen, setAdvOpen] = useState(false);
+  const [gamesOpen, setGamesOpen] = useState(false);
   const [groupCount, setGroupCount] = useState(4);
   const [formats, setFormats] = useState<Record<string, boolean>>({ net: true, gross: true, stableford: false, chicago: false, skins: false });
   const [games, setGames] = useState<Record<string, boolean>>({ wolf: false, nines: false, sixes: false, vegas: false, nassau: false, bbb: false, bestball: false });
@@ -255,9 +258,9 @@ export default function Home() {
   const rmP = (i: number) => setPlayers(players.filter((_, k) => k !== i));
   const setP = (i: number, key: "name" | "hcp", v: string) => setPlayers(players.map((p, k) => (k === i ? { ...p, [key]: v } : p)));
   const cycleGroup = (i: number) => setPlayers(players.map((p, k) => (k === i ? { ...p, group: GL((p.group.charCodeAt(0) - 65 + 1) % Math.max(1, groupCount)) } : p)));
-  const toggleOuting = () => {
-    const on = !outing; setOuting(on);
-    if (on) setPlayers((ps) => ps.map((p, i) => ({ ...p, group: GL(Math.floor(i / 4)) })));
+  const chooseType = (t: "casual" | "league" | "outing") => {
+    setRoundType(t);
+    if (t === "outing") setPlayers((ps) => ps.map((p, i) => ({ ...p, group: GL(Math.floor(i / 4)) })));
   };
   const setGroups = (n: number) => {
     const gc = Math.max(2, Math.min(8, n)); setGroupCount(gc);
@@ -362,9 +365,12 @@ export default function Home() {
         return { name: tn, total: holes.reduce((s, h) => s + h.yards, 0), holes };
       });
     }
+    const typeLabel = roundType === "outing" ? "Outing" : roundType === "league" ? "League" : "Casual";
+    const dateStr = new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    const autoName = `${loaded && courseName.trim() ? courseName.trim() : "Round"} · ${dateStr} · ${typeLabel}`;
     const payload = {
-      name: roundName.trim() || "Round", formats, games: outing ? { wolf: false, nines: false, sixes: false, vegas: false, nassau: false, bbb: false, bestball: false } : games,
-      outing, groupCount, handicapMode: hcpMode,
+      name: autoName, formats, games: outing ? { wolf: false, nines: false, sixes: false, vegas: false, nassau: false, bbb: false, bestball: false } : games,
+      outing, roundType, groupCount, handicapMode: hcpMode,
       course, lat: loc.lat, lng: loc.lng,
       courseName: loaded ? courseName.trim() : "", courseWhere, teeName: loaded ? teeName : "",
       tees: loaded && tees.length ? tees : null, defaultTee: loaded ? teeName : "",
@@ -398,7 +404,6 @@ export default function Home() {
       <div className="frame home">
         <header className="hero logo-hero">
           <FullLogo />
-          <p className="lede">One shared scorecard for your group or your whole outing — every stroke, on every phone, the moment it lands.</p>
         </header>
 
         {last.code && (
@@ -547,16 +552,12 @@ export default function Home() {
               )}
             </div>
 
-            <label className="field">
-              <span>Round name</span>
-              <input value={roundName} onChange={(e) => { setRoundName(e.target.value); setNameTouched(true); }} placeholder="Saturday Round" />
-            </label>
-
             <div className="field">
               <span>Format of play</span>
               <div className="seg sub">
-                <button className={`seg-btn ${!outing ? "on" : ""}`} onClick={() => { if (outing) toggleOuting(); }}>One group</button>
-                <button className={`seg-btn ${outing ? "on" : ""}`} onClick={() => { if (!outing) toggleOuting(); }}>Outing</button>
+                <button className={`seg-btn ${roundType === "casual" ? "on" : ""}`} onClick={() => chooseType("casual")}>Casual</button>
+                <button className={`seg-btn ${roundType === "league" ? "on" : ""}`} onClick={() => chooseType("league")}>League</button>
+                <button className={`seg-btn ${roundType === "outing" ? "on" : ""}`} onClick={() => chooseType("outing")}>Outing</button>
               </div>
               {outing && <p className="hint">One outing code, and each foursome gets its own join link — Group 1, Group 2, and so on, up to 36. Players open their link, type their name, and they're on that team. You'll get the links to share the moment you create it.</p>}
             </div>
@@ -584,20 +585,48 @@ export default function Home() {
             <div className="field">
               <span>Scoring</span>
               <div className="chips">
-                {FORMAT_DEFS.map((f) => (
+                {FORMAT_DEFS.filter((f) => f.id === "net" || f.id === "gross").map((f) => (
                   <button key={f.id} className={`chip ${formats[f.id] ? "on" : ""}`} onClick={() => setFormats({ ...formats, [f.id]: !formats[f.id] })}>{f.label}</button>
                 ))}
               </div>
+              {(() => {
+                const adv = FORMAT_DEFS.filter((f) => !(f.id === "net" || f.id === "gross"));
+                const n = adv.filter((f) => formats[f.id]).length;
+                return (
+                  <>
+                    <button className={`disclose ${advOpen ? "open" : ""}`} onClick={() => setAdvOpen((o) => !o)}>
+                      <span>Advanced</span><span className="dl-r">{n ? `${n} on` : ""}<ChevronDown size={16} /></span>
+                    </button>
+                    {advOpen && (
+                      <div className="chips discl-body">
+                        {adv.map((f) => (
+                          <button key={f.id} className={`chip ${formats[f.id] ? "on" : ""}`} onClick={() => setFormats({ ...formats, [f.id]: !formats[f.id] })}>{f.label}</button>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
 
             {!outing && (
             <div className="field">
               <span>Games <em className="opt">optional</em></span>
-              <div className="chips">
-                {GAME_DEFS.map((f) => (
-                  <button key={f.id} className={`chip ${games[f.id] ? "on" : ""}`} onClick={() => setGames({ ...games, [f.id]: !games[f.id] })}>{f.label}</button>
-                ))}
-              </div>
+              {(() => {
+                const n = GAME_DEFS.filter((f) => games[f.id]).length;
+                return (
+                  <button className={`disclose ${gamesOpen ? "open" : ""}`} onClick={() => setGamesOpen((o) => !o)}>
+                    <span>{n ? `${n} selected` : "Choose games"}</span><ChevronDown size={16} />
+                  </button>
+                );
+              })()}
+              {gamesOpen && (
+                <div className="chips discl-body">
+                  {GAME_DEFS.map((f) => (
+                    <button key={f.id} className={`chip ${games[f.id] ? "on" : ""}`} onClick={() => setGames({ ...games, [f.id]: !games[f.id] })}>{f.label}</button>
+                  ))}
+                </div>
+              )}
               {GAME_DEFS.some((f) => games[f.id]) && (
                 <div className="gamehelp">
                   {GAME_DEFS.filter((f) => games[f.id]).map((f) => (
@@ -836,7 +865,8 @@ export default function Home() {
                     {coverage.length === 0 && !covRunning && <p className="hint left">No courses.</p>}
                     {coverage.map((c) => {
                       const ok = c.holesMapped > 0;
-                      const status = ok ? `✓ ${c.holesMapped}/${c.holesExpected} holes mapped${c.foundRaw != null && c.foundRaw !== c.holesMapped ? ` · ${c.foundRaw} in OSM` : ""}`
+                      const partial = ok && c.holesMapped < c.holesExpected;
+                      const status = ok ? `✓ ${c.holesMapped}/${c.holesExpected} holes mapped${c.foundRaw != null && c.foundRaw !== c.holesMapped ? ` · ${c.foundRaw} in OSM` : ""}${partial && (c.greens != null || c.tees != null) ? ` · ${c.greens ?? 0} greens, ${c.tees ?? 0} tees` : ""}`
                         : c.source === "no-coords" ? "no location found"
                         : c.mapErr ? `map error: ${c.mapErr}`
                         : "not in OpenStreetMap";

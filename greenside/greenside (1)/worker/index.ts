@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v74";
+const BUILD = "v77";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -20,8 +20,8 @@ const catalog = (env: Env) => env.COURSE_CATALOG.get(env.COURSE_CATALOG.idFromNa
 
 // Produce (and cache) a hole map for a coordinate. Shared by the public route and the admin probe.
 async function holeMapFor(lat: number, lng: number, wantHoles: number): Promise<Response> {
-  return cachedJson(`https://cache/holemap/v15/${lat.toFixed(4)},${lng.toFixed(4)},${wantHoles}`, 7 * 86400, async () => {
-    const q = `[out:json][timeout:25];(way["golf"](around:5000,${lat},${lng});relation["golf"](around:5000,${lat},${lng});way["leisure"="golf_course"](around:5000,${lat},${lng});relation["leisure"="golf_course"](around:5000,${lat},${lng}););out geom;`;
+  return cachedJson(`https://cache/holemap/v16/${lat.toFixed(4)},${lng.toFixed(4)},${wantHoles}`, 7 * 86400, async () => {
+    const q = `[out:json][timeout:25];(way["golf"](around:5000,${lat},${lng});relation["golf"](around:5000,${lat},${lng});way["leisure"="golf_course"](around:5000,${lat},${lng});relation["leisure"="golf_course"](around:5000,${lat},${lng});way["natural"="water"](around:2200,${lat},${lng});relation["natural"="water"](around:2200,${lat},${lng}););out geom;`;
     const servers = [
       "https://overpass.private.coffee/api/interpreter",
       "https://overpass.kumi.systems/api/interpreter",
@@ -297,8 +297,22 @@ function parseHoleMap(data: any, qLat: number, qLng: number, wantHoles: number) 
   let rough = gatherArea("rough");
   let tees = g("tee").map((w: any) => ({ poly: hmRing(w.geometry), c: hmCentroid(w.geometry) }));
   let bunkers = g("bunker").map((w: any) => ({ poly: hmRing(w.geometry), c: hmCentroid(w.geometry), kind: "bunker" }));
-  let water = ways.filter((w: any) => w.tags && (w.tags.golf === "water_hazard" || w.tags.golf === "lateral_water_hazard" || w.tags.natural === "water"))
-    .map((w: any) => ({ poly: hmRing(w.geometry), c: hmCentroid(w.geometry), kind: "water" }));
+  // Water: golf-tagged hazards AND plain lakes/ponds (often mapped only as natural=water, with no
+  // golf tag), from both ways and relation outers (large ponds are frequently multipolygons).
+  const gatherWater = () => {
+    const out: any[] = [];
+    els.forEach((e: any) => {
+      const t = e.tags || {};
+      if (!(t.golf === "water_hazard" || t.golf === "lateral_water_hazard" || t.natural === "water" || t.water || t.landuse === "reservoir")) return;
+      const golf = t.golf === "water_hazard" || t.golf === "lateral_water_hazard";
+      if (e.type === "way" && Array.isArray(e.geometry) && e.geometry.length >= 4) out.push({ poly: hmRing(e.geometry), c: hmCentroid(e.geometry), kind: "water", golf });
+      else if (e.type === "relation" && Array.isArray(e.members)) e.members.forEach((m: any) => {
+        if ((m.role === "outer" || !m.role) && Array.isArray(m.geometry) && m.geometry.length >= 4) out.push({ poly: hmRing(m.geometry), c: hmCentroid(m.geometry), kind: "water", golf });
+      });
+    });
+    return out;
+  };
+  let water = gatherWater();
 
   // Course boundaries (to isolate ONE course when several are nearby). Ways + relation outers.
   const boundaries: number[][][] = [];
@@ -381,7 +395,11 @@ function parseHoleMap(data: any, qLat: number, qLng: number, wantHoles: number) 
     rough = rough.filter((x: any) => keepX(x));
     tees = tees.filter((x: any) => keepC(x.c));
     bunkers = bunkers.filter((x: any) => keepC(x.c));
-    water = water.filter((x: any) => keepC(x.c));
+    water = water.filter((x: any) => keepX(x));
+  } else {
+    // No course outline to filter against — keep only explicitly golf-tagged water so we don't
+    // render every neighborhood pond that happened to be within range.
+    water = water.filter((x: any) => x.golf);
   }
 
   const counts = { found: g("hole").length, courses: boundaries.length, holes: holeWays.length, greens: greens.length, fairways: fairways.length, rawFairways, rough: rough.length, rawRough, tees: tees.length, bunkers: bunkers.length, water: water.length };
@@ -555,7 +573,7 @@ export default {
           'You read golf scorecards. This card is a NINE-hole course — holes 1 to 9 only. Return STRICT JSON only — no prose, no code fences — in exactly this shape: ' +
           '{"name":"<course name>","par":[9 numbers],"handicap":[9 numbers],"tees":[{"name":"<tee or color name>","yards":[9 numbers]}]}. ' +
           '"par" = the Par for holes 1 to 9 in order. "handicap" = the stroke-index / handicap rank for holes 1 to 9 in order. ' +
-          '"tees" = ONE entry for EACH tee box / colored row, each with 9 yardages for holes 1 to 9. ' +
+          '"tees" = ONE entry for EACH tee box / colored row, each with 9 yardages for holes 1 to 9. There may be SEVERAL yardage rows stacked beneath each other (one per tee) even if only the first is labelled "YARDS" or "YARDAGE" — return EACH full row as its own tee entry, in top-to-bottom order. SKIP any row that is blank or has only one or two numbers. ' +
           'Do NOT invent a back nine or holes 10 to 18 — this course has only 9 holes. Ignore the OUT and TOTAL subtotal columns. If a value is unreadable use 0. Return only the JSON.';
         const ninePrompt =
           'You read golf scorecards. This card is a 27-hole course made of SEPARATE nine-hole courses, each with its OWN name (for example "The Callow", "The Meath", "The Birr"), its own Par row (9 values), its own Handicap / stroke-index row (values 1 to 9), and one or more tee rows (e.g. Black, Blue, White, Red) each with 9 yardages. ' +
@@ -609,6 +627,17 @@ export default {
             return { name: (String(t.name || "Tee").trim() || "Tee"), total: holes.reduce((s, h) => s + h.yards, 0), holes };
           }).filter((t) => t.holes.length);
           if (!teeData.length) teeData = [{ name: "Scanned", total: 0, holes: Array.from({ length: n }, (_, i) => ({ num: i + 1, par: clampPar(par[i]), yards: 0, si: 0 })) }];
+          // Drop partial/stray rows (e.g. a lone "124" in an unfinished row) once we have a real tee.
+          const filledOf = (t: any) => t.holes.filter((h: any) => h.yards > 0).length;
+          const maxFilled = Math.max(0, ...teeData.map(filledOf));
+          if (maxFilled >= Math.ceil(n / 2)) teeData = teeData.filter((t) => filledOf(t) >= Math.ceil(n / 2) || t.total === 0);
+          // Auto-name unlabeled or duplicate tees (cards often label only the first row) longest→shortest.
+          const blankName = (nm: string) => !nm || /^(tee|tees|scanned|yards?|yardage)$/i.test(nm);
+          const nm = teeData.map((t) => t.name);
+          if (teeData.length > 1 && (nm.some(blankName) || new Set(nm).size !== nm.length)) {
+            const order = [...teeData].sort((a, b) => b.total - a.total);
+            order.forEach((t, i) => { t.name = `Tee ${i + 1}`; });
+          }
 
           const siByNum: Record<number, number> = {};
           const hValid = hcp.filter((x) => x >= 1 && x <= n);
@@ -740,15 +769,16 @@ export default {
               await catalog(env).fetch("https://do/setcoords", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: c.id, lat, lng }) });
             } else { source = "no-coords"; geo = gr.debug; }
           }
-          let holesMapped = 0, mapErr: string | null = null, foundRaw: number | null = null;
+          let holesMapped = 0, mapErr: string | null = null, foundRaw: number | null = null, greens: number | null = null, tees: number | null = null;
           if (lat != null && lng != null) {
             try {
               const hm: any = await (await holeMapFor(lat, lng, c.holesN || 18)).json();
               foundRaw = hm.counts ? hm.counts.found : null;
+              if (hm.counts) { greens = hm.counts.greens; tees = hm.counts.tees; }
               if (hm.available) holesMapped = (hm.holes || []).length; else mapErr = hm.error || "not-mapped";
             } catch { mapErr = "probe-failed"; }
           }
-          out.push({ id: c.id, name: c.name, where: c.where, source, holesExpected: c.holesN, holesMapped, foundRaw, mapErr, geo });
+          out.push({ id: c.id, name: c.name, where: c.where, source, holesExpected: c.holesN, holesMapped, foundRaw, greens, tees, mapErr, geo });
         }
         return Response.json({ total: ids ? slice.length : all.length, offset, returned: slice.length, nextOffset: ids ? null : (offset + slice.length < all.length ? offset + slice.length : null), courses: out });
       }
