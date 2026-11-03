@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Merrill Hills Course Mapper</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Libre+Franklin:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --pine:#0f5a37; --pine-d:#0a3f26; --cream:#f1f5f1; --card:#ffffff;
+    --brass:#b07d0c; --ink:#13241a; --mut:#5c6b62; --line:rgba(15,58,40,.14);
+    --front:#86c06b; --center:#f7d54e; --back:#b07d0c; --tee:#ffffff; --ball:#d84a3a;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  body{
+    font-family:'Libre Franklin',system-ui,sans-serif;color:var(--ink);background:var(--pine-d);
+    display:flex;flex-direction:column;overflow:hidden;
+  }
+  header{
+    background:var(--pine-d);color:#eaf2ec;padding:10px 16px 9px;flex:0 0 auto;
+    display:flex;align-items:center;gap:12px;
+  }
+  .brand{display:flex;align-items:center;gap:8px;}
+  .brand svg{width:22px;height:22px;}
+  .brand b{font-family:'Fraunces',serif;font-weight:600;letter-spacing:.16em;font-size:15px;}
+  .htitle{flex:1;min-width:0;}
+  .htitle .eyebrow{font-size:9.5px;letter-spacing:.22em;text-transform:uppercase;color:#cfb46a;font-weight:700;}
+  .htitle .course{font-family:'Fraunces',serif;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .prog{flex:0 0 auto;text-align:right;}
+  .prog b{font-family:'Fraunces',serif;font-size:19px;}
+  .prog span{display:block;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:#9fb6a6;margin-top:-2px;}
+  .holestrip{display:flex;gap:6px;overflow-x:auto;padding:8px 12px;background:var(--pine);flex:0 0 auto;-webkit-overflow-scrolling:touch;}
+  .holestrip::-webkit-scrollbar{height:0;}
+  .hchip{
+    flex:0 0 auto;min-width:40px;border:none;border-radius:10px;padding:5px 2px;cursor:pointer;
+    background:rgba(255,255,255,.1);color:#dfeee4;font:inherit;text-align:center;line-height:1.1;
+  }
+  .hchip b{display:block;font-size:15px;font-weight:800;}
+  .hchip em{font-style:normal;font-size:8.5px;letter-spacing:.04em;color:#a9c3b2;}
+  .hchip.on{background:var(--cream);color:var(--pine-d);}
+  .hchip.on em{color:var(--brass);}
+  .hchip.done{box-shadow:inset 0 -3px 0 var(--front);}
+  #map{flex:1 1 auto;width:100%;background:#2b3a2f;}
+  .leaflet-container{font-family:inherit;background:#2b3a2f;}
+  .pin{
+    width:26px;height:26px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);
+    border:2px solid rgba(0,0,0,.4);box-shadow:0 1px 4px rgba(0,0,0,.5);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .pin span{transform:rotate(45deg);font-size:9px;font-weight:800;color:#13241a;}
+  .pin.tee{background:var(--tee);} .pin.front{background:var(--front);}
+  .pin.center{background:var(--center);} .pin.back{background:var(--back);}
+  .dot{width:11px;height:11px;border-radius:50%;background:var(--center);border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.6);}
+  .ball{width:16px;height:16px;border-radius:50%;background:var(--ball);border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.6);}
+  .sheet{
+    flex:0 0 auto;background:var(--cream);border-top:1px solid var(--line);
+    padding:11px 16px calc(11px + env(safe-area-inset-bottom,0px));
+    box-shadow:0 -6px 22px rgba(10,40,28,.18);
+  }
+  .sheet-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:9px;}
+  .sheet-top h2{margin:0;font-family:'Fraunces',serif;font-size:20px;color:var(--pine);font-weight:600;}
+  .sheet-top .meta{font-size:12px;color:var(--mut);font-weight:600;}
+  .modes{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;}
+  .mode{
+    border:1.5px solid var(--line);background:var(--card);border-radius:12px;padding:9px 4px;cursor:pointer;
+    font:inherit;display:flex;flex-direction:column;align-items:center;gap:4px;color:var(--ink);
+  }
+  .mode .sw{width:13px;height:13px;border-radius:4px;border:1px solid rgba(0,0,0,.25);}
+  .mode .lab{font-size:12px;font-weight:700;}
+  .mode .st{font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);font-weight:700;}
+  .mode.armed{border-color:var(--pine);background:#eef5ef;box-shadow:0 0 0 2px rgba(15,90,55,.18);}
+  .mode.set .st{color:var(--pine);}
+  .readout{display:flex;gap:8px;margin-top:10px;}
+  .yd{
+    flex:1;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 4px;text-align:center;
+  }
+  .yd b{display:block;font-family:'Fraunces',serif;font-size:22px;color:var(--pine);line-height:1;}
+  .yd.f b{color:#4e8a35;} .yd.c b{color:var(--pine);} .yd.b b{color:var(--brass);}
+  .yd span{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);font-weight:700;}
+  .yd.empty b{color:#c3cdc5;}
+  .hint{font-size:11.5px;color:var(--mut);text-align:center;margin:9px 0 0;line-height:1.35;}
+  .row{display:flex;gap:8px;margin-top:10px;}
+  .btn{
+    flex:1;border:none;border-radius:12px;padding:11px;font:inherit;font-size:13px;font-weight:800;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:6px;
+  }
+  .btn.primary{background:var(--pine);color:#f3f7f4;}
+  .btn.ghost{background:var(--card);border:1px solid var(--line);color:var(--pine);}
+  .btn.warn{background:var(--card);border:1px solid rgba(176,57,42,.4);color:#b3372a;flex:0 0 auto;padding:11px 14px;}
+  .btn svg{width:15px;height:15px;}
+  .toast{
+    position:fixed;left:50%;bottom:50%;transform:translate(-50%,0);z-index:900;
+    background:var(--pine-d);color:#fff;padding:10px 16px;border-radius:999px;font-size:13px;font-weight:700;
+    box-shadow:0 6px 20px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:opacity .25s;
+  }
+  .toast.show{opacity:1;}
+  .leaflet-control-attribution{font-size:9px;}
+</style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <svg viewBox="0 0 34 34" fill="none" aria-hidden="true"><circle cx="17" cy="17" r="15.5" stroke="#8fd4a6" stroke-width="2.4"/><path d="M17 22.5c4.2 0 7.5-1.6 7.5-3.6S21.2 15.3 17 15.3 9.5 16.9 9.5 18.9 12.8 22.5 17 22.5z" fill="#8fd4a6"/><path d="M17 8.5v9" stroke="#f7d54e" stroke-width="2" stroke-linecap="round"/><path d="M17 8.7l5 1.7-5 1.7z" fill="#f7d54e"/></svg>
+      <b>GREENSIDE</b>
+    </div>
+    <div class="htitle">
+      <div class="eyebrow">Course Mapper</div>
+      <div class="course">The Legend at Merrill Hills</div>
+    </div>
+    <div class="prog"><b id="progN">0</b><span>of 18</span></div>
+  </header>
+
+  <div class="holestrip" id="holestrip"></div>
+
+  <div id="map"></div>
+
+  <div class="sheet">
+    <div class="sheet-top">
+      <h2 id="holeTitle">Hole 1</h2>
+      <div class="meta" id="holeMeta">Par 4 &middot; 448 yds &middot; SI 8</div>
+    </div>
+
+    <div class="modes" id="modes">
+      <button class="mode" data-k="tee"><span class="sw" style="background:var(--tee)"></span><span class="lab">Tee</span><span class="st" id="st-tee">tap to set</span></button>
+      <button class="mode" data-k="front"><span class="sw" style="background:var(--front)"></span><span class="lab">Front</span><span class="st" id="st-front">tap to set</span></button>
+      <button class="mode" data-k="center"><span class="sw" style="background:var(--center)"></span><span class="lab">Center</span><span class="st" id="st-center">tap to set</span></button>
+      <button class="mode" data-k="back"><span class="sw" style="background:var(--back)"></span><span class="lab">Back</span><span class="st" id="st-back">tap to set</span></button>
+    </div>
+
+    <div class="readout" id="readout">
+      <div class="yd f empty"><b id="ydF">&ndash;</b><span>Front</span></div>
+      <div class="yd c empty"><b id="ydC">&ndash;</b><span>Center</span></div>
+      <div class="yd b empty"><b id="ydB">&ndash;</b><span>Back</span></div>
+    </div>
+
+    <p class="hint" id="hint">Pick a point above, then tap its spot on the green. The red ball shows live yardages &mdash; drag it anywhere to test a distance.</p>
+
+    <div class="row">
+      <button class="btn primary" id="btnNext"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg> Next hole</button>
+      <button class="btn ghost" id="btnFit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8V5a2 2 0 012-2h3M16 3h3a2 2 0 012 2v3M21 16v3a2 2 0 01-2 2h-3M8 21H5a2 2 0 01-2-2v-3"/></svg> Fit hole</button>
+      <button class="btn ghost" id="btnExport"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 17l4 4 4-4M12 12v9M20 16.7A5 5 0 0018 7h-1.3A8 8 0 104 15"/></svg> Export</button>
+      <button class="btn warn" id="btnClear" title="Clear this hole"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  var CENTER = [42.9838, -88.2923];
+  var HOLES = [
+    {h:1,par:4,si:8,yd:448},{h:2,par:5,si:4,yd:522},{h:3,par:4,si:6,yd:391},
+    {h:4,par:5,si:10,yd:490},{h:5,par:3,si:18,yd:205},{h:6,par:4,si:14,yd:375},
+    {h:7,par:4,si:2,yd:447},{h:8,par:4,si:12,yd:410},{h:9,par:3,si:16,yd:192},
+    {h:10,par:4,si:5,yd:428},{h:11,par:4,si:9,yd:370},{h:12,par:3,si:15,yd:157},
+    {h:13,par:5,si:3,yd:532},{h:14,par:4,si:11,yd:387},{h:15,par:4,si:13,yd:354},
+    {h:16,par:3,si:17,yd:152},{h:17,par:5,si:1,yd:527},{h:18,par:4,si:7,yd:412}
+  ];
+  var STORE_KEY = "greenside:mapper:merrill-hills";
+
+  var data = load();
+  var cur = 1;
+  var armed = null;
+  var markers = {};
+  var dots = {};
+  var lines = [];
+  var ball = null;
+
+  function load(){
+    try{ var raw = localStorage.getItem(STORE_KEY); return raw ? JSON.parse(raw) : {}; }catch(e){ return {}; }
+  }
+  function save(){
+    try{ localStorage.setItem(STORE_KEY, JSON.stringify(data)); }catch(e){}
+  }
+  function holeData(n){ if(!data[n]) data[n]={}; return data[n]; }
+  function info(n){ return HOLES[n-1]; }
+
+  function yards(a, b){
+    if(!a || !b) return null;
+    var R=6371000, toRad=function(d){return d*Math.PI/180;};
+    var dLat=toRad(b[0]-a[0]), dLng=toRad(b[1]-a[1]);
+    var la1=toRad(a[0]), la2=toRad(b[0]);
+    var x=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(la1)*Math.cos(la2)*Math.sin(dLng/2)*Math.sin(dLng/2);
+    return Math.round(2*R*Math.asin(Math.sqrt(x))*1.09361);
+  }
+
+  var map = L.map('map',{zoomControl:true, attributionControl:true}).setView(CENTER, 16);
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{
+    maxZoom:21, maxNativeZoom:19,
+    attribution:'Imagery &copy; Esri, Maxar, Earthstar Geographics'
+  }).addTo(map);
+
+  function pinIcon(kind, label){
+    return L.divIcon({className:'', html:'<div class="pin '+kind+'"><span>'+label+'</span></div>', iconSize:[26,26], iconAnchor:[13,24]});
+  }
+  var ICONS = {
+    tee:pinIcon('tee','T'), front:pinIcon('front','F'), center:pinIcon('center','C'), back:pinIcon('back','B')
+  };
+
+  function refreshDots(){
+    Object.keys(dots).forEach(function(k){ map.removeLayer(dots[k]); });
+    dots={};
+    HOLES.forEach(function(H){
+      var d=data[H.h]; if(d && d.center && H.h!==cur){
+        dots[H.h]=L.marker(d.center,{icon:L.divIcon({className:'',html:'<div class="dot"></div>',iconSize:[11,11],iconAnchor:[6,6]}),interactive:true})
+          .addTo(map).on('click',function(){ selectHole(H.h); });
+      }
+    });
+  }
+
+  function clearCurrent(){
+    Object.keys(markers).forEach(function(k){ map.removeLayer(markers[k]); });
+    markers={};
+    lines.forEach(function(l){ map.removeLayer(l); }); lines=[];
+    if(ball){ map.removeLayer(ball); ball=null; }
+  }
+
+  function placePoint(key, latlng){
+    var d=holeData(cur);
+    d[key]=[latlng.lat, latlng.lng];
+    save();
+    renderCurrent();
+    updateSetState();
+    updateProgress();
+    flash(cap(key)+' set');
+  }
+
+  function renderCurrent(){
+    clearCurrent();
+    var d=holeData(cur);
+    ['tee','front','center','back'].forEach(function(key){
+      if(d[key]){
+        var m=L.marker(d[key],{icon:ICONS[key], draggable:true}).addTo(map);
+        m.on('drag',function(e){ d[key]=[e.latlng.lat,e.latlng.lng]; renderLines(); updateReadout(); });
+        m.on('dragend',function(){ save(); });
+        markers[key]=m;
+      }
+    });
+    renderLines();
+    if(d.center){
+      var start = d.tee ? d.tee : [d.center[0], d.center[1]];
+      ball=L.marker(start,{icon:L.divIcon({className:'',html:'<div class="ball"></div>',iconSize:[16,16],iconAnchor:[8,8]}),draggable:true,zIndexOffset:1000}).addTo(map);
+      ball.on('drag',function(){ renderLines(); updateReadout(); });
+    }
+    updateReadout();
+  }
+
+  function renderLines(){
+    lines.forEach(function(l){ map.removeLayer(l); }); lines=[];
+    var d=holeData(cur);
+    if(d.tee && d.center){
+      lines.push(L.polyline([d.tee,d.center],{color:'#fff',weight:2,opacity:.5,dashArray:'5,6'}).addTo(map));
+    }
+    if(ball && d.center){
+      var bl=ball.getLatLng();
+      lines.push(L.polyline([[bl.lat,bl.lng],d.center],{color:'#d84a3a',weight:2.5,opacity:.9,dashArray:'4,5'}).addTo(map));
+    }
+  }
+
+  function updateReadout(){
+    var d=holeData(cur);
+    var from = ball ? [ball.getLatLng().lat, ball.getLatLng().lng] : (d.tee||null);
+    setYd('ydF', from && d.front  ? yards(from,d.front)  : null);
+    setYd('ydC', from && d.center ? yards(from,d.center) : null);
+    setYd('ydB', from && d.back   ? yards(from,d.back)   : null);
+  }
+  function setYd(id, v){
+    var el=document.getElementById(id);
+    el.textContent = v==null ? '\u2013' : v;
+    el.parentNode.classList.toggle('empty', v==null);
+  }
+
+  function arm(key){
+    armed = (armed===key) ? null : key;
+    document.querySelectorAll('.mode').forEach(function(b){ b.classList.toggle('armed', b.dataset.k===armed); });
+    document.getElementById('hint').textContent = armed
+      ? 'Tap the '+armed.toUpperCase()+' spot on the map. Drag any pin to fine-tune.'
+      : 'Pick a point above, then tap its spot on the green. Drag the red ball to test a distance.';
+  }
+  function updateSetState(){
+    var d=holeData(cur);
+    ['tee','front','center','back'].forEach(function(k){
+      var btn=document.querySelector('.mode[data-k="'+k+'"]');
+      var set=!!d[k];
+      btn.classList.toggle('set',set);
+      document.getElementById('st-'+k).textContent = set ? 'set \u2713' : 'tap to set';
+    });
+  }
+
+  document.getElementById('modes').addEventListener('click',function(e){
+    var btn=e.target.closest('.mode'); if(!btn) return; arm(btn.dataset.k);
+  });
+
+  map.on('click',function(e){
+    if(!armed){ flash('Pick Tee / Front / Center / Back first'); return; }
+    placePoint(armed, e.latlng);
+    armed=null;
+    document.querySelectorAll('.mode').forEach(function(b){ b.classList.remove('armed'); });
+    document.getElementById('hint').textContent='Pick a point above, then tap its spot. Drag the red ball to test a distance.';
+  });
+
+  function buildStrip(){
+    var strip=document.getElementById('holestrip');
+    strip.innerHTML='';
+    HOLES.forEach(function(H){
+      var b=document.createElement('button');
+      b.className='hchip';
+      b.innerHTML='<b>'+H.h+'</b><em>Par '+H.par+'</em>';
+      b.addEventListener('click',function(){ selectHole(H.h); });
+      b._h=H.h;
+      strip.appendChild(b);
+    });
+  }
+  function refreshStrip(){
+    document.querySelectorAll('.hchip').forEach(function(b){
+      var done = data[b._h] && data[b._h].center;
+      b.classList.toggle('on', b._h===cur);
+      b.classList.toggle('done', !!done);
+    });
+    var on=document.querySelector('.hchip.on');
+    if(on) on.scrollIntoView({inline:'center',block:'nearest',behavior:'smooth'});
+  }
+
+  function selectHole(n){
+    cur=n;
+    var H=info(n);
+    document.getElementById('holeTitle').textContent='Hole '+n;
+    document.getElementById('holeMeta').textContent='Par '+H.par+' \u00b7 '+H.yd+' yds \u00b7 SI '+H.si;
+    armed=null;
+    document.querySelectorAll('.mode').forEach(function(b){ b.classList.remove('armed'); });
+    renderCurrent();
+    updateSetState();
+    refreshStrip();
+    refreshDots();
+    var d=data[n];
+    if(d && (d.center||d.tee)){
+      var pts=['tee','front','center','back'].filter(function(k){return d[k];}).map(function(k){return d[k];});
+      if(pts.length>1) map.fitBounds(pts,{padding:[70,70],maxZoom:19});
+      else map.setView(d.center||d.tee, Math.max(map.getZoom(),17));
+    }
+  }
+
+  function updateProgress(){
+    var n=HOLES.filter(function(H){ return data[H.h] && data[H.h].center; }).length;
+    document.getElementById('progN').textContent=n;
+    refreshStrip();
+    refreshDots();
+  }
+
+  document.getElementById('btnNext').addEventListener('click',function(){ selectHole(cur>=18?1:cur+1); });
+  document.getElementById('btnFit').addEventListener('click',function(){
+    var d=data[cur];
+    var pts=d?['tee','front','center','back'].filter(function(k){return d[k];}).map(function(k){return d[k];}):[];
+    if(pts.length>1) map.fitBounds(pts,{padding:[70,70],maxZoom:19});
+    else if(pts.length===1) map.setView(pts[0],18);
+    else flash('Nothing mapped on this hole yet');
+  });
+  document.getElementById('btnClear').addEventListener('click',function(){
+    if(!data[cur]){ flash('Nothing to clear'); return; }
+    delete data[cur]; save(); renderCurrent(); updateSetState(); updateProgress(); flash('Hole '+cur+' cleared');
+  });
+  document.getElementById('btnExport').addEventListener('click',exportJSON);
+
+  function exportJSON(){
+    var out={
+      course:"The Legend at Merrill Hills", city:"Waukesha", state:"WI",
+      lat:CENTER[0], lng:CENTER[1], mappedAt:new Date().toISOString(),
+      holes:HOLES.map(function(H){
+        var d=data[H.h]||{};
+        return {
+          hole:H.h, par:H.par, si:H.si, yards:H.yd,
+          tee:d.tee||null,
+          green:{ front:d.front||null, center:d.center||null, back:d.back||null }
+        };
+      })
+    };
+    var txt=JSON.stringify(out,null,2);
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(txt).then(function(){ flash('Course data copied to clipboard'); },function(){ fallbackCopy(txt); });
+    } else fallbackCopy(txt);
+  }
+  function fallbackCopy(txt){
+    var ta=document.createElement('textarea'); ta.value=txt; document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); flash('Course data copied'); }catch(e){ flash('Copy failed - see console'); console.log(txt); }
+    document.body.removeChild(ta);
+  }
+
+  var toastT;
+  function flash(msg){
+    var t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
+    clearTimeout(toastT); toastT=setTimeout(function(){ t.classList.remove('show'); },1600);
+  }
+  function cap(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
+
+  buildStrip();
+  selectHole(1);
+  updateProgress();
+  setTimeout(function(){ map.invalidateSize(); },200);
+})();
+</script>
+</body>
+</html>
