@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v77";
+const BUILD = "v78";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -79,6 +79,15 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // Polite to Nominatim (~1 req/sec), keeps only golf_course results, and never caches a miss.
 async function geocodeWithDebug(env: any, name: string, where: string): Promise<{ coords: { lat: number; lng: number } | null; debug: any }> {
   if (!name) return { coords: null, debug: { reason: "no-name" } };
+  // Private clubs that public geocoders can't resolve by name. Matched on a distinctive
+  // lowercased phrase in the course name; checked before any network lookup.
+  const KNOWN: { needle: string; lat: number; lng: number }[] = [
+    { needle: "merrill hills", lat: 42.9838, lng: -88.2923 },
+  ];
+  const nlow = name.toLowerCase();
+  for (const k of KNOWN) {
+    if (nlow.includes(k.needle)) return { coords: { lat: k.lat, lng: k.lng }, debug: { hit: "known:" + k.needle } };
+  }
   const w = (where || "").trim();
   const UA = "GreenSideStrokes/1.0 (+https://greensidestrokes.com; golf hole maps)";
   const cacheKey = `https://cache/geo/v5/${encodeURIComponent((name + "|" + w).toLowerCase())}`;
