@@ -30,12 +30,36 @@ export class CourseCatalog implements DurableObject {
       this.ctx.storage.sql.exec(
         `CREATE TABLE IF NOT EXISTS metrics (day TEXT, type TEXT, n INTEGER DEFAULT 0, PRIMARY KEY (day, type))`
       );
+      // Saved hole maps, keyed by rounded "lat,lng". Holds hand-mapped greens (and persisted
+      // OSM successes) so a course is served its map instantly, without depending on Overpass.
+      this.ctx.storage.sql.exec(
+        `CREATE TABLE IF NOT EXISTS holemaps (coordkey TEXT PRIMARY KEY, name TEXT, map TEXT, updated INTEGER)`
+      );
     });
   }
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const sql = this.ctx.storage.sql;
+
+    // Save a hole map for a course (by rounded coord key). Replaces any existing map there.
+    if (url.pathname.endsWith("/savemap") && request.method === "POST") {
+      const b = await request.json<any>().catch(() => null);
+      if (!b || !b.coordkey || !b.map) return Response.json({ ok: false });
+      sql.exec(
+        "INSERT INTO holemaps (coordkey,name,map,updated) VALUES (?,?,?,?) ON CONFLICT(coordkey) DO UPDATE SET name=excluded.name, map=excluded.map, updated=excluded.updated",
+        String(b.coordkey), String(b.name || ""), JSON.stringify(b.map), Date.now()
+      );
+      return Response.json({ ok: true });
+    }
+    // Fetch a saved hole map by coord key, if one exists.
+    if (url.pathname.endsWith("/getmap")) {
+      const key = url.searchParams.get("key") || "";
+      const rows = sql.exec("SELECT map FROM holemaps WHERE coordkey = ?", key).toArray();
+      if (!rows.length) return Response.json({ found: false });
+      try { return Response.json({ found: true, map: JSON.parse((rows[0] as any).map) }); }
+      catch { return Response.json({ found: false }); }
+    }
 
     if (url.pathname.endsWith("/bump") && request.method === "POST") {
       const b = await request.json<any>().catch(() => ({}));

@@ -139,6 +139,8 @@
 
     <p class="hint" id="hint">Pick a point above, then tap its spot on the green. The red ball shows live yardages &mdash; drag it anywhere to test a distance.</p>
 
+    <button class="btn primary" id="btnSave" style="width:100%;margin-top:10px;font-size:15px;padding:13px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 17l4 4 4-4M12 3v18M20 16.7A5 5 0 0018 7h-1.3A8 8 0 104 15"/></svg> Save to Greenside</button>
+
     <div class="row">
       <button class="btn primary" id="btnNext"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg> Next hole</button>
       <button class="btn ghost" id="btnFit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8V5a2 2 0 012-2h3M16 3h3a2 2 0 012 2v3M21 16v3a2 2 0 01-2 2h-3M8 21H5a2 2 0 01-2-2v-3"/></svg> Fit hole</button>
@@ -367,9 +369,10 @@
     delete data[cur]; save(); renderCurrent(); updateSetState(); updateProgress(); flash('Hole '+cur+' cleared');
   });
   document.getElementById('btnExport').addEventListener('click',exportJSON);
+  document.getElementById('btnSave').addEventListener('click',saveToGreenside);
 
-  function exportJSON(){
-    var out={
+  function buildExport(){
+    return {
       course:"The Legend at Merrill Hills", city:"Waukesha", state:"WI",
       lat:CENTER[0], lng:CENTER[1], mappedAt:new Date().toISOString(),
       holes:HOLES.map(function(H){
@@ -381,10 +384,26 @@
         };
       })
     };
-    var txt=JSON.stringify(out,null,2);
+  }
+  function exportJSON(){
+    var txt=JSON.stringify(buildExport(),null,2);
     if(navigator.clipboard && navigator.clipboard.writeText){
       navigator.clipboard.writeText(txt).then(function(){ flash('Course data copied to clipboard'); },function(){ fallbackCopy(txt); });
     } else fallbackCopy(txt);
+  }
+  function mappedCount(){ return HOLES.filter(function(H){ return data[H.h] && data[H.h].center; }).length; }
+  async function saveToGreenside(){
+    if(mappedCount()===0){ flash('Map at least one green first'); return; }
+    var pw=window.prompt('Admin password to save this course map to Greenside:');
+    if(!pw) return;
+    flash('Saving to Greenside…');
+    try{
+      var r=await fetch('/api/coursemap',{ method:'POST', headers:{ 'content-type':'application/json', 'x-admin-key':pw }, body:JSON.stringify(buildExport()) });
+      if(r.status===401){ flash('Wrong admin password'); return; }
+      var d=await r.json();
+      if(d && d.ok){ flash('Saved — '+d.holes+' holes now live in Greenside'); }
+      else flash('Save failed'+(d&&d.error?': '+d.error:''));
+    }catch(e){ flash('Save failed — network error'); }
   }
   function fallbackCopy(txt){
     var ta=document.createElement('textarea'); ta.value=txt; document.body.appendChild(ta); ta.select();

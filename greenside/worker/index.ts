@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v79";
+const BUILD = "v80";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -185,6 +185,44 @@ async function geocodeWithDebug(env: any, name: string, where: string): Promise<
 
 async function geocodeCourse(env: any, name: string, where: string): Promise<{ lat: number; lng: number } | null> {
   return (await geocodeWithDebug(env, name, where)).coords;
+}
+
+// Convert a Course Mapper export (tee + green front/center/back points per hole) into the same
+// hole-map shape the round renders from OSM. Lets a hand-mapped course serve a real map/yardages
+// with zero dependence on Overpass. Pure function — no network, no env.
+function mapperToHoleMap(exp: any): any {
+  const out: any[] = [];
+  const holesIn = Array.isArray(exp && exp.holes) ? exp.holes : [];
+  const mid = (a: number[], b: number[]) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  for (const h of holesIn) {
+    const g = h.green || {};
+    const front = g.front || null, back = g.back || null;
+    let center = g.center || null;
+    if (!center && front && back) center = mid(front, back);
+    const c = center || front || back;
+    if (!c) continue; // nothing mapped for this hole — skip it
+    const tee = h.tee || null;
+    const mPerLat = 110540, mPerLng = 111320 * Math.cos((c[0] * Math.PI) / 180);
+    const toLL = (nm: number, em: number) => [c[0] + nm / mPerLat, c[1] + em / mPerLng];
+    const ydsOf = (a: number[], b: number[]) => { const n = (b[0] - a[0]) * mPerLat, e = (b[1] - a[1]) * mPerLng; return Math.round(Math.hypot(n, e) * 1.09361); };
+    let ring: number[][];
+    if (front && back) {
+      const axN = (back[0] - front[0]) * mPerLat, axE = (back[1] - front[1]) * mPerLng;
+      const L = Math.hypot(axN, axE) || 12;
+      const pN = -axE / L, pE = axN / L, hw = Math.max(6, Math.min(14, L * 0.28));
+      ring = [front, toLL(pN * hw, pE * hw), back, toLL(-pN * hw, -pE * hw)];
+    } else {
+      const r = 11; ring = [toLL(r, 0), toLL(0, r), toLL(-r, 0), toLL(0, -r)];
+    }
+    const teePt = tee || front || c;
+    out.push({
+      ref: Number(h.hole), par: h.par != null ? Number(h.par) : null,
+      line: [teePt, c], tee: teePt, green: ring, greenC: c,
+      fairways: [], rough: [], tees: [], hazards: [],
+      teeToGreenYds: tee ? ydsOf(tee, c) : (Number(h.yards) || 0),
+    });
+  }
+  return { available: out.length > 0, holes: out, counts: { found: out.length, greens: out.length, bunkers: 0, water: 0 }, source: "mapped" };
 }
 
 function simplifyCourse(c: any) {
@@ -841,7 +879,28 @@ export default {
       const lng = parseFloat(url.searchParams.get("lng") || "");
       const wantHoles = parseInt(url.searchParams.get("holes") || "0") || 0;
       if (!isFinite(lat) || !isFinite(lng)) return Response.json({ available: false, error: "no-location" });
+      // A saved map (hand-mapped, or a persisted OSM success) wins — instant and reliable,
+      // no Overpass round-trip. Falls through to the live OSM fetch when there isn't one.
+      const ck = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+      try {
+        const sm: any = await (await catalog(env).fetch(`https://do/getmap?key=${encodeURIComponent(ck)}`)).json();
+        if (sm && sm.found && sm.map && sm.map.available) return Response.json(sm.map);
+      } catch { /* fall through to OSM */ }
       return holeMapFor(lat, lng, wantHoles);
+    }
+
+    // Save a Course Mapper export as a course's permanent hole map (admin only).
+    if (path === "/api/coursemap" && request.method === "POST") {
+      const key = request.headers.get("x-admin-key") || "";
+      if (!env.ADMIN_KEY || key !== env.ADMIN_KEY) return new Response("Unauthorized", { status: 401 });
+      const exp = await request.json<any>().catch(() => null);
+      const lat = Number(exp && exp.lat), lng = Number(exp && exp.lng);
+      if (!exp || !isFinite(lat) || !isFinite(lng)) return Response.json({ ok: false, error: "bad-input" });
+      const map = mapperToHoleMap(exp);
+      if (!map.available) return Response.json({ ok: false, error: "no-holes-mapped" });
+      const ck = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+      await catalog(env).fetch("https://do/savemap", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ coordkey: ck, name: exp.course || "", map }) });
+      return Response.json({ ok: true, holes: map.holes.length });
     }
 
     // ---- A round's live object ----
