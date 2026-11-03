@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v78";
+const BUILD = "v79";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -21,35 +21,43 @@ const catalog = (env: Env) => env.COURSE_CATALOG.get(env.COURSE_CATALOG.idFromNa
 // Produce (and cache) a hole map for a coordinate. Shared by the public route and the admin probe.
 async function holeMapFor(lat: number, lng: number, wantHoles: number): Promise<Response> {
   return cachedJson(`https://cache/holemap/v16/${lat.toFixed(4)},${lng.toFixed(4)},${wantHoles}`, 7 * 86400, async () => {
-    const q = `[out:json][timeout:25];(way["golf"](around:5000,${lat},${lng});relation["golf"](around:5000,${lat},${lng});way["leisure"="golf_course"](around:5000,${lat},${lng});relation["leisure"="golf_course"](around:5000,${lat},${lng});way["natural"="water"](around:2200,${lat},${lng});relation["natural"="water"](around:2200,${lat},${lng}););out geom;`;
+    // Full query: everything within 5km (handles sprawling courses) plus nearby water hazards.
+    const qFull = `[out:json][timeout:25];(way["golf"](around:5000,${lat},${lng});relation["golf"](around:5000,${lat},${lng});way["leisure"="golf_course"](around:5000,${lat},${lng});relation["leisure"="golf_course"](around:5000,${lat},${lng});way["natural"="water"](around:2200,${lat},${lng});relation["natural"="water"](around:2200,${lat},${lng}););out geom;`;
+    // Lite query: smaller radius, golf features only, no water. Much lighter, so a loaded free
+    // mirror can still answer it quickly when the full query would time out.
+    const qLite = `[out:json][timeout:25];(way["golf"](around:3500,${lat},${lng});relation["golf"](around:3500,${lat},${lng});way["leisure"="golf_course"](around:3500,${lat},${lng}););out geom;`;
     const servers = [
       "https://overpass.private.coffee/api/interpreter",
       "https://overpass.kumi.systems/api/interpreter",
       "https://overpass-api.de/api/interpreter",
     ];
-    // Hit every mirror at once and take whichever answers first. A hard 10s cutoff per mirror
-    // means a single hung server can't stall the whole thing the way the old serial walk did.
-    const fetchOne = async (ep: string) => {
+    // Hit every mirror at once and take whichever answers first, with a generous 28s cutoff so a
+    // busy-but-working server isn't killed before it can reply (the old 10s window was the bug).
+    const fetchOne = (ep: string, q: string) => {
       const host = ep.split("/")[2];
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 10000);
-      try {
-        const r = await fetch(ep, {
-          method: "POST", signal: ctrl.signal,
-          headers: { "content-type": "application/x-www-form-urlencoded", "accept": "application/json", "user-agent": "GreenSideStrokes/1.0 (+https://greensidestrokes.com; golf hole maps)" },
-          body: "data=" + encodeURIComponent(q),
-        });
+      const timer = setTimeout(() => ctrl.abort(), 28000);
+      return fetch(ep, {
+        method: "POST", signal: ctrl.signal,
+        headers: { "content-type": "application/x-www-form-urlencoded", "accept": "application/json", "user-agent": "GreenSideStrokes/1.0 (+https://greensidestrokes.com; golf hole maps)" },
+        body: "data=" + encodeURIComponent(q),
+      }).then(async (r) => {
         if (!r.ok) throw new Error("overpass-" + r.status + "@" + host);
-        const data = await r.json();
-        return { data, host };
-      } finally { clearTimeout(timer); }
+        return { data: await r.json(), host };
+      }).finally(() => clearTimeout(timer));
     };
+    const race = (q: string) => Promise.any(servers.map((ep) => fetchOne(ep, q))) as Promise<{ data: any; host: string }>;
     let won: { data: any; host: string };
     try {
-      won = await Promise.any(servers.map(fetchOne));
-    } catch (agg: any) {
-      const errs = ((agg && agg.errors) || []).map((e: any) => String((e && e.message) || e)).join("; ") || "all-mirrors-failed";
-      return new Response(JSON.stringify({ available: false, error: errs }), { status: 503, headers: { "content-type": "application/json" } });
+      won = await race(qFull);
+    } catch {
+      // Every mirror failed or timed out on the full query — retry once with the lighter query.
+      try {
+        won = await race(qLite);
+      } catch (agg: any) {
+        const errs = ((agg && agg.errors) || []).map((e: any) => String((e && e.message) || e)).join("; ") || "all-mirrors-failed";
+        return new Response(JSON.stringify({ available: false, error: errs }), { status: 503, headers: { "content-type": "application/json" } });
+      }
     }
     // Parse only the winner (all mirrors return the same OSM data, so one parse is enough).
     const result: any = parseHoleMap(won.data, lat, lng, wantHoles);
