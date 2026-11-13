@@ -35,6 +35,11 @@ export class CourseCatalog implements DurableObject {
       this.ctx.storage.sql.exec(
         `CREATE TABLE IF NOT EXISTS holemaps (coordkey TEXT PRIMARY KEY, name TEXT, map TEXT, updated INTEGER)`
       );
+      // Live field registry: every round that's created at a course registers here, keyed by the
+      // course's rounded "lat,lng". The clubhouse board reads it to see the whole course at once.
+      this.ctx.storage.sql.exec(
+        `CREATE TABLE IF NOT EXISTS active_rounds (code TEXT PRIMARY KEY, coordkey TEXT, name TEXT, outing INTEGER DEFAULT 0, created INTEGER)`
+      );
     });
   }
 
@@ -51,6 +56,23 @@ export class CourseCatalog implements DurableObject {
         String(b.coordkey), String(b.name || ""), JSON.stringify(b.map), Date.now()
       );
       return Response.json({ ok: true });
+    }
+    // Register a round at its course for the live field board.
+    if (url.pathname.endsWith("/field/add") && request.method === "POST") {
+      const b = await request.json<any>().catch(() => null);
+      if (!b || !b.code || !b.coordkey) return Response.json({ ok: false });
+      sql.exec(
+        "INSERT INTO active_rounds (code,coordkey,name,outing,created) VALUES (?,?,?,?,?) ON CONFLICT(code) DO UPDATE SET coordkey=excluded.coordkey, name=excluded.name, outing=excluded.outing, created=excluded.created",
+        String(b.code), String(b.coordkey), String(b.name || ""), b.outing ? 1 : 0, Date.now()
+      );
+      return Response.json({ ok: true });
+    }
+    // List the recent rounds at a course (by coord key) for the clubhouse board.
+    if (url.pathname.endsWith("/field/list")) {
+      const key = url.searchParams.get("key") || "";
+      const since = Date.now() - 8 * 3600 * 1000; // rounds started in the last 8 hours
+      const rows = sql.exec("SELECT code,name,outing,created FROM active_rounds WHERE coordkey = ? AND created >= ? ORDER BY created DESC LIMIT 60", key, since).toArray();
+      return Response.json({ rounds: rows });
     }
     // Fetch a saved hole map by coord key, if one exists.
     if (url.pathname.endsWith("/getmap")) {

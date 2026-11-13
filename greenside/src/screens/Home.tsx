@@ -4,7 +4,7 @@ import { computeStandings, fmtToPar } from "../lib/golf";
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, GAME_HELP, composeNines, ninesFromHoles } from "../lib/golf";
 
-const VERSION = "v83";
+const VERSION = "v84";
 
 
 
@@ -678,6 +678,7 @@ export default function Home() {
 
         <div className="footlinks">
           <button className="adminlink" onClick={() => { location.hash = "#/outing"; }}>Outing dashboard</button>
+          <button className="adminlink" onClick={() => { location.hash = "#/clubhouse"; }}>Clubhouse board</button>
           <button className="adminlink" onClick={() => setAdminOpen(true)}>Admin</button>
         </div>
 

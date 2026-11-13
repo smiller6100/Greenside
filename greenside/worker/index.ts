@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v81";
+const BUILD = "v82";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -865,12 +865,40 @@ export default {
             body: JSON.stringify({ name: cfg.courseName, where: cfg.courseWhere || "", lat: lat ?? null, lng: lng ?? null, holes: catHoles, tees: catTees, defaultTee: cfg.teeName || cfg.defaultTee || null }) });
         } catch { /* non-fatal */ }
       }
+      // Register the round at its course so the clubhouse board can see it among the whole field.
+      if (lat != null && lng != null) {
+        const ck = `${Number(lat).toFixed(4)},${Number(lng).toFixed(4)}`;
+        ctx.waitUntil(catalog(env).fetch("https://do/field/add", { method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ code, coordkey: ck, name: cfg.name || cfg.courseName || "", outing: !!cfg.outing }) }).catch(() => {}));
+      }
       // Pre-warm the hole map so it's cached before the group reaches the first tee. Fire-and-forget
       // with the same coords/hole-count the round screen will request, so it lands on the same cache key.
       if (lat != null && lng != null && Array.isArray(cfg.course) && cfg.course.length) {
         ctx.waitUntil(holeMapFor(lat, lng, cfg.course.length).catch(() => {}));
       }
       return Response.json({ code, adminToken });
+    }
+
+    // ---- Clubhouse live field: every active round at a course (admin only) ----
+    if (path === "/api/clubhouse" && request.method === "GET") {
+      const key = request.headers.get("x-admin-key") || "";
+      if (!env.ADMIN_KEY || key !== env.ADMIN_KEY) return new Response("Unauthorized", { status: 401 });
+      const lat = parseFloat(url.searchParams.get("lat") || "");
+      const lng = parseFloat(url.searchParams.get("lng") || "");
+      if (!isFinite(lat) || !isFinite(lng)) return Response.json({ rounds: [] });
+      const ck = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+      let list: any[] = [];
+      try { list = ((await (await catalog(env).fetch(`https://do/field/list?key=${encodeURIComponent(ck)}`)).json()) as any).rounds || []; } catch { /* */ }
+      // Fan out to each round's live state; drop any that no longer exist.
+      const rounds = await Promise.all(list.map(async (r: any) => {
+        try {
+          const rr = await env.GOLF_ROUND.get(env.GOLF_ROUND.idFromName(String(r.code))).fetch("https://do/");
+          if (!rr.ok) return null;
+          const st = await rr.json();
+          return { code: r.code, name: r.name, outing: !!r.outing, state: st };
+        } catch { return null; }
+      }));
+      return Response.json({ rounds: rounds.filter(Boolean) });
     }
 
     // ---- Hole maps from OpenStreetMap (vector diagrams + distances) ----

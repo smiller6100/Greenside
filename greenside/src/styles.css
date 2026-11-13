@@ -754,3 +754,12 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .regmeta b { font-family: 'Fraunces', serif; font-size: 21px; color: var(--ink); }
 .regmeta span { font-size: 13px; color: var(--mut); }
 .regmeta .copybtn { margin-top: 8px; align-self: flex-start; }
+
+/* Clubhouse board — summary tiles + refresh spin */
+.ch-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin-bottom: 18px; }
+.ch-tile { background: var(--card); border: 1px solid var(--line); border-radius: 13px; padding: 12px 8px; text-align: center; }
+.ch-tile b { display: block; font-family: 'Fraunces', serif; font-size: 26px; line-height: 1; color: var(--pine); font-variant-numeric: tabular-nums; }
+.ch-tile span { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--mut); font-weight: 700; }
+.ch-tile.warn b { color: #b3372a; }
+@keyframes gs-spin { to { transform: rotate(360deg); } }
+.spin { animation: gs-spin 1s linear infinite; }
