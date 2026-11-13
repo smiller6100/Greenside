@@ -10,17 +10,18 @@ const FORMAT_LABELS: Record<string, string> = { net: "Net", gross: "Gross", stab
 const GROUP_COLORS = ["#e8833a", "#1f9d6b", "#d24b6a", "#8b5cf6", "#0ea5a4", "#d4a017", "#2563eb", "#db2777", "#65a30d", "#c2410c"];
 
 export default function Round({ code, joinGroup }: { code: string; joinGroup?: string | null }) {
-  const { state, connected, missing, positions, sendScore, sendWolfPick, sendBbb, sendPress, sendSixesMode, sendAddPlayer, sendTeamScore, sendTeamMode, sendDeleteGroup, sendRemovePlayer, sendSetRules, sendPos, sendPosClear, sendChat } = useRound(code);
-  const [tab, setTab] = useState<"board" | "score">("board");
-  const [view, setView] = useState("net"); // a scoring format (leaderboard side)
-  const [scView, setScView] = useState<"hole" | "card" | "games">("hole"); // scorecard side
-  const [holeIdx, setHoleIdx] = useState(0);
-  const [grp, setGrp] = useState<string | null>(null);
+  // Identity is read first so it can be handed to the live hook for server-side scoping.
   const [me, setMe] = useState<string | null>(() => localStorage.getItem(`gs:me:${code}`));
   const [claimed, setClaimed] = useState(() => localStorage.getItem(`gs:claimed:${code}`) === "1");
   const isCreator = localStorage.getItem(`gs:creator:${code}`) === "1";
   const adminToken = localStorage.getItem(`gs:admin:${code}`) || "";
   const isAdmin = !!adminToken || isCreator;
+  const { state, connected, missing, positions, sendScore, sendWolfPick, sendBbb, sendPress, sendSixesMode, sendAddPlayer, sendTeamScore, sendTeamMode, sendDeleteGroup, sendRemovePlayer, sendSetRules, sendPos, sendPosClear, sendChat } = useRound(code, me, adminToken);
+  const [tab, setTab] = useState<"board" | "score">("board");
+  const [view, setView] = useState("net"); // a scoring format (leaderboard side)
+  const [scView, setScView] = useState<"hole" | "card" | "games">("hole"); // scorecard side
+  const [holeIdx, setHoleIdx] = useState(0);
+  const [grp, setGrp] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [edFormats, setEdFormats] = useState<Record<string, boolean>>({});
   const [edGames, setEdGames] = useState<Record<string, boolean>>({});

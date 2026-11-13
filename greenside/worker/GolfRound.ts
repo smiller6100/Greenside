@@ -9,6 +9,13 @@ export interface Env {
   AI: any;
 }
 
+// The group a player belongs to in an outing (null when ungrouped, e.g. a casual round).
+function groupOf(state: any, pid: string): string | null {
+  if (!pid || !state || !Array.isArray(state.players)) return null;
+  const p = state.players.find((x: any) => x.id === pid);
+  return p ? (p.group != null ? String(p.group) : null) : null;
+}
+
 // One instance of this object exists per round code. Every phone in the
 // round connects to it over a WebSocket; it is the single source of truth.
 export class GolfRound implements DurableObject {
@@ -61,17 +68,34 @@ export class GolfRound implements DurableObject {
     let data: any;
     try { data = JSON.parse(message); } catch { return; }
 
-    // Live group positions — relayed to the rest of the group, never stored. Opt-in per player.
+    // Identity: a connection declares which player it is, and whether it holds the round's admin
+    // token (coordinator). Stored on the socket so it survives hibernation. The scoping below uses
+    // it; casual rounds ignore it entirely.
+    if (data.type === "identify") {
+      const pid = String(data.pid || "");
+      let coord = false;
+      if (data.token) { const stored = await this.ctx.storage.get("adminToken"); coord = !!(stored && data.token === stored); }
+      try { ws.serializeAttachment({ pid, coord }); } catch { /* */ }
+      return;
+    }
+
+    // Live group positions — relayed live, never stored. Opt-in per player. In an outing a position
+    // reaches only the player's own group (and coordinators); a casual round relays to everyone.
     if (data.type === "pos") {
       const lat = Number(data.lat), lng = Number(data.lng), id = String(data.id || "");
       if (!id || !isFinite(lat) || !isFinite(lng)) return;
       const acc = isFinite(Number(data.acc)) ? Number(data.acc) : undefined;
-      this.relayExcept(ws, { type: "pos", id, lat, lng, acc });
+      const st = await this.ctx.storage.get<any>("state");
+      if (st && st.outing) this.relayScoped(ws, { type: "pos", id, lat, lng, acc }, groupOf(st, id), st);
+      else this.relayExcept(ws, { type: "pos", id, lat, lng, acc });
       return;
     }
     if (data.type === "posClear") {
       const id = String(data.id || "");
-      if (id) this.relayExcept(ws, { type: "posClear", id });
+      if (!id) return;
+      const st = await this.ctx.storage.get<any>("state");
+      if (st && st.outing) this.relayScoped(ws, { type: "posClear", id }, groupOf(st, id), st);
+      else this.relayExcept(ws, { type: "posClear", id });
       return;
     }
 
@@ -107,12 +131,14 @@ export class GolfRound implements DurableObject {
       if (!Number.isInteger(hole) || hole < 1 || hole > 18) return;
       if (!Number.isInteger(strokes) || strokes < 1 || strokes > 30) return;
       if (!state.players.some((p: any) => p.id === data.playerId)) return;
+      if (!this.canEdit(ws, state, String(data.playerId))) return;
       state.scores[data.playerId] = state.scores[data.playerId] || {};
       state.scores[data.playerId][hole] = strokes;
       await this.ctx.storage.put("state", state);
       this.broadcast({ type: "state", state });
     } else if (data.type === "clear") {
       const hole = Number(data.hole);
+      if (!this.canEdit(ws, state, String(data.playerId))) return;
       if (state.scores[data.playerId]) {
         delete state.scores[data.playerId][hole];
         await this.ctx.storage.put("state", state);
@@ -166,6 +192,7 @@ export class GolfRound implements DurableObject {
       const group = data.group != null ? String(data.group) : "";
       if (!group || !Number.isInteger(hole) || hole < 1 || hole > 18) return;
       if (!Number.isInteger(strokes) || strokes < 1 || strokes > 30) return;
+      if (!this.canEditGroup(ws, state, group)) return;
       state.teamScores = state.teamScores || {};
       state.teamScores[group] = state.teamScores[group] || {};
       state.teamScores[group][hole] = strokes;
@@ -252,5 +279,38 @@ export class GolfRound implements DurableObject {
       if (ws === sender) continue;
       try { ws.send(msg); } catch { /* dropped socket */ }
     }
+  }
+
+  // Relay to the sender's own group (by target group) plus any coordinator connection.
+  relayScoped(sender: WebSocket, obj: any, targetGroup: string | null, state: any) {
+    const msg = JSON.stringify(obj);
+    for (const ws of this.ctx.getWebSockets()) {
+      if (ws === sender) continue;
+      const who = this.ident(ws);
+      if (!(who.coord || (targetGroup != null && groupOf(state, who.pid) === targetGroup))) continue;
+      try { ws.send(msg); } catch { /* dropped socket */ }
+    }
+  }
+
+  // A connection's declared identity, read from its hibernation-safe attachment.
+  ident(ws: WebSocket): { pid: string; coord: boolean } {
+    try { const a: any = ws.deserializeAttachment(); if (a && typeof a === "object") return { pid: String(a.pid || ""), coord: !!a.coord }; } catch { /* */ }
+    return { pid: "", coord: false };
+  }
+
+  // Outings only: a non-coordinator may edit a score only within their own group. Casual rounds
+  // and coordinators are unrestricted — the check short-circuits before any identity is required.
+  canEdit(ws: WebSocket, state: any, targetPid: string): boolean {
+    if (!state.outing) return true;
+    const who = this.ident(ws);
+    if (who.coord) return true;
+    const myG = groupOf(state, who.pid);
+    return !!myG && myG === groupOf(state, targetPid);
+  }
+  canEditGroup(ws: WebSocket, state: any, group: string): boolean {
+    if (!state.outing) return true;
+    const who = this.ident(ws);
+    if (who.coord) return true;
+    return groupOf(state, who.pid) === group;
   }
 }

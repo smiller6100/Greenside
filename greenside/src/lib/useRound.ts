@@ -1,12 +1,18 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { RoundState } from "./golf";
 
-export function useRound(code: string) {
+export function useRound(code: string, me?: string | null, adminToken?: string) {
   const [state, setState] = useState<RoundState | null>(null);
   const [connected, setConnected] = useState(false);
   const [missing, setMissing] = useState(false);
   const [positions, setPositions] = useState<Record<string, { lat: number; lng: number; acc?: number; ts: number }>>({});
   const wsRef = useRef<WebSocket | null>(null);
+  // Latest identity, read inside onopen so a reconnect re-identifies with current values.
+  const meRef = useRef(me); meRef.current = me;
+  const tokRef = useRef(adminToken); tokRef.current = adminToken;
+  const identify = (sock: WebSocket) => {
+    try { sock.send(JSON.stringify({ type: "identify", pid: meRef.current || "", token: tokRef.current || "" })); } catch { /* */ }
+  };
 
   useEffect(() => {
     let alive = true;
@@ -24,7 +30,7 @@ export function useRound(code: string) {
       const proto = location.protocol === "https:" ? "wss" : "ws";
       const sock = new WebSocket(`${proto}://${hosts[hostIdx]}/api/round/${code}/connect`);
       wsRef.current = sock;
-      sock.onopen = () => { if (alive) { fails = 0; setConnected(true); } };
+      sock.onopen = () => { if (alive) { fails = 0; setConnected(true); identify(sock); } };
       sock.onmessage = (e) => {
         try {
           const d = JSON.parse(e.data);
@@ -54,6 +60,12 @@ export function useRound(code: string) {
 
     return () => { alive = false; clearTimeout(retry); wsRef.current?.close(); };
   }, [code]);
+
+  // Re-announce identity when the claimed player or admin token changes mid-session.
+  useEffect(() => {
+    const s = wsRef.current;
+    if (s && s.readyState === 1) { try { s.send(JSON.stringify({ type: "identify", pid: me || "", token: adminToken || "" })); } catch { /* */ } }
+  }, [me, adminToken]);
 
   const sendScore = useCallback((playerId: string, hole: number, strokes: number) => {
     wsRef.current?.send(JSON.stringify({ type: "score", playerId, hole, strokes }));
