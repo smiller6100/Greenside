@@ -763,3 +763,15 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .ch-tile.warn b { color: #b3372a; }
 @keyframes gs-spin { to { transform: rotate(360deg); } }
 .spin { animation: gs-spin 1s linear infinite; }
+
+/* Clubhouse course map */
+.ch-map { margin: 2px 0 18px; }
+.coursemap { width: 100%; height: auto; display: block; border-radius: 14px; }
+.cm-bg { fill: #0e3b2a; }
+.cm-green { fill: rgba(255,255,255,.14); stroke: rgba(255,255,255,.28); stroke-width: 1; }
+.cm-greenlab { fill: rgba(255,255,255,.6); font-size: 8px; font-weight: 700; text-anchor: middle; font-family: 'Inter', sans-serif; }
+.cm-dot { stroke: #fff; stroke-width: 2.5; }
+.cm-dotlab { fill: #fff; font-size: 12px; font-weight: 800; text-anchor: middle; font-family: 'Inter', sans-serif; }
+.cm-dothole { fill: rgba(255,255,255,.9); font-size: 9px; font-weight: 700; text-anchor: middle; font-family: 'Inter', sans-serif; }
+.livedot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; box-shadow: 0 0 0 3px rgba(0,0,0,.04); }
+.livedot.stale { opacity: .4; }

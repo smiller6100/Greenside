@@ -21,6 +21,7 @@ function groupOf(state: any, pid: string): string | null {
 export class GolfRound implements DurableObject {
   ctx: DurableObjectState;
   env: Env;
+  lastStore: Record<string, number> = {}; // in-memory throttle for persisting positions
 
   constructor(ctx: DurableObjectState, env: Env) {
     this.ctx = ctx;
@@ -54,6 +55,15 @@ export class GolfRound implements DurableObject {
       return new Response(null, { status: 101, webSocket: client });
     }
 
+    // Latest positions, read only by the Worker's admin-gated /api/clubhouse. The public round
+    // route never forwards this path to the DO, so these coordinates stay off the open API.
+    if (url.pathname.endsWith("/positions")) {
+      const map = await this.ctx.storage.list<any>({ prefix: "pos:" });
+      const out: Record<string, any> = {};
+      for (const [k, v] of map) out[k.slice(4)] = v;
+      return Response.json({ positions: out });
+    }
+
     // Plain state fetch (used to check a round exists before connecting).
     if (request.method === "GET") {
       const state = await this.ctx.storage.get("state");
@@ -85,14 +95,25 @@ export class GolfRound implements DurableObject {
       const lat = Number(data.lat), lng = Number(data.lng), id = String(data.id || "");
       if (!id || !isFinite(lat) || !isFinite(lng)) return;
       const acc = isFinite(Number(data.acc)) ? Number(data.acc) : undefined;
+      const hole = Number.isInteger(data.hole) && data.hole >= 1 && data.hole <= 27 ? Number(data.hole) : undefined;
+      // Persist the latest fix (throttled, in-memory gate) so the clubhouse board can read it over
+      // HTTP. Kept OUT of the broadcast state so the spine's per-group scoping still holds.
+      const now = Date.now();
+      if (now - (this.lastStore[id] || 0) > 9000) {
+        this.lastStore[id] = now;
+        this.ctx.storage.put("pos:" + id, { lat, lng, ts: now, hole }).catch(() => {});
+      }
       const st = await this.ctx.storage.get<any>("state");
-      if (st && st.outing) this.relayScoped(ws, { type: "pos", id, lat, lng, acc }, groupOf(st, id), st);
-      else this.relayExcept(ws, { type: "pos", id, lat, lng, acc });
+      const msg = { type: "pos", id, lat, lng, acc, hole };
+      if (st && st.outing) this.relayScoped(ws, msg, groupOf(st, id), st);
+      else this.relayExcept(ws, msg);
       return;
     }
     if (data.type === "posClear") {
       const id = String(data.id || "");
       if (!id) return;
+      this.ctx.storage.delete("pos:" + id).catch(() => {});
+      delete this.lastStore[id];
       const st = await this.ctx.storage.get<any>("state");
       if (st && st.outing) this.relayScoped(ws, { type: "posClear", id }, groupOf(st, id), st);
       else this.relayExcept(ws, { type: "posClear", id });

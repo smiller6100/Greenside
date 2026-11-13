@@ -146,8 +146,8 @@ export function useRound(code: string, me?: string | null, adminToken?: string) 
     setState((s) => (s && rules.handicapMode ? { ...s, handicapMode: rules.handicapMode as any } : s));
   }, []);
 
-  const sendPos = useCallback((id: string, lat: number, lng: number, acc?: number) => {
-    wsRef.current?.send(JSON.stringify({ type: "pos", id, lat, lng, acc }));
+  const sendPos = useCallback((id: string, lat: number, lng: number, acc?: number, hole?: number) => {
+    wsRef.current?.send(JSON.stringify({ type: "pos", id, lat, lng, acc, hole }));
   }, []);
   const sendPosClear = useCallback((id: string) => {
     wsRef.current?.send(JSON.stringify({ type: "posClear", id }));

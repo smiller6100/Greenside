@@ -73,6 +73,7 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
   const watchId = useRef<number | null>(null);
   const shareRef = useRef(false);
   const lastSent = useRef(0);
+  const holeNumRef = useRef(1); // current hole #, read by the GPS ping (kept fresh each render)
   const startWatch = () => {
     if (watchId.current != null) return;
     if (!("geolocation" in navigator)) { setGpsErr("Location isn't available on this device."); return; }
@@ -81,7 +82,7 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
       (p) => {
         const c = { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy };
         setGpsErr(""); setGps(c);
-        if (shareRef.current && me) { const now = Date.now(); if (now - lastSent.current > 4000) { lastSent.current = now; sendPos(me, c.lat, c.lng, c.acc); } }
+        if (shareRef.current && me) { const now = Date.now(); if (now - lastSent.current > 4000) { lastSent.current = now; sendPos(me, c.lat, c.lng, c.acc, holeNumRef.current); } }
       },
       (e) => { setGpsErr(e.code === 1 ? "Location permission denied." : "Couldn't get your location."); if (watchId.current != null) { navigator.geolocation.clearWatch(watchId.current); watchId.current = null; } },
       { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 }
@@ -103,7 +104,7 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
   const toggleShare = () => {
     if (share) { shareRef.current = false; setShare(false); if (me) sendPosClear(me); return; }
     shareRef.current = true; setShare(true); lastSent.current = 0;
-    if (gps && me) { lastSent.current = Date.now(); sendPos(me, gps.lat, gps.lng, gps.acc); }
+    if (gps && me) { lastSent.current = Date.now(); sendPos(me, gps.lat, gps.lng, gps.acc, holeNumRef.current); }
   };
   useEffect(() => () => { stopWatch(); if (shareRef.current && me) sendPosClear(me); }, []);
 
@@ -209,6 +210,7 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
 
   const course = state.course;
   const hole = course[holeIdx];
+  holeNumRef.current = hole?.num || holeIdx + 1;
   const useHcp = state.handicapMode !== "gross";
   const nameOf = (id: string) => state.players.find((p) => p.id === id)?.name || "?";
   const enabledGames = state.games ? Object.keys(state.games).filter((k) => (state.games as any)[k]) : [];

@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v82";
+const BUILD = "v83";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -892,10 +892,13 @@ export default {
       // Fan out to each round's live state; drop any that no longer exist.
       const rounds = await Promise.all(list.map(async (r: any) => {
         try {
-          const rr = await env.GOLF_ROUND.get(env.GOLF_ROUND.idFromName(String(r.code))).fetch("https://do/");
+          const stub = env.GOLF_ROUND.get(env.GOLF_ROUND.idFromName(String(r.code)));
+          const rr = await stub.fetch("https://do/");
           if (!rr.ok) return null;
           const st = await rr.json();
-          return { code: r.code, name: r.name, outing: !!r.outing, state: st };
+          let positions: Record<string, any> = {};
+          try { positions = ((await (await stub.fetch("https://do/positions")).json()) as any).positions || {}; } catch { /* */ }
+          return { code: r.code, name: r.name, outing: !!r.outing, state: st, positions };
         } catch { return null; }
       }));
       return Response.json({ rounds: rounds.filter(Boolean) });
