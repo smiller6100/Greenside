@@ -1,0 +1,6 @@
+# Dependencies and build output — generated, never committed
+node_modules/
+dist/
+.wrangler/
+*.log
+.DS_Store
