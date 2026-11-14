@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from "react";
-import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw, Trash2, ChevronLeft, ChevronRight, Menu, BarChart3, Flag, Building2, Settings, ListChecks, User, Trophy } from "lucide-react";
+import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw, Trash2, ChevronLeft, ChevronRight, Menu, BarChart3, Flag, Building2, Settings, ListChecks, User, Trophy, Lock } from "lucide-react";
 import { getAccount, syncDown, deleteRound } from "../lib/account";
 import { computeStandings, fmtToPar, roundDiffs, estimateHandicap } from "../lib/golf";
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, GAME_HELP, composeNines, ninesFromHoles } from "../lib/golf";
 
-const VERSION = "v137";
+const VERSION = "v138";
 
 
 
@@ -22,6 +22,7 @@ async function fileToJpeg(file: File, max = 1800, q = 0.85): Promise<Blob> {
 }
 
 export default function Home() {
+  const signedIn = !!getAccount(); // account features (stats, leagues, rounds, cup, organizer tabs) require this
   const [mode, setMode] = useState<"create" | "quick" | "join">("create");
   const [menuOpen, setMenuOpen] = useState(false);
   const [roundName, setRoundName] = useState("Saturday Round");
@@ -529,15 +530,15 @@ export default function Home() {
             <div className="drawer" onClick={(e) => e.stopPropagation()}>
               <div className="drawer-head"><span className="drawer-title">Menu</span><button className="xbtn" onClick={() => setMenuOpen(false)}><X size={18} /></button></div>
               <nav className="drawer-nav">
-                <button onClick={() => { setMenuOpen(false); location.hash = "#/profile"; }}><User size={18} /> {getAccount() ? (getAccount()!.name || "Profile") : "Sign in / Profile"}</button>
-                <button onClick={() => { setMenuOpen(false); location.hash = "#/stats"; }}><BarChart3 size={18} /> My stats</button>
-                <button onClick={() => { setMenuOpen(false); location.hash = "#/leagues"; }}><Trophy size={18} /> Leagues</button>
-                <button onClick={() => { setMenuOpen(false); location.hash = "#/cup"; }}><Flag size={18} /> Ryder Cup</button>
-                <button onClick={() => { setMenuOpen(false); loadMyRounds(); setRoundsOpen(true); }}><ListChecks size={18} /> My rounds{myRounds.length ? <span className="dn-n">{myRounds.length}</span> : null}</button>
+                <button onClick={() => { setMenuOpen(false); location.hash = "#/profile"; }}><User size={18} /> {signedIn ? (getAccount()!.name || "Profile") : "Sign in / Profile"}</button>
+                <button className={signedIn ? "" : "locked"} onClick={() => { setMenuOpen(false); if (!signedIn) { location.hash = "#/profile"; return; } location.hash = "#/stats"; }}><BarChart3 size={18} /> My stats{!signedIn && <Lock size={14} className="dn-lock" />}</button>
+                <button className={signedIn ? "" : "locked"} onClick={() => { setMenuOpen(false); if (!signedIn) { location.hash = "#/profile"; return; } location.hash = "#/leagues"; }}><Trophy size={18} /> Leagues{!signedIn && <Lock size={14} className="dn-lock" />}</button>
+                <button className={signedIn ? "" : "locked"} onClick={() => { setMenuOpen(false); if (!signedIn) { location.hash = "#/profile"; return; } location.hash = "#/cup"; }}><Flag size={18} /> Ryder Cup{!signedIn && <Lock size={14} className="dn-lock" />}</button>
+                <button className={signedIn ? "" : "locked"} onClick={() => { setMenuOpen(false); if (!signedIn) { location.hash = "#/profile"; return; } loadMyRounds(); setRoundsOpen(true); }}><ListChecks size={18} /> My rounds{signedIn && myRounds.length ? <span className="dn-n">{myRounds.length}</span> : null}{!signedIn && <Lock size={14} className="dn-lock" />}</button>
                 <div className="drawer-sep">Organizers &amp; courses</div>
-                <button onClick={() => { setMenuOpen(false); location.hash = "#/outing"; }}><Flag size={18} /> Outing dashboard</button>
-                <button onClick={() => { setMenuOpen(false); location.hash = "#/clubhouse"; }}><Building2 size={18} /> Clubhouse board</button>
-                <button onClick={() => { setMenuOpen(false); setAdminOpen(true); }}><Settings size={18} /> Admin</button>
+                <button className={signedIn ? "" : "locked"} onClick={() => { setMenuOpen(false); if (!signedIn) { location.hash = "#/profile"; return; } location.hash = "#/outing"; }}><Flag size={18} /> Outing dashboard{!signedIn && <Lock size={14} className="dn-lock" />}</button>
+                <button className={signedIn ? "" : "locked"} onClick={() => { setMenuOpen(false); if (!signedIn) { location.hash = "#/profile"; return; } location.hash = "#/clubhouse"; }}><Building2 size={18} /> Clubhouse board{!signedIn && <Lock size={14} className="dn-lock" />}</button>
+                <button className={signedIn ? "" : "locked"} onClick={() => { setMenuOpen(false); if (!signedIn) { location.hash = "#/profile"; return; } setAdminOpen(true); }}><Settings size={18} /> Admin{!signedIn && <Lock size={14} className="dn-lock" />}</button>
               </nav>
               <div className="drawer-ver">Greenside {VERSION}</div>
             </div>
