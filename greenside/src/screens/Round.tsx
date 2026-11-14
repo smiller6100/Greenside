@@ -3,6 +3,7 @@ import { Minus, Plus, Crown, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, 
 import { LogoMark } from "../components/Logo";
 import HoleMap from "../components/HoleMap";
 import { useRound } from "../lib/useRound";
+import { pushRound } from "../lib/account";
 import { computeStandings, computeGames, computeTeams, computeFieldSkins, strokesOn, toParClass, fmtToPar, holesUp, sixesSegs, scoreTone, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, computeMoney, netFromGames, settleUp } from "../lib/golf";
 
 const FORMAT_LABELS: Record<string, string> = { net: "Net", gross: "Gross", stableford: "Stableford", chicago: "Chicago", skins: "Skins", card: "Full card", games: "Games", teams: "Teams" };
@@ -33,6 +34,7 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
   const [club, setClub] = useState("Dr");
   const [shotsOpen, setShotsOpen] = useState(false);
   const [contestVal, setContestVal] = useState("");
+  const lastCloudPush = useRef(0);
   const saveShots = (s: Record<number, any[]>) => { try { localStorage.setItem(`gs:shots:${code}`, JSON.stringify(s)); } catch { /* */ } };
   const markShot = (teePos: number[] | null) => {
     if (!gps) return;
@@ -152,6 +154,8 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
       const i = list.findIndex((r: any) => r.code === code);
       if (i >= 0) list[i] = snap; else list.unshift(snap);
       localStorage.setItem("gs:rounds", JSON.stringify(list.slice(0, 60)));
+      const now = Date.now(); // if signed in, sync to the cloud at most every 20s
+      if (now - lastCloudPush.current > 20000) { lastCloudPush.current = now; pushRound(snap); }
     } catch { /* storage full or unavailable */ }
   }, [state]);
 

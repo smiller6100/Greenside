@@ -1,11 +1,12 @@
 /// <reference types="@cloudflare/workers-types" />
 import { GolfRound } from "./GolfRound";
 import { CourseCatalog } from "./CourseCatalog";
+import { UserProfile } from "./UserProfile";
 import type { Env } from "./GolfRound";
 
-export { GolfRound, CourseCatalog };
+export { GolfRound, CourseCatalog, UserProfile };
 
-const BUILD = "v88";
+const BUILD = "v89";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -17,6 +18,15 @@ function genCode(len = 4): string {
 
 const GOLF_API = "https://api.golfcourseapi.com/v1";
 const catalog = (env: Env) => env.COURSE_CATALOG.get(env.COURSE_CATALOG.idFromName("global"));
+
+// Validate an account by its id + secret headers; returns the DO stub or null.
+async function accountAuth(env: Env, request: Request): Promise<{ id: string; secret: string; stub: DurableObjectStub } | null> {
+  const id = request.headers.get("x-account-id") || "", secret = request.headers.get("x-account-secret") || "";
+  if (!id || !secret) return null;
+  const stub = env.USER_PROFILE.get(env.USER_PROFILE.idFromName(id));
+  try { const r = await stub.fetch("https://do/auth", { headers: { "x-secret": secret } }); if (!r.ok) return null; } catch { return null; }
+  return { id, secret, stub };
+}
 
 // Produce (and cache) a hole map for a coordinate. Shared by the public route and the admin probe.
 async function holeMapFor(lat: number, lng: number, wantHoles: number): Promise<Response> {
@@ -916,6 +926,54 @@ export default {
         } catch { return null; }
       }));
       return Response.json({ rounds: rounds.filter(Boolean) });
+    }
+
+    // ---- Accounts: optional cross-device profile (passwordless id + secret) ----
+    if (path === "/api/account/create" && request.method === "POST") {
+      const b = await request.json<any>().catch(() => ({}));
+      const id = "a_" + genCode(14), secret = genCode(24);
+      await env.USER_PROFILE.get(env.USER_PROFILE.idFromName(id)).fetch("https://do/create", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ secret, name: String(b.name || "").slice(0, 40) }) });
+      return Response.json({ ok: true, accountId: id, secret, name: String(b.name || "").slice(0, 40) });
+    }
+    if (path === "/api/account/me" && request.method === "GET") {
+      const a = await accountAuth(env, request); if (!a) return new Response("Unauthorized", { status: 401 });
+      const r = await a.stub.fetch("https://do/me", { headers: { "x-secret": a.secret } });
+      return new Response(r.body, { status: r.status, headers: { "content-type": "application/json" } });
+    }
+    if (path === "/api/account/round" && request.method === "PUT") {
+      const a = await accountAuth(env, request); if (!a) return new Response("Unauthorized", { status: 401 });
+      const r = await a.stub.fetch("https://do/round", { method: "PUT", headers: { "x-secret": a.secret, "content-type": "application/json" }, body: await request.text() });
+      return new Response(r.body, { status: r.status });
+    }
+    if (path === "/api/account/name" && request.method === "POST") {
+      const a = await accountAuth(env, request); if (!a) return new Response("Unauthorized", { status: 401 });
+      const r = await a.stub.fetch("https://do/name", { method: "POST", headers: { "x-secret": a.secret, "content-type": "application/json" }, body: await request.text() });
+      return new Response(r.body, { status: r.status });
+    }
+    if (path === "/api/account/friends" && request.method === "POST") {
+      const a = await accountAuth(env, request); if (!a) return new Response("Unauthorized", { status: 401 });
+      const r = await a.stub.fetch("https://do/friends", { method: "POST", headers: { "x-secret": a.secret, "content-type": "application/json" }, body: await request.text() });
+      return new Response(r.body, { status: r.status, headers: { "content-type": "application/json" } });
+    }
+    if (path === "/api/account/link" && request.method === "POST") {
+      const a = await accountAuth(env, request); if (!a) return new Response("Unauthorized", { status: 401 });
+      const code = genCode(6);
+      await catalog(env).fetch("https://do/linkmint", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code, account: a.id, secret: a.secret }) });
+      return Response.json({ ok: true, code });
+    }
+    if (path === "/api/account/claim" && request.method === "POST") {
+      const b = await request.json<any>().catch(() => ({}));
+      const code = String(b.code || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+      const r = await catalog(env).fetch(`https://do/linkclaim?code=${encodeURIComponent(code)}`);
+      const d: any = await r.json();
+      if (!d || !d.account) return Response.json({ ok: false });
+      return Response.json({ ok: true, accountId: d.account, secret: d.secret });
+    }
+    const fcm = path.match(/^\/api\/account\/card\/([A-Za-z0-9_]+)$/);
+    if (fcm && request.method === "GET") {
+      const a = await accountAuth(env, request); if (!a) return new Response("Unauthorized", { status: 401 });
+      const r = await env.USER_PROFILE.get(env.USER_PROFILE.idFromName(fcm[1])).fetch("https://do/card");
+      return new Response(r.body, { status: r.status, headers: { "content-type": "application/json" } });
     }
 
     // ---- Current weather at the course (Open-Meteo, no key) for rangefinder "plays like" ----

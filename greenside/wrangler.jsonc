@@ -12,12 +12,14 @@
   "durable_objects": {
     "bindings": [
       { "name": "GOLF_ROUND", "class_name": "GolfRound" },
-      { "name": "COURSE_CATALOG", "class_name": "CourseCatalog" }
+      { "name": "COURSE_CATALOG", "class_name": "CourseCatalog" },
+      { "name": "USER_PROFILE", "class_name": "UserProfile" }
     ]
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["GolfRound"] },
-    { "tag": "v2", "new_sqlite_classes": ["CourseCatalog"] }
+    { "tag": "v2", "new_sqlite_classes": ["CourseCatalog"] },
+    { "tag": "v3", "new_sqlite_classes": ["UserProfile"] }
   ],
   "ai": { "binding": "AI" },
   "observability": { "enabled": true }

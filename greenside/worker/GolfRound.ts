@@ -3,6 +3,7 @@
 export interface Env {
   GOLF_ROUND: DurableObjectNamespace;
   COURSE_CATALOG: DurableObjectNamespace;
+  USER_PROFILE: DurableObjectNamespace;
   ASSETS: Fetcher;
   GOLF_API_KEY?: string;
   ADMIN_KEY?: string;

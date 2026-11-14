@@ -4,6 +4,7 @@ import Round from "./screens/Round";
 import OutingDash from "./screens/OutingDash";
 import Clubhouse from "./screens/Clubhouse";
 import Stats from "./screens/Stats";
+import Profile from "./screens/Profile";
 
 function parseHash(): { code: string; group: string | null } | null {
   const m = location.hash.match(/#\/r\/([A-Za-z0-9]+)(?:-(\d{1,2}))?/);
@@ -25,17 +26,19 @@ export default function App() {
   const [dash, setDash] = useState(() => location.hash.startsWith("#/outing"));
   const [club, setClub] = useState(() => location.hash.startsWith("#/clubhouse"));
   const [stats, setStats] = useState(() => location.hash.startsWith("#/stats"));
+  const [profile, setProfile] = useState(() => location.hash.startsWith("#/profile"));
   useEffect(() => {
-    const on = () => { setRoute(resolveRoute()); setDash(location.hash.startsWith("#/outing")); setClub(location.hash.startsWith("#/clubhouse")); setStats(location.hash.startsWith("#/stats")); };
+    const on = () => { setRoute(resolveRoute()); setDash(location.hash.startsWith("#/outing")); setClub(location.hash.startsWith("#/clubhouse")); setStats(location.hash.startsWith("#/stats")); setProfile(location.hash.startsWith("#/profile")); };
     window.addEventListener("hashchange", on);
     window.addEventListener("pageshow", on); // re-check when iOS restores the tab
     return () => { window.removeEventListener("hashchange", on); window.removeEventListener("pageshow", on); };
   }, []);
   useEffect(() => {
-    if (!route && !dash && !club && !stats && location.hash.includes("/r/")) {
+    if (!route && !dash && !club && !stats && !profile && location.hash.includes("/r/")) {
       try { history.replaceState(null, "", location.pathname + location.search); } catch { /* */ }
     }
-  }, [route, dash, club, stats]);
+  }, [route, dash, club, stats, profile]);
+  if (profile) return <Profile />;
   if (stats) return <Stats />;
   if (club) return <Clubhouse />;
   if (dash) return <OutingDash />;

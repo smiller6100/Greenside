@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from "react";
-import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw, Trash2, ChevronLeft, ChevronRight, Menu, BarChart3, Flag, Building2, Settings, ListChecks } from "lucide-react";
+import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw, Trash2, ChevronLeft, ChevronRight, Menu, BarChart3, Flag, Building2, Settings, ListChecks, User } from "lucide-react";
+import { getAccount, syncDown } from "../lib/account";
 import { computeStandings, fmtToPar, roundDiffs, estimateHandicap } from "../lib/golf";
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, GAME_HELP, composeNines, ninesFromHoles } from "../lib/golf";
 
-const VERSION = "v101";
+const VERSION = "v102";
 
 
 
@@ -94,6 +95,7 @@ export default function Home() {
     if (prof.formats && Object.values(prof.formats).some(Boolean)) setFormats((f) => ({ ...f, ...prof.formats }));
     if (prof.hcpMode) setHcpMode(prof.hcpMode);
     findNearby(); // surface courses near you the moment the app opens
+    if (getAccount()) syncDown().then((d) => { if (d) loadMyRounds(); }); // pull cloud rounds if signed in
   }, []);
   const deleteMyRound = (code: string) => {
     const next = myRounds.filter((r) => r.code !== code);
@@ -528,6 +530,7 @@ export default function Home() {
             <div className="drawer" onClick={(e) => e.stopPropagation()}>
               <div className="drawer-head"><span className="drawer-title">Menu</span><button className="xbtn" onClick={() => setMenuOpen(false)}><X size={18} /></button></div>
               <nav className="drawer-nav">
+                <button onClick={() => { setMenuOpen(false); location.hash = "#/profile"; }}><User size={18} /> {getAccount() ? (getAccount()!.name || "Profile") : "Sign in / Profile"}</button>
                 <button onClick={() => { setMenuOpen(false); location.hash = "#/stats"; }}><BarChart3 size={18} /> My stats</button>
                 <button onClick={() => { setMenuOpen(false); loadMyRounds(); setRoundsOpen(true); }}><ListChecks size={18} /> My rounds{myRounds.length ? <span className="dn-n">{myRounds.length}</span> : null}</button>
                 <div className="drawer-sep">Organizers &amp; courses</div>

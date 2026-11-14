@@ -48,6 +48,10 @@ export class CourseCatalog implements DurableObject {
       this.ctx.storage.sql.exec(
         `CREATE TABLE IF NOT EXISTS active_rounds (code TEXT PRIMARY KEY, coordkey TEXT, name TEXT, outing INTEGER DEFAULT 0, created INTEGER)`
       );
+      // Short-lived device-link codes: redeemed once to carry an account to another device.
+      this.ctx.storage.sql.exec(
+        `CREATE TABLE IF NOT EXISTS linkcodes (code TEXT PRIMARY KEY, account TEXT, secret TEXT, expires INTEGER)`
+      );
     });
   }
 
@@ -138,6 +142,23 @@ export class CourseCatalog implements DurableObject {
       return Response.json({
         courses: rows.map((r: any) => ({ id: r.id, name: r.name, where: r.where_txt, lat: r.lat, lng: r.lng, saved: true })),
       });
+    }
+
+    // Mint / redeem a device-link code (account cross-device). Codes last 10 minutes, one use.
+    if (url.pathname.endsWith("/linkmint") && request.method === "POST") {
+      const b = await request.json<any>().catch(() => null);
+      if (!b || !b.code || !b.account) return Response.json({ ok: false });
+      sql.exec("DELETE FROM linkcodes WHERE expires < ?", Date.now());
+      sql.exec("INSERT OR REPLACE INTO linkcodes (code,account,secret,expires) VALUES (?,?,?,?)", String(b.code), String(b.account), String(b.secret || ""), Date.now() + 600000);
+      return Response.json({ ok: true });
+    }
+    if (url.pathname.endsWith("/linkclaim")) {
+      const code = url.searchParams.get("code") || "";
+      const rows = sql.exec("SELECT account,secret,expires FROM linkcodes WHERE code = ?", code).toArray() as any[];
+      const row = rows[0];
+      if (!row || row.expires < Date.now()) return Response.json({ ok: false });
+      sql.exec("DELETE FROM linkcodes WHERE code = ?", code);
+      return Response.json({ ok: true, account: row.account, secret: row.secret });
     }
 
     // Nearest saved course to a lat/lng (for Quick round — "the course you're standing on").
