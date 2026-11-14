@@ -121,7 +121,7 @@ export default function CourseMapGL({ center, greens, groups, holes }: {
         entry.el.className = "cm-gl-dot" + (d.estimated ? " est" : "");
         entry.el.style.background = d.color;
         entry.el.style.opacity = d.fresh ? "1" : "0.55";
-        entry.el.innerHTML = `<span>${d.label}</span>${d.hole ? `<em>${d.hole}</em>` : ""}`;
+        entry.el.textContent = d.hole ? String(d.hole) : d.label;
       });
       for (const [k, v] of groupMarks.current) if (!seen.has(k)) { v.mk.remove(); groupMarks.current.delete(k); }
       } catch (e) { console.warn("[coursemap] dots", e); }

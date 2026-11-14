@@ -1108,12 +1108,10 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
   box-shadow: 0 1px 3px rgba(0,0,0,0.45);
 }
 .cm-gl-dot {
-  width: max-content; min-width: 30px; max-width: 76px; box-sizing: border-box;
-  height: 30px; border-radius: 15px; padding: 0 7px; white-space: nowrap;
+  width: 24px; height: 24px; border-radius: 50%; box-sizing: border-box;
   border: 2px solid #fff; color: #fff; cursor: default;
-  display: flex; align-items: center; justify-content: center; gap: 4px;
-  font-weight: 800; box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 12px; line-height: 1;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.55);
 }
-.cm-gl-dot span { font-size: 13px; line-height: 1; }
-.cm-gl-dot em { font-style: normal; font-size: 10px; opacity: 0.95; background: rgba(0,0,0,0.28); border-radius: 6px; padding: 1px 4px; }
 .cm-gl-dot.est { border-style: dashed; }
