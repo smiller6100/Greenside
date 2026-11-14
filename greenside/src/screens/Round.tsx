@@ -1036,6 +1036,7 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
                 ))}
               </div>
             )}
+            <div className="hole-body">
             {state.outing && state.teamMode === "scramble" ? (
               <div className="cards">
                 {(() => {
@@ -1211,6 +1212,7 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
                 </div>
               );
             })()}
+            </div>
             {(state.games?.sixes || state.games?.nassau) && state.players.length === 4 && (() => {
               const blocks: any[] = [];
               const teamNames = (t: any[]) => t.map((p) => p.name).join("/");

@@ -1072,3 +1072,7 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
   background: rgba(20,30,22,0.72); backdrop-filter: blur(4px); border: none;
   border-radius: 999px; padding: 6px 13px; cursor: pointer;
 }
+
+/* Hole tab: map sits directly under the header; scoring/tracking drops below it. */
+.hole-body { display: flex; flex-direction: column; }
+.hole-body > .holemap-wrap, .hole-body > .holemap-empty { order: -1; margin-top: 4px; }
