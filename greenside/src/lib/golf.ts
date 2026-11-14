@@ -538,3 +538,34 @@ export function estimateHandicap(diffs: RoundDiff[]): { index: number; n: number
   return { index: Math.round(index * 10) / 10, n, used: cnt };
 }
 export const fmtIndex = (i: number) => (i < 0 ? `+${Math.abs(i).toFixed(1)}` : i.toFixed(1));
+
+// --- Field skins: lowest score on a hole wins across the WHOLE field; ties carry over. ---
+// Settles a hole only once every current player has a score on it (so live results are correct
+// as groups finish at different paces). useNet applies handicap strokes per hole.
+export function computeFieldSkins(state: RoundState, useNet: boolean): { skins: Record<string, number>; carry: number; settled: number; log: { hole: number; winner: string | null; skins: number; carried?: number }[] } {
+  const players = state.players || [];
+  const scores: any = (state as any).scores || {};
+  const course = state.course || [];
+  const skins: Record<string, number> = {}; players.forEach((p) => (skins[p.id] = 0));
+  let carry = 0, settled = 0;
+  const log: { hole: number; winner: string | null; skins: number; carried?: number }[] = [];
+  for (const h of course) {
+    const entries = players.map((p) => {
+      const s = (scores[p.id] || {})[h.num];
+      if (s == null) return null;
+      const val = useNet ? s - strokesOn(p.hcp, h.si) : s;
+      return { id: p.id, val };
+    }).filter(Boolean) as { id: string; val: number }[];
+    if (entries.length < players.length || players.length < 2) break; // field hasn't finished this hole
+    settled++;
+    const lo = Math.min(...entries.map((e) => e.val));
+    const winners = entries.filter((e) => e.val === lo);
+    if (winners.length === 1) {
+      const won = carry + 1; skins[winners[0].id] += won;
+      log.push({ hole: h.num, winner: winners[0].id, skins: won }); carry = 0;
+    } else {
+      carry += 1; log.push({ hole: h.num, winner: null, skins: 0, carried: carry });
+    }
+  }
+  return { skins, carry, settled, log };
+}

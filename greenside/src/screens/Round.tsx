@@ -3,7 +3,7 @@ import { Minus, Plus, Crown, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, 
 import { LogoMark } from "../components/Logo";
 import HoleMap from "../components/HoleMap";
 import { useRound } from "../lib/useRound";
-import { computeStandings, computeGames, computeTeams, strokesOn, toParClass, fmtToPar, holesUp, sixesSegs, scoreTone, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, computeMoney, netFromGames, settleUp } from "../lib/golf";
+import { computeStandings, computeGames, computeTeams, computeFieldSkins, strokesOn, toParClass, fmtToPar, holesUp, sixesSegs, scoreTone, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, computeMoney, netFromGames, settleUp } from "../lib/golf";
 
 const FORMAT_LABELS: Record<string, string> = { net: "Net", gross: "Gross", stableford: "Stableford", chicago: "Chicago", skins: "Skins", card: "Full card", games: "Games", teams: "Teams" };
 
@@ -257,6 +257,26 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
   const myGroup = state.players.find((p) => p.id === me)?.group;
   const groups = state.outing ? Array.from(new Set(state.players.map((p) => p.group || "1"))).sort((a, b) => (parseInt(a) || 0) - (parseInt(b) || 0) || a.localeCompare(b)) : [];
   const effGrp = grp ?? myGroup ?? joinGroup ?? groups[0] ?? null;
+
+  const FieldSkinsPanel = () => {
+    const useNet = state.handicapMode !== "gross";
+    const fs = computeFieldSkins(state, useNet);
+    const rows = state.players.map((p) => ({ id: p.id, name: p.name, group: p.group, skins: fs.skins[p.id] || 0 })).sort((a, b) => b.skins - a.skins);
+    return (
+      <>
+        <div className="board">
+          {rows.map((r, i) => (
+            <div key={r.id} className={`row ${r.skins > 0 && i === 0 ? "lead" : ""} ${r.id === me ? "self" : ""}`} style={{ animationDelay: `${i * 50}ms` }}>
+              <div className="pos">{r.skins > 0 && i === 0 ? <Crown size={16} strokeWidth={2.2} /> : i + 1}</div>
+              <div className="who"><div className="nm">{r.name}{r.id === me && <em>You</em>}</div><div className="mt">{r.group ? `Group ${r.group}` : "—"}</div></div>
+              <div className="val">{r.skins}<span className="unit">skin{r.skins === 1 ? "" : "s"}</span></div>
+            </div>
+          ))}
+        </div>
+        <p className="foot">{fs.settled === 0 ? "Skins settle as the whole field finishes each hole." : `${fs.settled} hole${fs.settled === 1 ? "" : "s"} settled${fs.carry > 0 ? ` · ${fs.carry} carrying` : ""} · ${useNet ? "net" : "gross"}`}</p>
+      </>
+    );
+  };
 
   const TeamsPanel = () => {
     const rows = computeTeams(state);
@@ -787,9 +807,10 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
                 <button key={f} className={`seg-btn ${view === f ? "on" : ""}`} onClick={() => setView(f)}>{FORMAT_LABELS[f]}</button>
               ))}
               {state.outing && <button className={`seg-btn ${view === "teams" ? "on" : ""}`} onClick={() => setView("teams")}>Teams</button>}
+              {state.outing && <button className={`seg-btn ${view === "fieldskins" ? "on" : ""}`} onClick={() => setView("fieldskins")}>Skins</button>}
             </div>
 
-            {view === "teams" ? <TeamsPanel /> : (
+            {view === "teams" ? <TeamsPanel /> : view === "fieldskins" ? <FieldSkinsPanel /> : (
               <>
                 <div className="board">
                   {standings.map((r, i) => {
