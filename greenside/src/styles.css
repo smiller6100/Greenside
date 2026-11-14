@@ -867,3 +867,21 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .st-spark-line { fill: none; stroke: var(--brass); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .st-spark-dot { stroke: var(--card); stroke-width: 1.5; }
 .st-spark-dot.over { fill: #b3372a; } .st-spark-dot.under { fill: var(--pine); }
+
+/* ---- Hamburger menu + slide-in drawer ---- */
+.menubtn { position: absolute; top: 14px; left: 12px; z-index: 5; width: 42px; height: 42px; border-radius: 12px; border: none; background: transparent; color: var(--pine); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: .15s; }
+.menubtn:active { transform: scale(.92); background: rgba(21,57,42,.07); }
+.drawer-wrap { position: fixed; inset: 0; z-index: 60; background: rgba(8,24,16,.42); display: flex; animation: fade .18s ease; }
+.drawer { width: 82%; max-width: 300px; height: 100%; background: var(--cream); box-shadow: 8px 0 40px rgba(0,0,0,.3); display: flex; flex-direction: column; padding: 14px 14px 18px; animation: slidein .2s cubic-bezier(.2,.7,.3,1); }
+@keyframes slidein { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+.drawer-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 4px 14px; border-bottom: 1px solid var(--line); margin-bottom: 10px; }
+.drawer-title { font-family: 'Fraunces', serif; font-weight: 600; font-size: 19px; color: var(--pine); }
+.drawer-head .xbtn { border: none; background: none; color: var(--ink); opacity: .5; cursor: pointer; display: flex; }
+.drawer-nav { display: flex; flex-direction: column; gap: 3px; }
+.drawer-nav button { display: flex; align-items: center; gap: 12px; width: 100%; border: none; background: transparent; color: var(--ink); font: inherit; font-size: 15.5px; font-weight: 600; text-align: left; padding: 13px 10px; border-radius: 11px; cursor: pointer; transition: .14s; }
+.drawer-nav button:active { background: rgba(21,57,42,.07); }
+.drawer-nav button svg { color: var(--pine); flex: none; }
+.dn-n { margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--pine); color: #f4f6f5; font-size: 11px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; }
+.drawer-sep { font-size: 10.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--mut); padding: 16px 10px 6px; }
+.drawer-ver { margin-top: auto; padding: 12px 10px 0; font-size: 12px; color: var(--mut); font-weight: 600; }

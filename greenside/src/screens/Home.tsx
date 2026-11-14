@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from "react";
-import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw, Trash2, ChevronLeft, ChevronRight, Menu, BarChart3, Flag, Building2, Settings, ListChecks } from "lucide-react";
 import { computeStandings, fmtToPar } from "../lib/golf";
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, GAME_HELP, composeNines, ninesFromHoles } from "../lib/golf";
 
-const VERSION = "v92";
+const VERSION = "v93";
 
 
 
@@ -22,6 +22,7 @@ async function fileToJpeg(file: File, max = 1800, q = 0.85): Promise<Blob> {
 
 export default function Home() {
   const [mode, setMode] = useState<"create" | "quick" | "join">("create");
+  const [menuOpen, setMenuOpen] = useState(false);
   const [roundName, setRoundName] = useState("Saturday Round");
   const [nameTouched, setNameTouched] = useState(false);
   const [players, setPlayers] = useState<{ name: string; hcp: string; group: string }[]>([{ name: "", hcp: "12", group: "A" }]);
@@ -513,9 +514,27 @@ export default function Home() {
   return (
     <div className="gs">
       <div className="frame home">
+        <button className="menubtn" onClick={() => setMenuOpen(true)} aria-label="Menu"><Menu size={22} /></button>
         <header className="hero logo-hero">
           <FullLogo />
         </header>
+
+        {menuOpen && (
+          <div className="drawer-wrap" onClick={() => setMenuOpen(false)}>
+            <div className="drawer" onClick={(e) => e.stopPropagation()}>
+              <div className="drawer-head"><span className="drawer-title">Menu</span><button className="xbtn" onClick={() => setMenuOpen(false)}><X size={18} /></button></div>
+              <nav className="drawer-nav">
+                <button onClick={() => { setMenuOpen(false); location.hash = "#/stats"; }}><BarChart3 size={18} /> My stats</button>
+                <button onClick={() => { setMenuOpen(false); loadMyRounds(); setRoundsOpen(true); }}><ListChecks size={18} /> My rounds{myRounds.length ? <span className="dn-n">{myRounds.length}</span> : null}</button>
+                <div className="drawer-sep">Organizers &amp; courses</div>
+                <button onClick={() => { setMenuOpen(false); location.hash = "#/outing"; }}><Flag size={18} /> Outing dashboard</button>
+                <button onClick={() => { setMenuOpen(false); location.hash = "#/clubhouse"; }}><Building2 size={18} /> Clubhouse board</button>
+                <button onClick={() => { setMenuOpen(false); setAdminOpen(true); }}><Settings size={18} /> Admin</button>
+              </nav>
+              <div className="drawer-ver">Greenside {VERSION}</div>
+            </div>
+          </div>
+        )}
 
         {last.code && (
           <div className="resume-wrap">
@@ -866,14 +885,6 @@ export default function Home() {
           </div></div>
         )}
 
-        <div className="footlinks">
-          <button className="adminlink" onClick={() => { location.hash = "#/stats"; }}>My stats</button>
-          <button className="adminlink" onClick={() => { location.hash = "#/outing"; }}>Outing dashboard</button>
-          <button className="adminlink" onClick={() => { location.hash = "#/clubhouse"; }}>Clubhouse board</button>
-          <button className="adminlink" onClick={() => setAdminOpen(true)}>Admin</button>
-        </div>
-
-        <div className="ver">Greenside {VERSION}</div>
 
         {roundsOpen && (
           <div className="roundswrap" onClick={() => { setRoundsOpen(false); setViewRound(null); setDelCode(""); }}>
