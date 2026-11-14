@@ -1166,7 +1166,12 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
                 <div className="holemap-wrap">
                   <button className="hm-toggle-float" onClick={() => setSatView((v) => !v)}>{satView ? "Diagram" : "Satellite"}</button>
                   {satView
-                    ? <Suspense fallback={<div className="holemap-empty"><span className="spin sm" /> Loading satellite…</div>}><HoleMapGL key={hole.num} hole={hm} me={gps} /></Suspense>
+                    ? <Suspense fallback={<div className="holemap-empty"><span className="spin sm" /> Loading satellite…</div>}><HoleMapGL key={hole.num} hole={hm} me={gps}
+                        par={hole.par}
+                        score={me ? ((state.scores[me] || {})[hole.num] ?? null) : null}
+                        onDec={me ? () => adjust(me, -1) : undefined}
+                        onInc={me ? () => adjust(me, 1) : undefined}
+                        onSetPar={me ? () => setPar(me) : undefined} /></Suspense>
                     : <HoleMap hole={hm} me={gps} others={groupOthers} weather={weather} shots={shots[hole.num] || []} />}
                   <div className="holemap-legend">
                     <span className="lg lg-t">Tee</span><span className="lg lg-f">Fairway</span>

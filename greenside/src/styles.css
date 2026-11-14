@@ -1059,12 +1059,28 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .gd-fcb { display: flex; gap: 12px; align-items: baseline; font-weight: 700; font-size: 18px; line-height: 1; }
 .gd-fcb .gd-c { font-size: 27px; color: #ffd60a; }
 .gd-lbl { font-size: 11px; opacity: 0.85; margin-top: 4px; letter-spacing: 0.02em; }
-.glmap-target {
-  position: absolute; bottom: 10px; left: 10px; right: 10px; z-index: 2;
-  background: rgba(20,30,22,0.72); color: #fff; backdrop-filter: blur(4px);
-  border-radius: 10px; padding: 8px 12px; font-size: 15px; text-align: center; pointer-events: none;
+.glmap-bottom {
+  position: absolute; left: 10px; bottom: 10px; z-index: 3;
+  display: flex; gap: 8px; align-items: stretch; pointer-events: none;
 }
-.glmap-target b { color: #ffd60a; }
+.glmap-score {
+  display: flex; align-items: center; gap: 2px; pointer-events: auto;
+  background: rgba(20,30,22,0.80); backdrop-filter: blur(4px); border-radius: 12px; padding: 4px;
+}
+.glmap-score button {
+  width: 40px; height: 40px; border: none; background: transparent; color: #fff;
+  display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 9px;
+}
+.glmap-score button:active { background: rgba(255,255,255,0.16); }
+.glmap-score .gs-num { min-width: 42px; font-size: 21px; font-weight: 800; }
+.glmap-score .gs-num .ghost { opacity: 0.5; }
+.glmap-tgt {
+  display: flex; flex-direction: column; justify-content: center; pointer-events: none;
+  background: rgba(20,30,22,0.72); backdrop-filter: blur(4px); color: #fff;
+  border-radius: 10px; padding: 6px 11px; line-height: 1.15;
+}
+.glmap-tgt b { color: #ffd60a; font-size: 16px; font-weight: 700; }
+.glmap-tgt small { opacity: 0.8; font-size: 10px; }
 .gl-me { width: 16px; height: 16px; border-radius: 50%; background: #2d9cff; border: 2.5px solid #fff; box-shadow: 0 0 0 4px rgba(45,156,255,0.3); }
 .hm-toggle-float {
   position: absolute; top: 10px; right: 10px; z-index: 3;

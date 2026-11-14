@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Minus, Plus } from "lucide-react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import distance from "@turf/distance";
@@ -32,7 +33,11 @@ function initialBearing(a: LL, b: LL): number {
   return (Math.atan2(y, x) * toD + 360) % 360;
 }
 
-export default function HoleMapGL({ hole, me }: { hole: Hole; me?: { lat: number; lng: number; acc?: number } | null }) {
+export default function HoleMapGL({ hole, me, par, score, onDec, onInc, onSetPar }: {
+  hole: Hole; me?: { lat: number; lng: number; acc?: number } | null;
+  par?: number | null; score?: number | null;
+  onDec?: () => void; onInc?: () => void; onSetPar?: () => void;
+}) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const targetMk = useRef<maplibregl.Marker | null>(null);
@@ -157,9 +162,16 @@ export default function HoleMapGL({ hole, me }: { hole: Hole; me?: { lat: number
         <div className="gd-fcb"><span>{gd.front}</span><span className="gd-c">{gd.center}</span><span>{gd.back}</span></div>
         <div className="gd-lbl">front · center · back · yds {me ? "from you" : "from tee"}</div>
       </div>
-      {target && (
-        <div className="glmap-target"><b>{toTarget}</b> yds to target · <b>{targetToGreen}</b> yds target→green</div>
-      )}
+      <div className="glmap-bottom">
+        {onInc && onDec && (
+          <div className="glmap-score">
+            <button onClick={onDec} aria-label="score down"><Minus size={18} strokeWidth={2.6} /></button>
+            <button className="gs-num" onClick={onSetPar}><span className={score == null ? "ghost" : ""}>{score ?? par ?? "–"}</span></button>
+            <button onClick={onInc} aria-label="score up"><Plus size={18} strokeWidth={2.6} /></button>
+          </div>
+        )}
+        {target && <div className="glmap-tgt"><b>{toTarget}</b> yds<small>{targetToGreen} to green</small></div>}
+      </div>
     </div>
   );
 }
