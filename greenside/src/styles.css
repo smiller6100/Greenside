@@ -58,7 +58,7 @@ body { font-family: 'Libre Franklin', sans-serif; }
 .row.lead .pos svg { color: var(--brass); }
 .who { flex: 1; min-width: 0; }
 .nm { font-size: 17px; font-weight: 600; color: var(--ink); display: flex; align-items: center; gap: 8px; }
-.nm em, .pn em { font-style: normal; font-size: 9.5px; font-weight: 700; letter-spacing: .1em; background: var(--brass); color: #fff; padding: 2px 6px; border-radius: 5px; }
+.nm em, .pn em, .hs-nm em { font-style: normal; font-size: 9.5px; font-weight: 700; letter-spacing: .1em; background: var(--brass); color: #fff; padding: 2px 6px; border-radius: 5px; }
 .mt { font-size: 12.5px; color: var(--mut); margin-top: 2px; font-weight: 500; }
 .val { font-size: 28px; font-weight: 700; letter-spacing: -.02em; display: flex; align-items: baseline; gap: 4px; }
 .val .unit { font-size: 11px; font-weight: 600; color: var(--mut); letter-spacing: .02em; }
@@ -1115,3 +1115,28 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
   box-shadow: 0 2px 6px rgba(0,0,0,0.55);
 }
 .cm-gl-dot.est { border-style: dashed; }
+
+/* Hole tab scoring: tracking on one side, scores (you + group) on the other. */
+.holescore { display: flex; gap: 10px; align-items: stretch; }
+.hs-track {
+  flex: 0 0 43%; max-width: 188px; box-sizing: border-box;
+  background: var(--card); border: 1px solid var(--line); border-radius: 15px;
+  padding: 11px 13px; display: flex; flex-direction: column; gap: 11px; align-items: flex-start;
+}
+.hs-hdr { font-size: 10.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--mut); }
+.hs-stat { display: flex; flex-direction: column; gap: 6px; }
+.hs-stat .stat-lbl { color: var(--mut); }
+.hs-btns { display: flex; align-items: center; gap: 7px; }
+.hs-track .girb { margin-left: 0; }
+.hs-scores { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.hs-prow {
+  background: var(--card); border: 1px solid var(--line); border-radius: 15px;
+  padding: 8px 10px 8px 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.hs-prow.self { box-shadow: inset 0 0 0 1.5px var(--brass); }
+.hs-pn { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.hs-nm { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hs-strokes { font-size: 11px; color: var(--mut); font-weight: 500; }
+.stepper.sm > button:not(.num) { width: 38px; height: 38px; border-radius: 11px; }
+.stepper.sm .num { width: 50px; height: 44px; }
+.stepper.sm .num span { font-size: 22px; }

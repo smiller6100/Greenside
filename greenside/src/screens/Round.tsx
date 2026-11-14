@@ -1072,56 +1072,61 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
             <div className="statline">
               <button className={`statstoggle ${trackStats ? "on" : ""}`} onClick={toggleStats}>{trackStats ? "Tracking fairways & putts" : "Track fairways & putts"}</button>
             </div>
-            <div className="cards">
-              {state.players.filter((p) => !state.outing || (p.group || "1") === effGrp).map((p) => {
-                const rec = useHcp ? strokesOn(p.hcp, hole.si) : 0;
-                const val = (state.scores[p.id] || {})[hole.num];
-                const rel = val != null ? val - hole.par : null;
-                const sc = state.scores[p.id] || {};
-                const ppPlayed = course.filter((h) => sc[h.num] != null);
-                const toPar = ppPlayed.reduce((s, h) => s + (sc[h.num] - h.par), 0);
+            <div className={`holescore ${trackStats && me ? "withtrack" : ""}`}>
+              {trackStats && me && (() => {
+                const stc = (state.stats?.[me] || {})[hole.num] || {};
+                const firV = stc.fir as boolean | undefined;
+                const puttsV = stc.putts as number | undefined;
+                const myVal = (state.scores[me] || {})[hole.num];
+                const gir = myVal != null && puttsV != null ? myVal - puttsV <= hole.par - 2 : null;
                 return (
-                  <div key={p.id} className={`pcard ${p.id === me ? "self" : ""}`}>
-                    <div className="pinfo"><div className="pn">{p.name}{p.id === me && <em>You</em>}
-                      {ppPlayed.length > 0 && (
-                        <span className={`tpar ${toParClass(toPar)}`}>
-                          {toPar > 0 ? <ChevronUp size={13} strokeWidth={2.8} /> : toPar < 0 ? <ChevronDown size={13} strokeWidth={2.8} /> : null}
-                          {fmtToPar(toPar)}
-                        </span>
-                      )}</div>
-                      <div className="dots">{Array.from({ length: rec }).map((_, k) => <i key={k} />)}<span className="ph">{rec ? `${rec} stroke${rec > 1 ? "s" : ""}` : (useHcp ? "scratch here" : "gross")}</span></div></div>
-                    <div className="stepper">
-                      <button onClick={() => adjust(p.id, -1)} aria-label="minus"><Minus size={18} strokeWidth={2.4} /></button>
-                      <button className={`num ${val != null ? scoreTone(rel as number) : ""}`} onClick={() => setPar(p.id)}><span className={val == null ? "ghost" : ""}>{val ?? hole.par}</span>{rel != null && <small className={toParClass(rel)}>{fmtToPar(rel)}</small>}</button>
-                      <button onClick={() => adjust(p.id, 1)} aria-label="plus"><Plus size={18} strokeWidth={2.4} /></button>
-                    </div>
-                    {trackStats && (() => {
-                      const stc = (state.stats?.[p.id] || {})[hole.num] || {};
-                      const firV = stc.fir as boolean | undefined;
-                      const puttsV = stc.putts as number | undefined;
-                      const gir = val != null && puttsV != null ? val - puttsV <= hole.par - 2 : null;
-                      return (
-                        <div className="statstrip">
-                          {hole.par >= 4 && (
-                            <div className="statgrp">
-                              <span className="stat-lbl">FW</span>
-                              <button className={`fwb ${firV === true ? "hit" : ""}`} onClick={() => sendStat(p.id, hole.num, "fir", firV === true ? null : true)} aria-label="fairway hit"><Check size={13} strokeWidth={3} /></button>
-                              <button className={`fwb ${firV === false ? "miss" : ""}`} onClick={() => sendStat(p.id, hole.num, "fir", firV === false ? null : false)} aria-label="fairway miss"><X size={13} strokeWidth={3} /></button>
-                            </div>
-                          )}
-                          <div className="statgrp">
-                            <span className="stat-lbl">Putts</span>
-                            <button className="pbtn" onClick={() => { if (puttsV == null) return; const n = puttsV - 1; sendStat(p.id, hole.num, "putts", n < 0 ? null : n); }} aria-label="putts minus"><Minus size={13} strokeWidth={2.6} /></button>
-                            <span className="pnum">{puttsV ?? "–"}</span>
-                            <button className="pbtn" onClick={() => sendStat(p.id, hole.num, "putts", Math.min(10, (puttsV ?? 0) + 1))} aria-label="putts plus"><Plus size={13} strokeWidth={2.6} /></button>
-                          </div>
-                          {gir != null && <span className={`girb ${gir ? "on" : ""}`}>GIR</span>}
+                  <div className="hs-track">
+                    <div className="hs-hdr">This hole</div>
+                    {hole.par >= 4 && (
+                      <div className="hs-stat">
+                        <span className="stat-lbl">Fairway</span>
+                        <div className="hs-btns">
+                          <button className={`fwb ${firV === true ? "hit" : ""}`} onClick={() => sendStat(me, hole.num, "fir", firV === true ? null : true)} aria-label="fairway hit"><Check size={15} strokeWidth={3} /></button>
+                          <button className={`fwb ${firV === false ? "miss" : ""}`} onClick={() => sendStat(me, hole.num, "fir", firV === false ? null : false)} aria-label="fairway miss"><X size={15} strokeWidth={3} /></button>
                         </div>
-                      );
-                    })()}
+                      </div>
+                    )}
+                    <div className="hs-stat">
+                      <span className="stat-lbl">Putts</span>
+                      <div className="hs-btns">
+                        <button className="pbtn" onClick={() => { if (puttsV == null) return; const n = puttsV - 1; sendStat(me, hole.num, "putts", n < 0 ? null : n); }} aria-label="putts minus"><Minus size={15} strokeWidth={2.6} /></button>
+                        <span className="pnum">{puttsV ?? "–"}</span>
+                        <button className="pbtn" onClick={() => sendStat(me, hole.num, "putts", Math.min(10, (puttsV ?? 0) + 1))} aria-label="putts plus"><Plus size={15} strokeWidth={2.6} /></button>
+                      </div>
+                    </div>
+                    {gir != null && <span className={`girb ${gir ? "on" : ""}`}>GIR</span>}
                   </div>
                 );
-              })}
+              })()}
+              <div className="hs-scores">
+                {state.players.filter((p) => !state.outing || (p.group || "1") === effGrp).map((p) => {
+                  const rec = useHcp ? strokesOn(p.hcp, hole.si) : 0;
+                  const val = (state.scores[p.id] || {})[hole.num];
+                  const rel = val != null ? val - hole.par : null;
+                  const sc = state.scores[p.id] || {};
+                  const ppPlayed = course.filter((h) => sc[h.num] != null);
+                  const toPar = ppPlayed.reduce((s, h) => s + (sc[h.num] - h.par), 0);
+                  return (
+                    <div key={p.id} className={`hs-prow ${p.id === me ? "self" : ""}`}>
+                      <div className="hs-pn"><span className="hs-nm">{p.name}{p.id === me && <em>You</em>}</span>
+                        {ppPlayed.length > 0
+                          ? <span className={`tpar ${toParClass(toPar)}`}>{fmtToPar(toPar)}</span>
+                          : rec ? <span className="hs-strokes">{rec} stroke{rec > 1 ? "s" : ""}</span> : null}
+                      </div>
+                      <div className="stepper sm">
+                        <button onClick={() => adjust(p.id, -1)} aria-label="minus"><Minus size={17} strokeWidth={2.4} /></button>
+                        <button className={`num ${val != null ? scoreTone(rel as number) : ""}`} onClick={() => setPar(p.id)}><span className={val == null ? "ghost" : ""}>{val ?? hole.par}</span>{rel != null && <small className={toParClass(rel)}>{fmtToPar(rel)}</small>}</button>
+                        <button onClick={() => adjust(p.id, 1)} aria-label="plus"><Plus size={17} strokeWidth={2.4} /></button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
             </>
             )}
