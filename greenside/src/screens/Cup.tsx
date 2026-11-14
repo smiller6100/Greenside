@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { ChevronLeft, ChevronRight, Plus, Minus, Trophy, Users, Flag, Settings, X, Share2, Check } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Minus, Trophy, Users, Flag, Settings, X, Share2, Check, MessageCircle, Send } from "lucide-react";
 import { computeMatch, cupTotals, clinch, type Format, type HcpMethod, type MatchResult } from "../lib/cup";
 
 const FORMATS: { id: Format; label: string; sub: string; team: boolean }[] = [
@@ -128,6 +128,36 @@ function CupBoard({ code }: { code: string }) {
 
   const send = (obj: any) => { try { wsRef.current?.send(JSON.stringify({ ...obj, token: token.current || undefined })); } catch { /* */ } };
 
+  // Who am I in this Cup — a roster entry I registered by joining with the code.
+  const meId = useRef<string>("");
+  try { meId.current = localStorage.getItem("gs:cup:" + code + ":me") || ""; } catch { /* */ }
+  const mePlayer = state?.roster?.find((p: any) => p.id === meId.current) || null;
+  const [joinName, setJoinName] = useState(""); const [joinHcp, setJoinHcp] = useState("");
+  const doJoin = () => {
+    const n = joinName.trim(); if (!n) return;
+    let id = meId.current;
+    if (!id) { id = Math.random().toString(36).slice(2, 10); try { localStorage.setItem("gs:cup:" + code + ":me", id); } catch { /* */ } meId.current = id; }
+    send({ type: "join", id, name: n, hcp: parseInt(joinHcp) || 0 });
+    setJoinName(""); setJoinHcp("");
+  };
+
+  // Group chat (same as a round).
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatText, setChatText] = useState("");
+  const [chatUnread, setChatUnread] = useState(0);
+  const chatLen = useRef<number | null>(null);
+  const chatEnd = useRef<HTMLDivElement | null>(null);
+  const chatMsgs = (state?.chat as any[]) || [];
+  useEffect(() => {
+    const nn = chatMsgs.length;
+    if (chatLen.current === null) { chatLen.current = nn; return; }
+    if (nn > chatLen.current && !chatOpen) setChatUnread((u) => u + (nn - chatLen.current!));
+    chatLen.current = nn;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatMsgs.length]);
+  useEffect(() => { if (chatOpen) chatEnd.current?.scrollIntoView({ block: "end" }); }, [chatOpen, chatMsgs.length]);
+  const sendChatMsg = () => { const t = chatText.trim(); if (!t || !mePlayer) return; send({ type: "chat", name: mePlayer.name, text: t }); setChatText(""); };
+
   const course = state?.course || DEMO_COURSE;
   const pars: number[] = course.holes.map((h: any) => h.par);
   const sis: number[] = course.holes.map((h: any) => h.si);
@@ -159,8 +189,24 @@ function CupBoard({ code }: { code: string }) {
       <header className="dash-head">
         <button className="backbtn" onClick={() => { location.hash = ""; }}><ChevronLeft size={20} /></button>
         <h2>{state.name}</h2>
-        <button className="backbtn" onClick={() => { navigator.clipboard?.writeText(code).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1400); }).catch(() => {}); }} aria-label="share">{copied ? <Check size={18} /> : <Share2 size={18} />}</button>
+        <div className="cup-head-btns">
+          <button className="backbtn chatbtn" onClick={() => { setChatOpen(true); setChatUnread(0); }} aria-label="Group chat"><MessageCircle size={18} />{chatUnread > 0 && <span className="chatbadge">{chatUnread > 9 ? "9+" : chatUnread}</span>}</button>
+          <button className="backbtn" onClick={() => { navigator.clipboard?.writeText(code).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1400); }).catch(() => {}); }} aria-label="share">{copied ? <Check size={18} /> : <Share2 size={18} />}</button>
+        </div>
       </header>
+
+      {!mePlayer && (
+        <div className="cup-join">
+          <div className="cj-h"><Users size={15} /> Join this Cup</div>
+          <p>Add yourself so a captain can put you on a team.</p>
+          <div className="pf-coderow">
+            <input className="dash-pw" style={{ margin: 0, flex: 2 }} value={joinName} onChange={(e) => setJoinName(e.target.value)} placeholder="Your name" />
+            <input className="dash-pw" style={{ margin: 0, width: 56, flex: "none", textAlign: "center" }} value={joinHcp} onChange={(e) => setJoinHcp(e.target.value.replace(/[^0-9]/g, ""))} placeholder="hcp" />
+            <button className="primary pf-codebtn" disabled={!joinName.trim()} onClick={doJoin}><Check size={16} /></button>
+          </div>
+        </div>
+      )}
+      {mePlayer && !mePlayer.team && <div className="cup-waiting">You're in as <b>{mePlayer.name}</b> — waiting for a captain to assign your team.</div>}
 
       {/* Headline scoreboard */}
       <div className="cup-score">
@@ -200,6 +246,34 @@ function CupBoard({ code }: { code: string }) {
         <CupSetup state={state} send={send} />
       )}
       <div className="cup-code-foot">Cup code <b>{code}</b> · share it so everyone sees the same board</div>
+
+      {chatOpen && (
+        <div className="chatwrap" onClick={() => setChatOpen(false)}>
+          <div className="chatcard" onClick={(e) => e.stopPropagation()}>
+            <div className="chathead"><div><h3>Cup chat</h3><span className="chatsub">Everyone in {code}</span></div><button className="xbtn" onClick={() => setChatOpen(false)}>✕</button></div>
+            <div className="chatlog">
+              {chatMsgs.length === 0 && <div className="chatempty">No messages yet. Trash talk, pairings, tee times — go.</div>}
+              {chatMsgs.map((m: any) => {
+                const mine = !!mePlayer && m.name === mePlayer.name;
+                return (
+                  <div key={m.id} className={`chatmsg ${mine ? "mine" : ""}`}>
+                    {!mine && <span className="chatname">{m.name}</span>}
+                    <span className="chatbubble">{m.text}</span>
+                    <span className="chatts">{new Date(m.ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>
+                  </div>
+                );
+              })}
+              <div ref={chatEnd} />
+            </div>
+            <div className="chatinput">
+              <input value={chatText} maxLength={280} placeholder={mePlayer ? "Message the group…" : "Join the Cup to chat"} disabled={!mePlayer}
+                onChange={(e) => setChatText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") sendChatMsg(); }} />
+              <button onClick={sendChatMsg} disabled={!mePlayer || !chatText.trim()} aria-label="Send"><Send size={18} /></button>
+            </div>
+            {!mePlayer && <div className="chatclaim">Join the Cup above to chat.</div>}
+          </div>
+        </div>
+      )}
     </div></div>
   );
 }

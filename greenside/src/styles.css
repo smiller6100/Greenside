@@ -1261,3 +1261,9 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .mv-step button { width: 44px; height: 42px; border: none; background: var(--card); border: 1px solid var(--line); border-radius: 11px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--ink); }
 .mv-step .mv-num { width: 56px; font-size: 22px; font-weight: 800; position: relative; background: var(--cream); }
 .mv-step .mv-num em { position: absolute; bottom: 2px; left: 0; right: 0; font-style: normal; font-size: 8px; font-weight: 600; color: var(--mut); }
+.cup-head-btns { display: flex; align-items: center; gap: 2px; }
+.cup-join { background: rgba(21,57,42,.05); border: 1px solid rgba(21,57,42,.12); border-radius: 14px; padding: 12px 14px; margin: 2px 0 12px; }
+.cup-join .cj-h { display: flex; align-items: center; gap: 7px; font-weight: 800; color: var(--pine); font-size: 14px; }
+.cup-join p { font-size: 12px; color: var(--mut); margin: 4px 0 9px; }
+.cup-waiting { text-align: center; font-size: 12px; color: var(--mut); background: rgba(184,134,11,.08); border-radius: 10px; padding: 8px; margin: 0 0 10px; }
+.cup-waiting b { color: var(--ink); }

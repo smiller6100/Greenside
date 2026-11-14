@@ -13,6 +13,7 @@ type CupState = {
   roster: { id: string; name: string; hcp: number; team: "A" | "B" | null }[];
   sessions: { id: string; name: string; format: string; order: number }[];
   matches: { id: string; sessionId: string; format: string; sideA: string[]; sideB: string[]; scores: Record<string, (number | null)[]> }[];
+  chat?: { id: string; name: string; text: string; ts: number }[];
 };
 
 const rid = () => Math.random().toString(36).slice(2, 9);
@@ -125,6 +126,24 @@ export class CupEvent implements DurableObject {
         return this.save(state);
       }
       case "matchRemove": { if (!isAdmin) return; state.matches = state.matches.filter((mt) => mt.id !== data.id); return this.save(state); }
+      case "join": {
+        // Open: a player joining with the code registers themselves (team unset) so the captain
+        // can assign them. Idempotent on the client-supplied id, and lets them fix their own hcp/name.
+        const id = String(data.id || "").slice(0, 24);
+        const name = String(data.name || "").trim().slice(0, 40);
+        if (!id || !name) return;
+        const existing = state.roster.find((r) => r.id === id);
+        if (existing) { existing.name = name; if (Number.isFinite(data.hcp)) existing.hcp = Math.round(data.hcp); }
+        else state.roster.push({ id, name, hcp: Number.isFinite(data.hcp) ? Math.round(data.hcp) : 0, team: null });
+        return this.save(state);
+      }
+      case "chat": {
+        const text = String(data.text || "").trim().slice(0, 280);
+        const name = String(data.name || "").trim().slice(0, 24) || "Guest";
+        if (!text) return;
+        state.chat = [...(state.chat || []), { id: rid(), name, text, ts: Date.now() }].slice(-100);
+        return this.save(state);
+      }
       case "score": {
         // Open to all — players enter their own scores and keep each other honest.
         const mt = state.matches.find((x) => x.id === data.matchId); if (!mt) return;
