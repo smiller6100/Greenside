@@ -1023,3 +1023,21 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .lg-nm { font-weight: 700; color: var(--ink); }
 .lg-pts { text-align: right; font-weight: 800; color: var(--pine); font-variant-numeric: tabular-nums; }
 .lg-rd, .lg-avg { text-align: right; font-weight: 600; color: var(--mut); font-variant-numeric: tabular-nums; font-size: 13px; }
+
+/* Sponsor cards */
+.sponsor-hole { display: flex; align-items: center; gap: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 9px 13px; margin: 12px 0 0; font-size: 13px; color: var(--mut); }
+.sponsor-hole img { height: 30px; max-width: 80px; object-fit: contain; }
+.sponsor-hole b { color: var(--ink); }
+.sponsor-banner { display: flex; align-items: center; justify-content: center; gap: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; margin-bottom: 12px; font-weight: 700; color: var(--ink); }
+.sponsor-banner img { height: 34px; max-width: 120px; object-fit: contain; }
+.sponsor-sheet { text-align: left; }
+.spm-sec { margin-bottom: 16px; }
+.spm-lbl { display: block; font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--mut); margin-bottom: 8px; }
+.spm-row { display: flex; align-items: center; gap: 8px; }
+.spm-prev { height: 30px; max-width: 70px; object-fit: contain; }
+.spm-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.spm-item { display: flex; align-items: center; gap: 9px; background: var(--cream); border: 1px solid var(--line); border-radius: 10px; padding: 8px 11px; font-size: 13px; }
+.spm-item img { height: 22px; max-width: 40px; object-fit: contain; }
+.spm-item b { color: var(--ink); }
+.spm-item span { color: var(--mut); flex: 1; }
+.spm-item button { border: none; background: none; color: var(--mut); cursor: pointer; padding: 2px; }

@@ -7,7 +7,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog, UserProfile, League };
 
-const BUILD = "v90";
+const BUILD = "v91";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -1042,6 +1042,14 @@ export default {
       const ck = `${lat.toFixed(4)},${lng.toFixed(4)}`;
       await catalog(env).fetch("https://do/savemap", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ coordkey: ck, name: exp.course || "", map }) });
       return Response.json({ ok: true, holes: map.holes.length });
+    }
+
+    // ---- Sponsor logos for a round (read public, set by admin token) ----
+    const spm = path.match(/^\/api\/round\/([A-Za-z0-9]+)\/sponsors$/);
+    if (spm) {
+      const stub = env.GOLF_ROUND.get(env.GOLF_ROUND.idFromName(spm[1].toUpperCase()));
+      if (request.method === "GET") { const r = await stub.fetch("https://do/getsponsors"); return new Response(r.body, { status: r.status, headers: { "content-type": "application/json" } }); }
+      if (request.method === "POST") { const r = await stub.fetch("https://do/setsponsors", { method: "POST", headers: { "content-type": "application/json" }, body: await request.text() }); return new Response(r.body, { status: r.status, headers: { "content-type": "application/json" } }); }
     }
 
     // ---- A round's live object ----

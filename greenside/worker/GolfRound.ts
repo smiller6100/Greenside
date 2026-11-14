@@ -66,6 +66,21 @@ export class GolfRound implements DurableObject {
       return Response.json({ positions: out });
     }
 
+    // Sponsor logos — kept out of the broadcast state (they'd bloat every sync). Read publicly,
+    // set by the outing admin with the round's admin token.
+    if (url.pathname.endsWith("/getsponsors")) {
+      const s = await this.ctx.storage.get("sponsors");
+      return Response.json(s || { banner: null, holes: {} });
+    }
+    if (url.pathname.endsWith("/setsponsors") && request.method === "POST") {
+      const b = await request.json<any>().catch(() => null);
+      if (!b) return Response.json({ ok: false });
+      const stored = await this.ctx.storage.get("adminToken");
+      if (stored && b.token !== stored) return new Response("Unauthorized", { status: 401 });
+      await this.ctx.storage.put("sponsors", b.sponsors || { banner: null, holes: {} });
+      return Response.json({ ok: true });
+    }
+
     // Plain state fetch (used to check a round exists before connecting).
     if (request.method === "GET") {
       const state = await this.ctx.storage.get("state");

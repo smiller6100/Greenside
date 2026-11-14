@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Minus, Plus, Crown, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Trophy, ClipboardList, Copy, Check, X, Home, Settings, MapPin, Users, Share2, MessageCircle, Send, Wallet, Target } from "lucide-react";
+import { Minus, Plus, Crown, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Trophy, ClipboardList, Copy, Check, X, Home, Settings, MapPin, Users, Share2, MessageCircle, Send, Wallet, Target, Camera } from "lucide-react";
 import { LogoMark } from "../components/Logo";
 import HoleMap from "../components/HoleMap";
 import { useRound } from "../lib/useRound";
@@ -15,6 +15,16 @@ const GROUP_COLORS = ["#e8833a", "#1f9d6b", "#d24b6a", "#8b5cf6", "#0ea5a4", "#d
 const havM = (a: number[], b: number[]) => { const R = 6371000, d = Math.PI / 180; const dLa = (b[0] - a[0]) * d, dLn = (b[1] - a[1]) * d; const x = Math.sin(dLa / 2) ** 2 + Math.cos(a[0] * d) * Math.cos(b[0] * d) * Math.sin(dLn / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(x)); };
 const toYds = (m: number) => Math.round(m * 1.09361);
 const CLUBS = ["Dr", "3w", "5w", "Hyb", "3i", "4i", "5i", "6i", "7i", "8i", "9i", "PW", "GW", "SW", "LW"];
+
+// Resize an uploaded logo to a small PNG data URL (keeps transparency, stays out of the live state).
+async function fileToPngDataUrl(file: File, max = 240): Promise<string> {
+  const img = await createImageBitmap(file);
+  const scale = Math.min(1, max / Math.max(img.width, img.height));
+  const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+  const canvas = document.createElement("canvas"); canvas.width = w; canvas.height = h;
+  canvas.getContext("2d")!.drawImage(img, 0, 0, w, h);
+  return canvas.toDataURL("image/png");
+}
 
 export default function Round({ code, joinGroup }: { code: string; joinGroup?: string | null }) {
   // Identity is read first so it can be handed to the live hook for server-side scoping.
@@ -38,6 +48,27 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
   const lastCloudPush = useRef(0);
   const [leagueSheet, setLeagueSheet] = useState(false);
   const [leagueMsg, setLeagueMsg] = useState("");
+  // Sponsor logos (outing, admin-managed). Kept in a separate store, not the live round state.
+  const [sponsors, setSponsors] = useState<any>({ banner: null, holes: {} });
+  const [sponsorsOpen, setSponsorsOpen] = useState(false);
+  const [spHole, setSpHole] = useState(1);
+  const [spName, setSpName] = useState("");
+  const [spImg, setSpImg] = useState("");
+  const spFileIn = useRef<HTMLInputElement>(null);
+  const spTarget = useRef<"banner" | "hole">("hole");
+  useEffect(() => { fetch(`/api/round/${code}/sponsors`).then((r) => r.json()).then((d) => { if (d && (d.holes || d.banner !== undefined)) setSponsors({ banner: d.banner || null, holes: d.holes || {} }); }).catch(() => {}); }, [code]);
+  const saveSponsors = async (next: any) => {
+    setSponsors(next);
+    try { await fetch(`/api/round/${code}/sponsors`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: adminToken, sponsors: next }) }); } catch { /* */ }
+  };
+  const pickSpImg = (target: "banner" | "hole") => { spTarget.current = target; spFileIn.current?.click(); };
+  const onSpFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]; if (!f) return;
+    try { const url = await fileToPngDataUrl(f); if (spTarget.current === "banner") saveSponsors({ ...sponsors, banner: { name: sponsors.banner?.name || "", img: url } }); else setSpImg(url); } catch { /* */ }
+    if (spFileIn.current) spFileIn.current.value = "";
+  };
+  const addHoleSponsor = () => { if (!spName && !spImg) return; saveSponsors({ ...sponsors, holes: { ...sponsors.holes, [spHole]: { name: spName, img: spImg } } }); setSpName(""); setSpImg(""); };
+  const removeHoleSponsor = (h: number) => { const holes = { ...sponsors.holes }; delete holes[h]; saveSponsors({ ...sponsors, holes }); };
   const submitLeague = async (code: string) => {
     const net = computeStandings(state, "net").filter((s: any) => s.thru > 0);
     const entries = net.map((s: any) => ({ name: s.name, netToPar: s.toParNet, gross: s.gross }));
@@ -930,6 +961,9 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
 
         {tab === "board" ? (
           <main className="body">
+            {sponsors.banner && (sponsors.banner.img || sponsors.banner.name) && (
+              <div className="sponsor-banner">{sponsors.banner.img && <img src={sponsors.banner.img} alt="" />}{sponsors.banner.name && <span>{sponsors.banner.name}</span>}</div>
+            )}
             {settle && (
               <button className="settlebtn" onClick={() => setSettleOpen(true)}>
                 <Wallet size={16} /> Settle up<span className="settlebtn-sub">{settle.tx.length} payment{settle.tx.length === 1 ? "" : "s"}</span>
@@ -1077,6 +1111,12 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
               })}
             </div>
             </>
+            )}
+            {sponsors.holes?.[hole.num] && (
+              <div className="sponsor-hole">
+                {sponsors.holes[hole.num].img && <img src={sponsors.holes[hole.num].img} alt="" />}
+                <span>Hole {hole.num} sponsored by <b>{sponsors.holes[hole.num].name || "our partner"}</b></span>
+              </div>
             )}
             <ContestCard />
             {(() => {
@@ -1273,6 +1313,39 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
           </div></div>
         )}
 
+        <input ref={spFileIn} type="file" accept="image/*" onChange={onSpFile} style={{ display: "none" }} />
+        {sponsorsOpen && (
+          <div className="modal" onClick={() => setSponsorsOpen(false)}><div className="sheet sponsor-sheet" onClick={(e) => e.stopPropagation()}>
+            <h3>Sponsors</h3>
+            <div className="spm-sec">
+              <label className="spm-lbl">Leaderboard banner</label>
+              <input className="admin-pw" style={{ margin: "0 0 8px" }} placeholder="Sponsor name" value={sponsors.banner?.name || ""} onChange={(e) => saveSponsors({ ...sponsors, banner: { ...(sponsors.banner || {}), name: e.target.value } })} />
+              <div className="spm-row">
+                <button className="addp" onClick={() => pickSpImg("banner")}><Camera size={14} /> {sponsors.banner?.img ? "Change logo" : "Add logo"}</button>
+                {sponsors.banner?.img && <img className="spm-prev" src={sponsors.banner.img} alt="" />}
+                {sponsors.banner && <button className="linkbtn" onClick={() => saveSponsors({ ...sponsors, banner: null })}>Remove</button>}
+              </div>
+            </div>
+            <div className="spm-sec">
+              <label className="spm-lbl">Hole sponsors</label>
+              <div className="spm-row">
+                <select className="admin-pw" style={{ margin: 0, flex: 1 }} value={spHole} onChange={(e) => setSpHole(Number(e.target.value))}>{course.map((h) => <option key={h.num} value={h.num}>Hole {h.num}</option>)}</select>
+                <button className="addp" onClick={() => pickSpImg("hole")}><Camera size={14} /> {spImg ? "Logo ✓" : "Logo"}</button>
+              </div>
+              <input className="admin-pw" style={{ margin: "8px 0" }} placeholder={`Sponsor name for hole ${spHole}`} value={spName} onChange={(e) => setSpName(e.target.value)} />
+              <button className="primary" disabled={!spName && !spImg} onClick={addHoleSponsor}>Add to hole {spHole}</button>
+              {Object.keys(sponsors.holes || {}).length > 0 && (
+                <div className="spm-list">
+                  {Object.keys(sponsors.holes).map(Number).sort((a, b) => a - b).map((h) => (
+                    <div className="spm-item" key={h}>{sponsors.holes[h].img && <img src={sponsors.holes[h].img} alt="" />}<b>Hole {h}</b><span>{sponsors.holes[h].name}</span><button onClick={() => removeHoleSponsor(h)} aria-label="remove"><X size={14} /></button></div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button className="ghostbtn" onClick={() => setSponsorsOpen(false)}>Done</button>
+          </div></div>
+        )}
+
         {leagueSheet && (
           <div className="modal" onClick={() => { setLeagueSheet(false); setLeagueMsg(""); }}><div className="sheet" onClick={(e) => e.stopPropagation()}>
             <h3>Submit to a league</h3>
@@ -1290,6 +1363,9 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
             <h3>{roundTitle}</h3>
             <button className="codepill sheetcode" onClick={copyCode}>{copied ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Code {code}</>}</button>
             <button className="sharebig" onClick={shareRound}><Share2 size={16} /> Share live scorecard</button>
+            {state.outing && isAdmin && (
+              <button className="sharebig" onClick={() => { setLeaving(false); setSponsorsOpen(true); }} style={{ marginTop: 8 }}><Camera size={16} /> Manage sponsors</button>
+            )}
             {state.outing && (
               <div className="grouplink">
                 <span className="gl-label">Send a foursome their join link</span>
