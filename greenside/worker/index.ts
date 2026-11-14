@@ -7,7 +7,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog, UserProfile, League };
 
-const BUILD = "v96";
+const BUILD = "v97";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -32,60 +32,91 @@ async function accountAuth(env: Env, request: Request): Promise<{ id: string; se
 // Produce (and cache) a hole map for a coordinate. Shared by the public route and the admin probe.
 async function holeMapFor(lat: number, lng: number, wantHoles: number): Promise<Response> {
   return cachedJson(`https://cache/holemap/v16/${lat.toFixed(4)},${lng.toFixed(4)},${wantHoles}`, 7 * 86400, async () => {
-    // Full query: a course fits well inside 2.5km of its center, so we ask only for that plus
-    // nearby water — ~1/4 the data of the old 5km query, light enough that a busy mirror can
-    // still answer it in a second or two instead of timing out.
-    const qFull = `[out:json][timeout:25];(way["golf"](around:2500,${lat},${lng});relation["golf"](around:2500,${lat},${lng});way["leisure"="golf_course"](around:2500,${lat},${lng});relation["leisure"="golf_course"](around:2500,${lat},${lng});way["natural"="water"](around:2000,${lat},${lng});relation["natural"="water"](around:2000,${lat},${lng}););out geom;`;
-    // Lite query: tighter still, golf features only, no water — the lightest possible ask, used
-    // when the full query is slow or a mirror is loaded.
-    const qLite = `[out:json][timeout:25];(way["golf"](around:1600,${lat},${lng});relation["golf"](around:1600,${lat},${lng});way["leisure"="golf_course"](around:1600,${lat},${lng}););out geom;`;
-    // Community mirrors first (fast, lightly loaded); the busy main de server is the last resort.
+    // A course fits inside ~2.5km of its center, so we ask only for that plus nearby water.
+    const qFull = `[out:json][timeout:20];(way["golf"](around:2500,${lat},${lng});relation["golf"](around:2500,${lat},${lng});way["leisure"="golf_course"](around:2500,${lat},${lng});relation["leisure"="golf_course"](around:2500,${lat},${lng});way["natural"="water"](around:2000,${lat},${lng});relation["natural"="water"](around:2000,${lat},${lng}););out geom;`;
     const servers = [
       "https://overpass.private.coffee/api/interpreter",
       "https://overpass.kumi.systems/api/interpreter",
-      "https://overpass.osm.ch/api/interpreter",
       "https://overpass-api.de/api/interpreter",
     ];
-    // Hit every mirror at once and take whichever answers first, with a generous 28s cutoff so a
-    // busy-but-working server isn't killed before it can reply (the old 10s window was the bug).
     const fetchOne = (ep: string, q: string) => {
       const host = ep.split("/")[2];
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 28000);
+      const timer = setTimeout(() => ctrl.abort(), 18000);
       return fetch(ep, {
         method: "POST", signal: ctrl.signal,
-        headers: { "content-type": "application/x-www-form-urlencoded", "accept": "application/json", "user-agent": "GreenSideStrokes/1.0 (+https://greensidestrokes.com; golf hole maps)" },
+        headers: { "content-type": "application/x-www-form-urlencoded", "accept": "application/json", "user-agent": GS_UA },
         body: "data=" + encodeURIComponent(q),
       }).then(async (r) => {
         if (!r.ok) throw new Error("overpass-" + r.status + "@" + host);
-        return { data: await r.json(), host };
+        return await r.json();
       }).finally(() => clearTimeout(timer));
     };
-    const race = (q: string) => Promise.any(servers.map((ep) => fetchOne(ep, q))) as Promise<{ data: any; host: string }>;
-    let won: { data: any; host: string };
+    const errs: string[] = [];
+
+    // 1) Overpass (fast when the volunteer mirrors are healthy).
     try {
-      won = await race(qFull);
-    } catch {
-      // Every mirror failed or timed out on the full query — retry once with the lighter query.
-      try {
-        won = await race(qLite);
-      } catch (agg: any) {
-        const errs = ((agg && agg.errors) || []).map((e: any) => String((e && e.message) || e)).join("; ") || "all-mirrors-failed";
-        return new Response(JSON.stringify({ available: false, error: errs }), { status: 503, headers: { "content-type": "application/json" } });
+      const data: any = await Promise.any(servers.map((ep) => fetchOne(ep, qFull)));
+      const result: any = parseHoleMap(data, lat, lng, wantHoles);
+      if (result && result.available) return Response.json(result);
+      errs.push("overpass-empty");
+    } catch { errs.push("overpass-failed"); }
+
+    // 2) Fallback: OpenStreetMap's own canonical API. The volunteer Overpass mirrors go up and
+    // down, but api.openstreetmap.org is the authoritative server behind the editable map and is
+    // far more reliable. It returns raw nodes/ways, which osmMapElements stitches back into the
+    // same shape the parser expects. We try a generous box, then a tighter one if that's rejected.
+    for (const half of [1700, 1100]) {
+      const els = await osmMapElements(lat, lng, half).catch(() => null);
+      if (els && els.length) {
+        const result: any = parseHoleMap({ elements: els }, lat, lng, wantHoles);
+        if (result && result.available) return Response.json(result);
       }
     }
-    // Parse only the winner (all mirrors return the same OSM data, so one parse is enough).
-    const result: any = parseHoleMap(won.data, lat, lng, wantHoles);
-    // Only cache a map that actually came back with holes. An empty/failed parse returns a
-    // non-200 so it is NOT cached — a later retry re-fetches instead of sticking for a week.
-    if (result && result.available) return Response.json(result);
-    const err = "parsed-empty(found " + ((result && result.counts && result.counts.found) || 0) + ")@" + won.host;
-    return new Response(JSON.stringify({ available: false, error: err, counts: result && result.counts }), { status: 503, headers: { "content-type": "application/json" } });
+    errs.push("osm-api-empty");
+    return new Response(JSON.stringify({ available: false, error: errs.join("; ") }), { status: 503, headers: { "content-type": "application/json" } });
   });
 }
 
 const GS_UA = "GreenSideStrokes/1.0 (+https://greensidestrokes.com; golf hole maps)";
 const OVERPASS_EPS = ["https://overpass.private.coffee/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass-api.de/api/interpreter"];
+
+// Fetch raw OSM data for a box around (lat,lng) from the canonical OSM API and reshape it into the
+// element form parseHoleMap expects (ways/relations with inline {lat,lon} geometry). This is the
+// reliable fallback when the volunteer Overpass mirrors are down. `half` is the half-box in meters.
+async function osmMapElements(lat: number, lng: number, half: number): Promise<any[] | null> {
+  const dLat = half / 111320;
+  const dLng = half / (111320 * Math.cos((lat * Math.PI) / 180));
+  const bbox = `${(lng - dLng).toFixed(5)},${(lat - dLat).toFixed(5)},${(lng + dLng).toFixed(5)},${(lat + dLat).toFixed(5)}`;
+  const url = `https://api.openstreetmap.org/api/0.6/map.json?bbox=${bbox}`;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 20000);
+  let data: any;
+  try {
+    const r = await fetch(url, { signal: ctrl.signal, headers: { accept: "application/json", "user-agent": GS_UA } });
+    if (!r.ok) return null; // 400 = box too dense/large; caller retries smaller
+    data = await r.json();
+  } catch { return null; } finally { clearTimeout(timer); }
+  const els = (data && data.elements) || [];
+  const nodes = new Map<number, { lat: number; lon: number }>();
+  for (const e of els) if (e.type === "node") nodes.set(e.id, { lat: e.lat, lon: e.lon });
+  const wayGeom = new Map<number, { lat: number; lon: number }[]>();
+  const out: any[] = [];
+  for (const e of els) {
+    if (e.type === "way" && Array.isArray(e.nodes)) {
+      const geometry = e.nodes.map((id: number) => nodes.get(id)).filter(Boolean) as { lat: number; lon: number }[];
+      wayGeom.set(e.id, geometry);
+      out.push({ type: "way", id: e.id, geometry, tags: e.tags || {} });
+    }
+  }
+  for (const e of els) {
+    if (e.type === "relation" && Array.isArray(e.members)) {
+      const members = e.members.map((m: any) => ({ role: m.role, type: m.type, geometry: m.type === "way" ? wayGeom.get(m.ref) || [] : [] }));
+      out.push({ type: "relation", id: e.id, members, tags: e.tags || {} });
+    }
+  }
+  return out;
+}
 async function overpassJson(q: string): Promise<any | null> {
   for (const ep of OVERPASS_EPS) {
     try {
@@ -94,6 +125,27 @@ async function overpassJson(q: string): Promise<any | null> {
     } catch { /* next mirror */ }
   }
   return null;
+}
+
+// Fetch a hole map and, on a fresh success, bank it permanently in the global catalog so the
+// course is instant and reliable from then on and never re-fetched. Never overwrites a hand-drawn
+// map (those are saved under the course name; auto-built maps are saved under "osm").
+async function holeMapPersist(env: any, lat: number, lng: number, wantHoles: number): Promise<Response> {
+  const ck = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+  const resp = await holeMapFor(lat, lng, wantHoles);
+  try {
+    if (resp.ok) {
+      const map: any = await resp.clone().json();
+      if (map && map.available) {
+        const existing: any = await catalog(env).fetch(`https://do/getmap?key=${encodeURIComponent(ck)}`).then((r) => r.json()).catch(() => null);
+        const handMapped = existing && existing.found && existing.name && existing.name !== "osm";
+        if (!handMapped) {
+          await catalog(env).fetch(`https://do/savemap`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ coordkey: ck, name: "osm", map }) }).catch(() => {});
+        }
+      }
+    }
+  } catch { /* serve what we have */ }
+  return resp;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -903,7 +955,7 @@ export default {
       // Pre-warm the hole map so it's cached before the group reaches the first tee. Fire-and-forget
       // with the same coords/hole-count the round screen will request, so it lands on the same cache key.
       if (lat != null && lng != null && Array.isArray(cfg.course) && cfg.course.length) {
-        ctx.waitUntil(holeMapFor(lat, lng, cfg.course.length).catch(() => {}));
+        ctx.waitUntil(holeMapPersist(env, lat, lng, cfg.course.length).catch(() => {}));
       }
       return Response.json({ code, adminToken });
     }
@@ -1035,7 +1087,8 @@ export default {
         const sm: any = await withTimeout(catalog(env).fetch(`https://do/getmap?key=${encodeURIComponent(ck)}`).then((r) => r.json()), 3000);
         if (sm && sm.found && sm.map && sm.map.available) return Response.json(sm.map);
       } catch { /* fall through to OSM */ }
-      return holeMapFor(lat, lng, wantHoles);
+      // Live fetch, banked permanently on success so the next visit is instant and offline-proof.
+      return holeMapPersist(env, lat, lng, wantHoles);
     }
 
     // Save a Course Mapper export as a course's permanent hole map (admin only).
