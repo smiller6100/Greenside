@@ -47,6 +47,8 @@ export default function HoleMapGL({ hole, me, nav, track, players, onAdjust, onS
   const mapRef = useRef<maplibregl.Map | null>(null);
   const targetMk = useRef<maplibregl.Marker | null>(null);
   const meMk = useRef<maplibregl.Marker | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const rightRef = useRef<HTMLDivElement>(null);
   const [ready, setReady] = useState(false);
   const [target, setTarget] = useState<LL | null>(null);
 
@@ -123,7 +125,10 @@ export default function HoleMapGL({ hole, me, nav, track, players, onAdjust, onS
       if (hole.green) hole.green.forEach((v) => pts.push(toLL(v)));
       (hole.fairways || []).forEach((poly) => poly.forEach((v) => pts.push(toLL(v))));
       const bounds = pts.reduce((b, p) => b.extend(p), new maplibregl.LngLatBounds(pts[0], pts[0]));
-      map.fitBounds(bounds, { bearing: initialBearing(teeLL, greenCLL), padding: 48, maxZoom: 18, animate: false });
+      // Pad by the actual panel widths so the hole always centers in the clear gap between them.
+      const lw = panelRef.current?.offsetWidth ?? 150;
+      const rw = rightRef.current?.offsetWidth ?? 110;
+      map.fitBounds(bounds, { bearing: initialBearing(teeLL, greenCLL), padding: { top: 92, bottom: 44, left: lw + 20, right: rw + 20 }, maxZoom: 18, animate: false });
 
       // Draggable target, starting at the green center. Tap anywhere to move it too.
       const t = new maplibregl.Marker({ draggable: true, color: "#ffd60a" }).setLngLat(greenCLL).addTo(map);
@@ -183,7 +188,7 @@ export default function HoleMapGL({ hole, me, nav, track, players, onAdjust, onS
       )}
 
       {/* LEFT: one caddie panel — distances, tracking, score, cleanly sectioned. */}
-      <div className="glmap-panel">
+      <div className="glmap-panel" ref={panelRef}>
         <div className="gp-dist">
           <div className="dist-row"><span>Back</span><b>{gd.back}</b></div>
           <div className="dist-row hi"><span>Center</span><b>{gd.center}</b></div>
@@ -223,7 +228,7 @@ export default function HoleMapGL({ hole, me, nav, track, players, onAdjust, onS
 
       {/* RIGHT: running totals (to par), you first. */}
       {players && players.length > 0 && (
-        <div className="glmap-right">
+        <div className="glmap-right" ref={rightRef}>
           <div className="gm-ttl-hdr">Total</div>
           {players.map((p) => (
             <div key={p.id} className={`gm-total ${p.isMe ? "self" : ""}`}>
