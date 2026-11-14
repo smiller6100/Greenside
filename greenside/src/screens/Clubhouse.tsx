@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { ChevronLeft, RotateCcw, Lock, Search } from "lucide-react";
 import { computeStandings, fmtToPar } from "../lib/golf";
-import CourseMap, { Green, GroupDot } from "../components/CourseMap";
+import type { Green, GroupDot } from "../components/CourseMap";
+const CourseMapGL = lazy(() => import("../components/CourseMapGL"));
 
 // Stable palette for group dots on the map (cycled). Chosen to read against the fairway-green board.
 const DOT_COLORS = ["#2563eb", "#dc2626", "#d97706", "#7c3aed", "#0891b2", "#db2777", "#4d7c0f", "#b45309"];
@@ -193,12 +194,12 @@ export default function Clubhouse() {
               <div className="ch-tile"><b>{liveCount}</b><span>live on GPS</span></div>
             </div>
 
-            {dots.length > 0 && (
-              <div className="ch-map">
-                <CourseMap greens={greens} groups={dots} />
-                {greens.length === 0 && <p className="hint" style={{ textAlign: "center", marginTop: 6 }}>Map this course in the Mapper to show holes behind the dots.</p>}
-              </div>
-            )}
+            <div className="ch-map">
+              <Suspense fallback={<div className="cm-gl-load"><span className="spin sm" /> Loading course map…</div>}>
+                <CourseMapGL center={{ lat: course.lat, lng: course.lng }} greens={greens} groups={dots} />
+              </Suspense>
+              {dots.length === 0 && <p className="hint" style={{ textAlign: "center", marginTop: 6 }}>No groups sharing location right now — dots appear as phones share their spot.</p>}
+            </div>
 
             {views.length === 0 ? (
               <p className="hint" style={{ textAlign: "center", marginTop: 20 }}>No groups are out on this course right now. Rounds show up here the moment someone starts one.</p>

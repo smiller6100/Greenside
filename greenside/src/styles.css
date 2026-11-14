@@ -1096,3 +1096,22 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 /* Hole tab: map sits directly under the header; scoring/tracking drops below it. */
 .hole-body { display: flex; flex-direction: column; }
 .hole-body > .holemap-wrap, .hole-body > .holemap-empty { order: -1; margin-top: 4px; }
+
+/* ---- Clubhouse satellite command-center map ---- */
+.cm-gl { width: 100%; height: 48vh; min-height: 320px; max-height: 580px; border-radius: 14px; overflow: hidden; background: #2a3a2c; }
+.cm-gl-load { height: 48vh; min-height: 320px; display: flex; align-items: center; justify-content: center; gap: 8px; color: #6a7c6d; background: #eef2ee; border-radius: 14px; }
+.cm-gl-green {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: rgba(46,204,113,0.6); border: 1.5px solid rgba(255,255,255,0.85);
+  color: #fff; font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.45);
+}
+.cm-gl-dot {
+  min-width: 30px; height: 30px; border-radius: 15px; padding: 0 7px;
+  border: 2px solid #fff; color: #fff; cursor: default;
+  display: flex; align-items: center; justify-content: center; gap: 4px;
+  font-weight: 800; box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+}
+.cm-gl-dot span { font-size: 13px; line-height: 1; }
+.cm-gl-dot em { font-style: normal; font-size: 10px; opacity: 0.95; background: rgba(0,0,0,0.28); border-radius: 6px; padding: 1px 4px; }
