@@ -38,7 +38,7 @@ type Hole = {
 
 const BOXW = 300, BOXH = 380, PAD = 8;
 
-export default function HoleMap({ hole, me, others, weather }: { hole: Hole; me?: { lat: number; lng: number; acc?: number } | null; others?: { lat: number; lng: number; name: string; color: string }[]; weather?: { tempF: number; windMph: number; windDir: number; gustMph?: number } | null }) {
+export default function HoleMap({ hole, me, others, weather, shots }: { hole: Hole; me?: { lat: number; lng: number; acc?: number } | null; others?: { lat: number; lng: number; name: string; color: string }[]; weather?: { tempF: number; windMph: number; windDir: number; gustMph?: number } | null; shots?: { club: string; lat: number; lng: number }[] }) {
   const fairways = hole.fairways || [];
   const rough = hole.rough || [];
   const tees = hole.tees || [];
@@ -205,6 +205,19 @@ export default function HoleMap({ hole, me, others, weather }: { hole: Hole; me?
         <text key={"hl" + i} className={"hm-hlabel " + (L.kind === "water" ? "hm-hlabel-w" : "hm-hlabel-b")}
           x={L.x} y={L.y} textAnchor="middle">{L.text}</text>
       ))}
+
+      {/* tracked shot path: tee → each marked ball, with the club at each stop */}
+      {shots && shots.length > 0 && (
+        <g className="hm-shots">
+          <polyline className="hm-shotpath" points={[hole.tee, ...shots.map((s) => [s.lat, s.lng])].map(pt).join(" ")} />
+          {shots.map((s, i) => (
+            <g key={"sh" + i}>
+              <circle className="hm-shotdot" cx={X(s.lng)} cy={Y(s.lat)} r={4} />
+              <text className="hm-shotlab" x={X(s.lng)} y={Y(s.lat) - 8} textAnchor="middle">{s.club}</text>
+            </g>
+          ))}
+        </g>
+      )}
 
       {/* tap-to-measure: line from your spot (or the tee) to the tapped point */}
       {measure && (

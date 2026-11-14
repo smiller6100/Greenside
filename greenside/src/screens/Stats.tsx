@@ -57,6 +57,21 @@ export default function Stats() {
     return estimateHandicap(roundDiffs(raw));
   }, []);
 
+  // Per-club average distance from every tracked shot across all rounds on this device.
+  const clubs = useMemo(() => {
+    const acc: Record<string, { sum: number; n: number }> = {};
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i); if (!k || !k.startsWith("gs:shots:")) continue;
+        const data = JSON.parse(localStorage.getItem(k) || "{}");
+        for (const hn in data) for (const s of data[hn] || []) {
+          if (s && s.dist != null && s.club) { (acc[s.club] ||= { sum: 0, n: 0 }); acc[s.club].sum += s.dist; acc[s.club].n++; }
+        }
+      }
+    } catch { /* */ }
+    return Object.entries(acc).map(([club, v]) => ({ club, avg: Math.round(v.sum / v.n), n: v.n })).sort((a, b) => b.avg - a.avg);
+  }, []);
+
   const goHome = () => { location.hash = ""; };
 
   const N = rms.length;
@@ -161,6 +176,21 @@ export default function Stats() {
                       <div className="st-bar-sub">par saved on {agg.scrMade} of {agg.scrTries} greens missed</div>
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {clubs.length > 0 && (
+              <div className="st-section">
+                <div className="st-h">Club distances <span className="st-h-sub">avg · your tracked shots</span></div>
+                <div className="st-clubs">
+                  {clubs.map((c) => (
+                    <div className="st-club" key={c.club}>
+                      <span className="st-club-n">{c.club}</span>
+                      <div className="st-club-track"><span style={{ width: `${(c.avg / clubs[0].avg) * 100}%` }} /></div>
+                      <span className="st-club-v">{c.avg}<em>{c.n} shot{c.n === 1 ? "" : "s"}</em></span>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

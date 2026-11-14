@@ -914,3 +914,33 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .st-dtrack span.sd-dbl { background: #b3372a; }
 .st-dval { flex: 0 0 auto; min-width: 54px; text-align: right; font-size: 14px; font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; }
 .st-dval em { display: block; font-style: normal; font-size: 10.5px; font-weight: 600; color: var(--mut); }
+
+/* Shot tracking panel on the hole */
+.hm-shotpath { fill: none; stroke: #7c3aed; stroke-width: 2; stroke-dasharray: 2 4; stroke-linecap: round; opacity: .85; }
+.hm-shotdot { fill: #7c3aed; stroke: #fff; stroke-width: 1.5; }
+.hm-shotlab { fill: #7c3aed; font-size: 10px; font-weight: 800; paint-order: stroke; stroke: #fff; stroke-width: 3px; }
+.shots { margin-top: 8px; }
+.shots-toggle { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line); background: var(--card); color: var(--pine); font: inherit; font-size: 13px; font-weight: 700; padding: 8px 14px; border-radius: 999px; cursor: pointer; }
+.shots-toggle svg { color: #7c3aed; }
+.shots-body { margin-top: 10px; display: flex; flex-direction: column; gap: 10px; }
+.clubrow { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 3px; scrollbar-width: none; }
+.clubrow::-webkit-scrollbar { display: none; }
+.clubchip { flex: 0 0 auto; border: 1.5px solid var(--line); background: var(--card); color: var(--mut); font: inherit; font-size: 13px; font-weight: 700; padding: 7px 12px; border-radius: 10px; cursor: pointer; }
+.clubchip.on { background: #7c3aed; border-color: #7c3aed; color: #fff; }
+.markbtn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; width: 100%; border: none; background: var(--pine); color: #f4f6f5; font: inherit; font-size: 15px; font-weight: 700; padding: 13px; border-radius: 13px; cursor: pointer; box-shadow: 0 4px 12px rgba(14,42,31,.2); }
+.markbtn:active { transform: translateY(1px); }
+.shotlist { display: flex; flex-direction: column; gap: 5px; }
+.shotrow { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+.sr-n { width: 20px; height: 20px; border-radius: 50%; background: rgba(124,58,237,.12); color: #7c3aed; font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; flex: none; }
+.sr-club { font-weight: 700; color: var(--ink); }
+.sr-dist { margin-left: auto; font-weight: 700; color: var(--mut); font-variant-numeric: tabular-nums; }
+.shotundo { align-self: flex-start; border: none; background: none; color: #b3372a; font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; padding: 4px 2px; }
+
+/* Club distances on stats */
+.st-clubs { display: flex; flex-direction: column; gap: 8px; }
+.st-club { display: flex; align-items: center; gap: 11px; }
+.st-club-n { flex: 0 0 42px; font-size: 13.5px; font-weight: 800; color: var(--ink); }
+.st-club-track { flex: 1; height: 14px; border-radius: 6px; background: rgba(124,58,237,.1); overflow: hidden; }
+.st-club-track span { display: block; height: 100%; border-radius: 6px; background: #7c3aed; min-width: 2px; }
+.st-club-v { flex: 0 0 auto; min-width: 62px; text-align: right; font-size: 14px; font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; }
+.st-club-v em { display: block; font-style: normal; font-size: 10px; font-weight: 600; color: var(--mut); }

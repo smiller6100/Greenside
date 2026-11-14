@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Minus, Plus, Crown, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Trophy, ClipboardList, Copy, Check, X, Home, Settings, MapPin, Users, Share2, MessageCircle, Send, Wallet } from "lucide-react";
+import { Minus, Plus, Crown, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Trophy, ClipboardList, Copy, Check, X, Home, Settings, MapPin, Users, Share2, MessageCircle, Send, Wallet, Target } from "lucide-react";
 import { LogoMark } from "../components/Logo";
 import HoleMap from "../components/HoleMap";
 import { useRound } from "../lib/useRound";
@@ -8,6 +8,11 @@ import { computeStandings, computeGames, computeTeams, strokesOn, toParClass, fm
 const FORMAT_LABELS: Record<string, string> = { net: "Net", gross: "Gross", stableford: "Stableford", chicago: "Chicago", skins: "Skins", card: "Full card", games: "Games", teams: "Teams" };
 
 const GROUP_COLORS = ["#e8833a", "#1f9d6b", "#d24b6a", "#8b5cf6", "#0ea5a4", "#d4a017", "#2563eb", "#db2777", "#65a30d", "#c2410c"];
+
+// Shot tracking: distance between two lat/lng points in yards, and the club list.
+const havM = (a: number[], b: number[]) => { const R = 6371000, d = Math.PI / 180; const dLa = (b[0] - a[0]) * d, dLn = (b[1] - a[1]) * d; const x = Math.sin(dLa / 2) ** 2 + Math.cos(a[0] * d) * Math.cos(b[0] * d) * Math.sin(dLn / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(x)); };
+const toYds = (m: number) => Math.round(m * 1.09361);
+const CLUBS = ["Dr", "3w", "5w", "Hyb", "3i", "4i", "5i", "6i", "7i", "8i", "9i", "PW", "GW", "SW", "LW"];
 
 export default function Round({ code, joinGroup }: { code: string; joinGroup?: string | null }) {
   // Identity is read first so it can be handed to the live hook for server-side scoping.
@@ -23,6 +28,24 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
   const [holeIdx, setHoleIdx] = useState(0);
   const [trackStats, setTrackStats] = useState(() => { try { return localStorage.getItem("gs:trackStats") !== "0"; } catch { return true; } });
   const toggleStats = () => setTrackStats((v) => { const n = !v; try { localStorage.setItem("gs:trackStats", n ? "1" : "0"); } catch { /* */ } return n; });
+  // Shot tracking (device-local, personal): { holeNum: [{club, lat, lng, ts, dist}] }
+  const [shots, setShots] = useState<Record<number, any[]>>(() => { try { return JSON.parse(localStorage.getItem(`gs:shots:${code}`) || "{}"); } catch { return {}; } });
+  const [club, setClub] = useState("Dr");
+  const [shotsOpen, setShotsOpen] = useState(false);
+  const saveShots = (s: Record<number, any[]>) => { try { localStorage.setItem(`gs:shots:${code}`, JSON.stringify(s)); } catch { /* */ } };
+  const markShot = (teePos: number[] | null) => {
+    if (!gps) return;
+    const list = shots[holeNumRef.current] || [];
+    const prev = list.length ? [list[list.length - 1].lat, list[list.length - 1].lng] : teePos;
+    const dist = prev ? toYds(havM(prev, [gps.lat, gps.lng])) : null;
+    const next = { ...shots, [holeNumRef.current]: [...list, { club, lat: gps.lat, lng: gps.lng, ts: Date.now(), dist }] };
+    setShots(next); saveShots(next);
+  };
+  const undoShot = (h: number) => {
+    const list = shots[h] || []; if (!list.length) return;
+    const next = { ...shots, [h]: list.slice(0, -1) };
+    setShots(next); saveShots(next);
+  };
   const [grp, setGrp] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [edFormats, setEdFormats] = useState<Record<string, boolean>>({});
@@ -919,7 +942,7 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
               return (
                 <div className="holemap-wrap">
                   <div className="holemap-head">Hole {hole.num}{hm.par ? ` · Par ${hm.par}` : ""} · {hm.teeToGreenYds} yds tee→green</div>
-                  <HoleMap hole={hm} me={gps} others={groupOthers} weather={weather} />
+                  <HoleMap hole={hm} me={gps} others={groupOthers} weather={weather} shots={shots[hole.num] || []} />
                   <div className="holemap-legend">
                     <span className="lg lg-t">Tee</span><span className="lg lg-f">Fairway</span>
                     <span className="lg lg-r">Rough</span><span className="lg lg-g">Green</span>
@@ -936,6 +959,30 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
                   {gps && !me && <div className="loc-err" style={{ color: "#6a7c6d" }}>Claim your name on the scorecard to share your spot with the group.</div>}
                   {gpsErr && gpsErr !== "locating" && <div className="loc-err">{gpsErr}</div>}
                   {groupOthers.length > 0 && <div className="hm-note">{groupOthers.length} other{groupOthers.length > 1 ? "s" : ""} sharing position live</div>}
+                  {gps && (
+                    <div className="shots">
+                      <button className="shots-toggle" onClick={() => setShotsOpen((o) => !o)}>
+                        <Target size={15} /> {shotsOpen ? "Hide shot tracking" : "Track my shots"}{(shots[hole.num]?.length || 0) > 0 ? ` · ${shots[hole.num].length}` : ""}
+                      </button>
+                      {shotsOpen && (
+                        <div className="shots-body">
+                          <div className="clubrow">
+                            {CLUBS.map((c) => <button key={c} className={`clubchip ${club === c ? "on" : ""}`} onClick={() => setClub(c)}>{c}</button>)}
+                          </div>
+                          <button className="markbtn" onClick={() => markShot(hm.tee)}><MapPin size={15} /> Mark {club} at my spot</button>
+                          {(shots[hole.num]?.length || 0) > 0 && (
+                            <div className="shotlist">
+                              {shots[hole.num].map((s: any, i: number) => (
+                                <div className="shotrow" key={i}><span className="sr-n">{i + 1}</span><span className="sr-club">{s.club}</span><span className="sr-dist">{s.dist != null ? `${s.dist} yds` : "–"}</span></div>
+                              ))}
+                              <button className="shotundo" onClick={() => undoShot(hole.num)}>Undo last shot</button>
+                            </div>
+                          )}
+                          <div className="hm-note">Mark your ball after each shot, picking the club you hit — it builds your club distances over time.</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div className="hm-note">Diagram from OpenStreetMap · straight-line yards{gps ? " · live GPS, ±accuracy varies" : ""}</div>
                 </div>
               );
