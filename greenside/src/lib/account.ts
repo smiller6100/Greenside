@@ -16,6 +16,14 @@ export function authHeaders(): Record<string, string> {
 function loadLocalRounds(): any[] { try { return JSON.parse(localStorage.getItem("gs:rounds") || "[]"); } catch { return []; } }
 function saveLocalRounds(rs: any[]) { try { localStorage.setItem("gs:rounds", JSON.stringify(rs)); } catch { /* */ } }
 
+// Deleted-round tombstones: codes the user removed, so a cloud sync can't resurrect them.
+function loadTombstones(): string[] { try { return JSON.parse(localStorage.getItem("gs:deleted") || "[]"); } catch { return []; } }
+export function deleteRound(code: string) {
+  try { const t = loadTombstones(); if (!t.includes(code)) { t.push(code); localStorage.setItem("gs:deleted", JSON.stringify(t.slice(-300))); } } catch { /* */ }
+  saveLocalRounds(loadLocalRounds().filter((r) => r && r.code !== code));
+  if (getAccount()) fetch("/api/account/round", { method: "DELETE", headers: { ...authHeaders(), "content-type": "application/json" }, body: JSON.stringify({ code }) }).catch(() => {});
+}
+
 // Merge two round lists by code — the newer savedAt (then endedAt) wins. Cap to 60, newest first.
 export function mergeRounds(local: any[], cloud: any[]): any[] {
   const map: Record<string, any> = {};
@@ -41,10 +49,13 @@ export async function syncDown(): Promise<{ name: string; friends: any[] } | nul
     if (!r.ok) return null;
     const d = await r.json();
     const local = loadLocalRounds();
-    const merged = mergeRounds(local, d.rounds || []);
+    const tomb = loadTombstones();
+    const merged = mergeRounds(local, d.rounds || []).filter((r) => !tomb.includes(r.code));
     saveLocalRounds(merged);
     const cloudByCode: Record<string, any> = Object.fromEntries((d.rounds || []).map((x: any) => [x.code, x]));
     for (const rr of merged) { const c = cloudByCode[rr.code]; if (!c || (rr.savedAt || 0) > (c.savedAt || 0)) pushRound(rr); }
+    // Re-send deletes for any tombstoned round the cloud still has (e.g. a delete that didn't land).
+    for (const code of tomb) { if (cloudByCode[code]) fetch("/api/account/round", { method: "DELETE", headers: { ...authHeaders(), "content-type": "application/json" }, body: JSON.stringify({ code }) }).catch(() => {}); }
     if (d.name && d.name !== a.name) setAccount({ ...a, name: d.name });
     return { name: d.name || a.name, friends: d.friends || [] };
   } catch { return null; }

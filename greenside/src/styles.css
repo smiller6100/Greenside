@@ -869,8 +869,8 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .st-spark-dot.over { fill: #b3372a; } .st-spark-dot.under { fill: var(--pine); }
 
 /* ---- Hamburger menu + slide-in drawer ---- */
-.menubtn { position: absolute; top: 14px; left: 12px; z-index: 5; width: 42px; height: 42px; border-radius: 12px; border: none; background: transparent; color: var(--pine); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: .15s; }
-.menubtn:active { transform: scale(.92); background: rgba(21,57,42,.07); }
+.menubtn { position: fixed; top: 14px; left: max(12px, calc(50vw - 208px)); z-index: 15; width: 42px; height: 42px; border-radius: 12px; border: none; background: rgba(255,255,255,.72); backdrop-filter: blur(6px); box-shadow: 0 1px 5px rgba(0,0,0,.1); color: var(--pine); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: .15s; }
+.menubtn:active { transform: scale(.92); background: rgba(240,238,232,.9); }
 .drawer-wrap { position: fixed; inset: 0; z-index: 60; background: rgba(8,24,16,.42); display: flex; animation: fade .18s ease; }
 .drawer { width: 82%; max-width: 300px; height: 100%; background: var(--cream); box-shadow: 8px 0 40px rgba(0,0,0,.3); display: flex; flex-direction: column; padding: 14px 14px 18px; animation: slidein .2s cubic-bezier(.2,.7,.3,1); }
 @keyframes slidein { from { transform: translateX(-100%); } to { transform: translateX(0); } }

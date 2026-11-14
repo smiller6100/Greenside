@@ -7,7 +7,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog, UserProfile, League };
 
-const BUILD = "v97";
+const BUILD = "v98";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -1000,6 +1000,11 @@ export default {
     if (path === "/api/account/round" && request.method === "PUT") {
       const a = await accountAuth(env, request); if (!a) return new Response("Unauthorized", { status: 401 });
       const r = await a.stub.fetch("https://do/round", { method: "PUT", headers: { "x-secret": a.secret, "content-type": "application/json" }, body: await request.text() });
+      return new Response(r.body, { status: r.status });
+    }
+    if (path === "/api/account/round" && request.method === "DELETE") {
+      const a = await accountAuth(env, request); if (!a) return new Response("Unauthorized", { status: 401 });
+      const r = await a.stub.fetch("https://do/round", { method: "DELETE", headers: { "x-secret": a.secret, "content-type": "application/json" }, body: await request.text() });
       return new Response(r.body, { status: r.status });
     }
     if (path === "/api/account/name" && request.method === "POST") {

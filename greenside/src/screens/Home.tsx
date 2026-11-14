@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw, Trash2, ChevronLeft, ChevronRight, Menu, BarChart3, Flag, Building2, Settings, ListChecks, User, Trophy } from "lucide-react";
-import { getAccount, syncDown } from "../lib/account";
+import { getAccount, syncDown, deleteRound } from "../lib/account";
 import { computeStandings, fmtToPar, roundDiffs, estimateHandicap } from "../lib/golf";
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, GAME_HELP, composeNines, ninesFromHoles } from "../lib/golf";
 
-const VERSION = "v128";
+const VERSION = "v129";
 
 
 
@@ -98,9 +98,8 @@ export default function Home() {
     if (getAccount()) syncDown().then((d) => { if (d) loadMyRounds(); }); // pull cloud rounds if signed in
   }, []);
   const deleteMyRound = (code: string) => {
-    const next = myRounds.filter((r) => r.code !== code);
-    setMyRounds(next); setDelCode(""); if (viewRound?.code === code) setViewRound(null);
-    try { localStorage.setItem("gs:rounds", JSON.stringify(next)); } catch { /* */ }
+    deleteRound(code); // removes locally, tombstones it so sync can't resurrect it, deletes in cloud
+    setMyRounds((rs) => rs.filter((r) => r.code !== code)); setDelCode(""); if (viewRound?.code === code) setViewRound(null);
   };
   const roundResult = (snap: any) => {
     const fmt = ["net", "gross", "stableford", "chicago", "skins"].find((f) => snap.formats?.[f]) || "net";
@@ -806,11 +805,6 @@ export default function Home() {
             {err && <p className="err">{err}</p>}
             <button className="primary" disabled={busy} onClick={onCreatePress}>{busy ? "Creating…" : "Create round"}</button>
             <p className="hint">You'll get a short code to share with the group.</p>
-            {myRounds.length > 0 && (
-              <div className="myrounds-wrap">
-                <button className="myrounds-btn" onClick={() => { loadMyRounds(); setRoundsOpen(true); }}>My rounds<span className="myrounds-n">{myRounds.length}</span></button>
-              </div>
-            )}
           </div>
         ) : mode === "quick" ? (
           <div className="panel">

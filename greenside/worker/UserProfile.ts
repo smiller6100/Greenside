@@ -57,6 +57,12 @@ export class UserProfile implements DurableObject {
       return Response.json({ ok: true });
     }
 
+    if (path.endsWith("/round") && request.method === "DELETE") {
+      const b = await request.json<any>().catch(() => ({}));
+      if (b && b.code) await this.ctx.storage.delete("round:" + String(b.code));
+      return Response.json({ ok: true });
+    }
+
     if (path.endsWith("/name") && request.method === "POST") {
       const b = await request.json<any>().catch(() => ({}));
       await this.ctx.storage.put("name", String(b.name || "").slice(0, 40));
