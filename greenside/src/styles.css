@@ -199,6 +199,24 @@ body { font-family: 'Libre Franklin', sans-serif; }
 .rs-txt em { font-style: normal; font-size: 12px; color: var(--mut); font-weight: 500; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rs-code { font-family: 'Fraunces', serif; font-weight: 600; font-size: 18px; color: var(--brass); letter-spacing: .08em; flex: none; }
 
+/* Quick round — the one-tap start at the top of the create panel */
+.quickround { display: flex; align-items: center; gap: 12px; width: 100%; padding: 15px 16px; border-radius: 15px; border: none; background: var(--pine); color: #f4f6f5; font: inherit; cursor: pointer; text-align: left; box-shadow: 0 6px 18px rgba(14,42,31,.25); transition: .18s; }
+.quickround:active { transform: translateY(1px); }
+.quickround:disabled { opacity: .6; }
+.quickround > svg { color: var(--gold); flex: none; }
+.qr-txt { display: flex; flex-direction: column; flex: 1; min-width: 0; font-size: 16px; font-weight: 700; line-height: 1.2; }
+.qr-txt em { font-style: normal; font-size: 12.5px; color: rgba(244,246,245,.78); font-weight: 500; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qr-go { flex: none; font-size: 13px; font-weight: 800; letter-spacing: .04em; background: rgba(255,255,255,.16); border-radius: 999px; padding: 6px 13px; }
+.qr-or { display: flex; align-items: center; gap: 12px; margin: 16px 2px 2px; color: var(--mut); font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.qr-or::before, .qr-or::after { content: ""; height: 1px; background: var(--line); flex: 1; }
+
+/* Recent-player chips — tap to add a usual partner instead of typing */
+.recentchips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 11px; }
+.rc-lbl { font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--mut); margin-right: 2px; }
+.rc-chip { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); background: var(--card); color: var(--pine); font: inherit; font-size: 13.5px; font-weight: 600; padding: 7px 12px 7px 10px; border-radius: 999px; cursor: pointer; transition: .18s; }
+.rc-chip:active { transform: translateY(1px); }
+.rc-chip svg { color: var(--brass); }
+
 /* slider with the extra Full Card button */
 .seg.wrap { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
 .seg.wrap::-webkit-scrollbar { display: none; }

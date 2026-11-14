@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from "react";
-import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw, Trash2, ChevronLeft } from "lucide-react";
+import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw, Trash2, ChevronLeft, Zap } from "lucide-react";
 import { computeStandings, fmtToPar } from "../lib/golf";
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, GAME_HELP, composeNines, ninesFromHoles } from "../lib/golf";
 
-const VERSION = "v85";
+const VERSION = "v86";
 
 
 
@@ -45,6 +45,21 @@ export default function Home() {
   const [delCode, setDelCode] = useState<string>("");
   const loadMyRounds = () => { try { setMyRounds(JSON.parse(localStorage.getItem("gs:rounds") || "[]")); } catch { setMyRounds([]); } };
   useEffect(() => { loadMyRounds(); }, []);
+
+  // --- Device profile ("remember me"): recent players, last scoring/handicap, last real course ---
+  const quickRef = useRef(false); // true while a Quick round is waiting on the "replace old round?" prompt
+  const [recent, setRecent] = useState<{ name: string; hcp: any }[]>([]);
+  const [quickCourse, setQuickCourse] = useState("");
+  const loadProfile = (): any => { try { return JSON.parse(localStorage.getItem("gs:profile") || "{}"); } catch { return {}; } };
+  useEffect(() => {
+    const prof = loadProfile();
+    if (Array.isArray(prof.recent)) setRecent(prof.recent);
+    if (prof.course?.name) setQuickCourse(prof.course.name);
+    // Prefill so a repeat visit needs no typing: your name + handicap, and last scoring/handicap choices.
+    if (prof.recent && prof.recent[0]?.name) setPlayers([{ name: prof.recent[0].name, hcp: String(prof.recent[0].hcp ?? "12"), group: "A" }]);
+    if (prof.formats && Object.values(prof.formats).some(Boolean)) setFormats((f) => ({ ...f, ...prof.formats }));
+    if (prof.hcpMode) setHcpMode(prof.hcpMode);
+  }, []);
   const deleteMyRound = (code: string) => {
     const next = myRounds.filter((r) => r.code !== code);
     setMyRounds(next); setDelCode(""); if (viewRound?.code === code) setViewRound(null);
@@ -255,6 +270,7 @@ export default function Home() {
   const GL = (n: number) => String.fromCharCode(65 + n);
   const cap = outing ? 32 : 8;
   const addP = () => players.length < cap && setPlayers([...players, { name: "", hcp: "12", group: GL(Math.floor(players.length / 4) % Math.max(1, groupCount)) }]);
+  const addNamed = (name: string, hcp: any) => { if (players.length >= cap) return; setPlayers([...players, { name, hcp: String(hcp ?? "12"), group: GL(Math.floor(players.length / 4) % Math.max(1, groupCount)) }]); };
   const rmP = (i: number) => setPlayers(players.filter((_, k) => k !== i));
   const setP = (i: number, key: "name" | "hcp", v: string) => setPlayers(players.map((p, k) => (k === i ? { ...p, [key]: v } : p)));
   const cycleGroup = (i: number) => setPlayers(players.map((p, k) => (k === i ? { ...p, group: GL((p.group.charCodeAt(0) - 65 + 1) % Math.max(1, groupCount)) } : p)));
@@ -342,12 +358,14 @@ export default function Home() {
     const named = players.map((p) => p.name.trim()).filter(Boolean);
     if (!outing && !named.length) { setErr("Add at least one player."); return; }
     if (!Object.values(formats).some(Boolean)) { setErr("Pick at least one format."); return; }
+    quickRef.current = false;
     if (last.code) { setConfirmNew(true); return; }
     doCreate();
   }
   function deleteOldAndCreate() {
     localStorage.removeItem("gs:lastRound"); localStorage.removeItem("gs:lastRoundName");
-    setConfirmNew(false); doCreate();
+    setConfirmNew(false);
+    if (quickRef.current) { quickRef.current = false; doQuick(); } else doCreate();
   }
   async function doCreate() {
     setConfirmNew(false); setBusy(true);
@@ -377,12 +395,34 @@ export default function Home() {
       catalogHoles, catalogTees,
       players: named.map((p, i) => ({ id: `p${i + 1}`, name: p.name.trim(), hcp: Math.max(0, Math.min(54, parseInt(p.hcp) || 0)), ...(outing ? { group: p.group } : {}) })),
     };
+    return submitPayload(payload);
+  }
+
+  // Shared POST + local bookkeeping for both the full form and Quick round.
+  function saveProfileFromPayload(payload: any) {
+    try {
+      const prof = loadProfile();
+      const incoming = (payload.players || []).map((p: any) => ({ name: String(p.name || "").trim(), hcp: p.hcp })).filter((p: any) => p.name);
+      const seen = new Set<string>(); const recentNext: { name: string; hcp: any }[] = [];
+      for (const p of [...incoming, ...((prof.recent as any[]) || [])]) {
+        const k = p.name.toLowerCase(); if (!p.name || seen.has(k)) continue; seen.add(k);
+        recentNext.push({ name: p.name, hcp: p.hcp }); if (recentNext.length >= 12) break;
+      }
+      const next: any = { recent: recentNext, formats: payload.formats, hcpMode: payload.handicapMode };
+      if (payload.courseName) next.course = { name: payload.courseName, where: payload.courseWhere || "", lat: payload.lat ?? null, lng: payload.lng ?? null, holes: payload.course, tees: payload.tees || null, teeName: payload.defaultTee || "" };
+      else if (prof.course) next.course = prof.course; // keep the last real course, don't overwrite with the demo
+      localStorage.setItem("gs:profile", JSON.stringify(next));
+    } catch { /* */ }
+  }
+  async function submitPayload(payload: any) {
+    setBusy(true);
     try {
       const r = await fetch("/api/round", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
       const { code, adminToken } = await r.json();
+      saveProfileFromPayload(payload);
       localStorage.removeItem(`gs:ended:${code}`);
       if (adminToken) localStorage.setItem(`gs:admin:${code}`, adminToken);
-      if (outing) {
+      if (payload.outing) {
         localStorage.setItem(`gs:creator:${code}`, "1");
         localStorage.setItem(`gs:claimed:${code}`, "1"); // organizer view; can join a foursome later
       } else {
@@ -391,6 +431,34 @@ export default function Home() {
       localStorage.setItem("gs:lastRound", code); localStorage.setItem("gs:lastRoundName", payload.name);
       location.hash = `#/r/${code}`;
     } catch { setErr("Couldn't create the round. Try again."); setBusy(false); }
+  }
+
+  // Quick round: one tap, no typing. Solo casual round with your remembered name / course / scoring,
+  // falling back to "You" + the demo Par 72 for a first-time golfer.
+  function doQuick() {
+    setConfirmNew(false); setErr("");
+    const prof = loadProfile();
+    const me = (prof.recent && prof.recent[0]) || { name: "You", hcp: 0 };
+    const fmts = prof.formats && Object.values(prof.formats).some(Boolean) ? prof.formats : { net: true, gross: true, stableford: false, chicago: false, skins: false };
+    const c = prof.course || null;
+    const dateStr = new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    const payload = {
+      name: `${c?.name || "Round"} · ${dateStr} · Casual`,
+      formats: fmts, games: { wolf: false, nines: false, sixes: false, vegas: false, nassau: false, bbb: false, bestball: false },
+      outing: false, roundType: "casual", groupCount: 4, handicapMode: prof.hcpMode || "perHole",
+      course: c?.holes && c.holes.length ? c.holes : DEFAULT_COURSE,
+      lat: c?.lat ?? null, lng: c?.lng ?? null,
+      courseName: c?.name || "", courseWhere: c?.where || "", teeName: c?.teeName || "",
+      tees: c?.tees || null, defaultTee: c?.teeName || "",
+      catalogHoles: null, catalogTees: null,
+      players: [{ id: "p1", name: String(me.name || "You").trim() || "You", hcp: Math.max(0, Math.min(54, parseInt(me.hcp) || 0)) }],
+    };
+    submitPayload(payload);
+  }
+  function quickRound() {
+    setErr("");
+    if (last.code) { quickRef.current = true; setConfirmNew(true); return; }
+    doQuick();
   }
   function join() {
     const c = joinCode.trim().toUpperCase();
@@ -424,6 +492,12 @@ export default function Home() {
 
         {mode === "create" ? (
           <div className="panel">
+            <button className="quickround" disabled={busy} onClick={quickRound}>
+              <Zap size={18} strokeWidth={2.5} />
+              <span className="qr-txt">Quick round<em>{quickCourse ? `You · ${quickCourse}` : "Just you — keep score now"}</em></span>
+              <span className="qr-go">Start</span>
+            </button>
+            <div className="qr-or"><span>or set it up</span></div>
             <div className="field">
               <span>Course</span>
               {!loaded ? (
@@ -577,6 +651,17 @@ export default function Home() {
                   </div>
                 ))}
               </div>
+              {(() => {
+                const chips = recent.filter((r) => !players.some((p) => p.name.trim().toLowerCase() === r.name.toLowerCase()));
+                return chips.length > 0 && players.length < cap ? (
+                  <div className="recentchips">
+                    <span className="rc-lbl">Recent</span>
+                    {chips.slice(0, 8).map((r) => (
+                      <button key={r.name} className="rc-chip" onClick={() => addNamed(r.name, r.hcp)}><Plus size={12} strokeWidth={2.6} />{r.name}</button>
+                    ))}
+                  </div>
+                ) : null;
+              })()}
               {players.length < cap && <button className="addp" onClick={addP}><Plus size={15} strokeWidth={2.4} /> Add player</button>}
             </div>
             )}
@@ -671,8 +756,8 @@ export default function Home() {
             <h3>Start a new round?</h3>
             <p>You've still got <strong>{last.name || last.code}</strong> ({last.code}) going. Delete it and start fresh, or keep it?</p>
             <button className="primary" onClick={deleteOldAndCreate}>Delete old round &amp; start new</button>
-            <button className="ghostbtn" onClick={() => { setConfirmNew(false); location.hash = `#/r/${last.code}`; }}>Go back to that round</button>
-            <button className="ghostbtn" onClick={() => setConfirmNew(false)}>Cancel</button>
+            <button className="ghostbtn" onClick={() => { quickRef.current = false; setConfirmNew(false); location.hash = `#/r/${last.code}`; }}>Go back to that round</button>
+            <button className="ghostbtn" onClick={() => { quickRef.current = false; setConfirmNew(false); }}>Cancel</button>
           </div></div>
         )}
 
