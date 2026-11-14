@@ -10,23 +10,35 @@ type RM = {
   hp: number; gross: number; par: number; toPar: number; toPar18: number;
   fwHit: number; fwAtt: number; girC: number; girElig: number; putts: number; puttsN: number;
   byPar: Record<number, { d: number; n: number }>; ended: boolean;
+  dist: { eagle: number; birdie: number; par: number; bogey: number; dbl: number };
+  putt1: number; putt3: number; scrTries: number; scrMade: number;
 };
 
 function roundMetrics(r: any): RM | null {
   const course = r.course || []; const sc = (r.scores || {})[r.me] || {}; const st = (r.stats || {})[r.me] || {};
   let gross = 0, par = 0, hp = 0, fwHit = 0, fwAtt = 0, girC = 0, girElig = 0, putts = 0, puttsN = 0;
+  let putt1 = 0, putt3 = 0, scrTries = 0, scrMade = 0;
   const byPar: Record<number, { d: number; n: number }> = { 3: { d: 0, n: 0 }, 4: { d: 0, n: 0 }, 5: { d: 0, n: 0 } };
+  const dist = { eagle: 0, birdie: 0, par: 0, bogey: 0, dbl: 0 };
   for (const h of course) {
     const s = sc[h.num]; const cl = st[h.num] || {};
-    if (s != null) { gross += s; par += h.par; hp++; const b = byPar[h.par]; if (b) { b.d += s - h.par; b.n++; } }
+    if (s != null) {
+      gross += s; par += h.par; hp++; const b = byPar[h.par]; if (b) { b.d += s - h.par; b.n++; }
+      const rel = s - h.par;
+      if (rel <= -2) dist.eagle++; else if (rel === -1) dist.birdie++; else if (rel === 0) dist.par++; else if (rel === 1) dist.bogey++; else dist.dbl++;
+    }
     if (h.par >= 4 && (cl.fir === true || cl.fir === false)) { fwAtt++; if (cl.fir === true) fwHit++; }
-    if (s != null && cl.putts != null) { girElig++; if (s - cl.putts <= h.par - 2) girC++; }
-    if (cl.putts != null) { putts += cl.putts; puttsN++; }
+    if (s != null && cl.putts != null) {
+      girElig++; const gir = s - cl.putts <= h.par - 2; if (gir) girC++;
+      if (!gir) { scrTries++; if (s <= h.par) scrMade++; } // scrambling: saved par after missing the green
+    }
+    if (cl.putts != null) { putts += cl.putts; puttsN++; if (cl.putts <= 1) putt1++; if (cl.putts >= 3) putt3++; }
   }
   if (hp === 0) return null;
   const norm = 18 / hp;
   return { date: r.endedAt || r.savedAt, name: r.name || r.code, code: r.code, courseName: r.courseName || "",
-    hp, gross, par, toPar: gross - par, toPar18: (gross - par) * norm, fwHit, fwAtt, girC, girElig, putts, puttsN, byPar, ended: !!r.endedAt };
+    hp, gross, par, toPar: gross - par, toPar18: (gross - par) * norm, fwHit, fwAtt, girC, girElig, putts, puttsN, byPar, ended: !!r.endedAt,
+    dist, putt1, putt3, scrTries, scrMade };
 }
 
 const fmtPar = (n: number) => (n > 0 ? `+${Math.round(n)}` : n < 0 ? `${Math.round(n)}` : "E");
@@ -59,7 +71,13 @@ export default function Stats() {
     const byPar: Record<number, { d: number; n: number }> = { 3: { d: 0, n: 0 }, 4: { d: 0, n: 0 }, 5: { d: 0, n: 0 } };
     for (const r of rms) for (const p of [3, 4, 5]) { byPar[p].d += r.byPar[p].d; byPar[p].n += r.byPar[p].n; }
     const puttsPerHole = puttsN ? putts / puttsN : 0;
-    return { fwHit, fwAtt, girC, girElig, puttsN, avgToPar, best, byPar, puttsPerHole, puttsPerRound: puttsPerHole * 18 };
+    const dist = { eagle: 0, birdie: 0, par: 0, bogey: 0, dbl: 0 };
+    for (const r of rms) for (const k of ["eagle", "birdie", "par", "bogey", "dbl"] as const) dist[k] += r.dist[k];
+    const distTotal = dist.eagle + dist.birdie + dist.par + dist.bogey + dist.dbl;
+    const putt1 = sum((r) => r.putt1), putt3 = sum((r) => r.putt3);
+    const scrTries = sum((r) => r.scrTries), scrMade = sum((r) => r.scrMade);
+    return { fwHit, fwAtt, girC, girElig, puttsN, avgToPar, best, byPar, puttsPerHole, puttsPerRound: puttsPerHole * 18,
+      dist, distTotal, putt1, putt3, scrTries, scrMade };
   }, [rms, N]);
 
   const hasStats = !!agg && (agg.fwAtt > 0 || agg.girElig > 0 || agg.puttsN > 0);
@@ -118,6 +136,35 @@ export default function Stats() {
               <p className="hint" style={{ textAlign: "center", marginTop: 4 }}>Turn on <b>fairways &amp; putts</b> on the scorecard during a round to unlock tee-to-green stats.</p>
             )}
 
+            {hasStats && (agg.puttsN > 0 || agg.scrTries > 0) && (
+              <div className="st-section">
+                <div className="st-h">Around the green</div>
+                <div className="st-bars">
+                  {agg.puttsN > 0 && (
+                    <div className="st-bar">
+                      <div className="st-bar-top"><span>One-putt rate</span><b>{Math.round((agg.putt1 / agg.puttsN) * 100)}%</b></div>
+                      <div className="st-track"><span style={{ width: `${(agg.putt1 / agg.puttsN) * 100}%` }} /></div>
+                      <div className="st-bar-sub">{agg.putt1} of {agg.puttsN} holes</div>
+                    </div>
+                  )}
+                  {agg.puttsN > 0 && (
+                    <div className="st-bar">
+                      <div className="st-bar-top"><span>Three-putt rate</span><b>{Math.round((agg.putt3 / agg.puttsN) * 100)}%</b></div>
+                      <div className="st-track"><span className="warnbar" style={{ width: `${(agg.putt3 / agg.puttsN) * 100}%` }} /></div>
+                      <div className="st-bar-sub">{agg.putt3} of {agg.puttsN} holes · lower is better</div>
+                    </div>
+                  )}
+                  {agg.scrTries > 0 && (
+                    <div className="st-bar">
+                      <div className="st-bar-top"><span>Scrambling</span><b>{Math.round((agg.scrMade / agg.scrTries) * 100)}%</b></div>
+                      <div className="st-track"><span style={{ width: `${(agg.scrMade / agg.scrTries) * 100}%` }} /></div>
+                      <div className="st-bar-sub">par saved on {agg.scrMade} of {agg.scrTries} greens missed</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="st-section">
               <div className="st-h">Scoring by par</div>
               <div className="st-pars">
@@ -133,6 +180,24 @@ export default function Stats() {
                 })}
               </div>
             </div>
+
+            {agg.distTotal > 0 && (
+              <div className="st-section">
+                <div className="st-h">Scoring <span className="st-h-sub">{agg.distTotal} holes · per round</span></div>
+                <div className="st-dist">
+                  {([["eagle", "Eagles+"], ["birdie", "Birdies"], ["par", "Pars"], ["bogey", "Bogeys"], ["dbl", "Doubles+"]] as const).map(([k, label]) => {
+                    const c = (agg.dist as any)[k]; const pct = (c / agg.distTotal) * 100;
+                    return (
+                      <div className="st-drow" key={k}>
+                        <span className="st-dlbl">{label}</span>
+                        <div className="st-dtrack"><span className={`sd-${k}`} style={{ width: `${pct}%` }} /></div>
+                        <span className="st-dval">{c}<em>{(c / N).toFixed(1)}/rd</em></span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {trend.length >= 2 && (
               <div className="st-section">
