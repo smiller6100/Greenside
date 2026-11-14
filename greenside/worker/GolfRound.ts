@@ -185,6 +185,19 @@ export class GolfRound implements DurableObject {
       if (Object.keys(cell).length) state.stats[data.playerId][hole] = cell; else delete state.stats[data.playerId][hole];
       await this.ctx.storage.put("state", state);
       this.broadcast({ type: "state", state });
+    } else if (data.type === "contest") {
+      // Field side-contests: closest-to-pin (ctp, lowest wins) and long drive (long, highest wins).
+      const kind = String(data.kind); const hole = Number(data.hole); const pid = String(data.playerId || ""); const dist = Number(data.dist);
+      if (kind !== "ctp" && kind !== "long") return;
+      if (!Number.isInteger(hole) || hole < 1 || hole > 18) return;
+      if (!state.players.some((p: any) => p.id === pid)) return;
+      if (!isFinite(dist) || dist <= 0 || dist > 2000) return;
+      if (!this.canEdit(ws, state, pid)) return;
+      state.contests = state.contests || { ctp: {}, long: {} };
+      state.contests[kind] = state.contests[kind] || {};
+      const cur = state.contests[kind][hole];
+      const better = kind === "ctp" ? (!cur || dist < cur.dist) : (!cur || dist > cur.dist);
+      if (better) { state.contests[kind][hole] = { id: pid, dist }; await this.ctx.storage.put("state", state); this.broadcast({ type: "state", state }); }
     } else if (data.type === "wolfPick") {
       const hole = Number(data.hole);
       if (!Number.isInteger(hole) || hole < 1 || hole > 18) return;

@@ -21,7 +21,7 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
   const isCreator = localStorage.getItem(`gs:creator:${code}`) === "1";
   const adminToken = localStorage.getItem(`gs:admin:${code}`) || "";
   const isAdmin = !!adminToken || isCreator;
-  const { state, connected, missing, positions, sendScore, sendWolfPick, sendBbb, sendPress, sendSixesMode, sendAddPlayer, sendTeamScore, sendTeamMode, sendDeleteGroup, sendRemovePlayer, sendSetRules, sendPos, sendPosClear, sendChat, sendStat } = useRound(code, me, adminToken);
+  const { state, connected, missing, positions, sendScore, sendWolfPick, sendBbb, sendPress, sendSixesMode, sendAddPlayer, sendTeamScore, sendTeamMode, sendDeleteGroup, sendRemovePlayer, sendSetRules, sendPos, sendPosClear, sendChat, sendStat, sendContest } = useRound(code, me, adminToken);
   const [tab, setTab] = useState<"board" | "score">("board");
   const [view, setView] = useState("net"); // a scoring format (leaderboard side)
   const [scView, setScView] = useState<"hole" | "card" | "games">("hole"); // scorecard side
@@ -32,6 +32,7 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
   const [shots, setShots] = useState<Record<number, any[]>>(() => { try { return JSON.parse(localStorage.getItem(`gs:shots:${code}`) || "{}"); } catch { return {}; } });
   const [club, setClub] = useState("Dr");
   const [shotsOpen, setShotsOpen] = useState(false);
+  const [contestVal, setContestVal] = useState("");
   const saveShots = (s: Record<number, any[]>) => { try { localStorage.setItem(`gs:shots:${code}`, JSON.stringify(s)); } catch { /* */ } };
   const markShot = (teePos: number[] | null) => {
     if (!gps) return;
@@ -275,6 +276,39 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
         </div>
         <p className="foot">{fs.settled === 0 ? "Skins settle as the whole field finishes each hole." : `${fs.settled} hole${fs.settled === 1 ? "" : "s"} settled${fs.carry > 0 ? ` · ${fs.carry} carrying` : ""} · ${useNet ? "net" : "gross"}`}</p>
       </>
+    );
+  };
+
+  const ContestCard = () => {
+    if (!state.outing || !me) return null;
+    const kind: "ctp" | "long" = hole.par === 3 ? "ctp" : "long";
+    const label = kind === "ctp" ? "Closest to the pin" : "Long drive";
+    const unit = kind === "ctp" ? "ft" : "yds";
+    const cur = (state as any).contests?.[kind]?.[hole.num] || null;
+    const leaderName = cur ? (state.players.find((p) => p.id === cur.id)?.name || "—") : null;
+    return (
+      <div className="contest">
+        <div className="contest-h"><Target size={14} /> {label} <span className="contest-hole">Par {hole.par}</span></div>
+        {cur ? <div className="contest-lead"><b>{leaderName}{cur.id === me ? " (you)" : ""}</b><span>{cur.dist} {unit}</span></div> : <div className="contest-lead none">No entry yet — post the first</div>}
+        <div className="contest-entry">
+          <input className="contest-in" inputMode="numeric" placeholder={`Your ${unit}`} value={contestVal} onChange={(e) => setContestVal(e.target.value.replace(/[^0-9]/g, ""))} />
+          <button className="contest-post" disabled={!contestVal} onClick={() => { const d = parseInt(contestVal); if (d > 0) { sendContest(kind, hole.num, me, d); setContestVal(""); } }}>Post mine</button>
+        </div>
+      </div>
+    );
+  };
+
+  const ContestsPanel = () => {
+    const c = (state as any).contests || { ctp: {}, long: {} };
+    const nameOf = (id: string) => state.players.find((p) => p.id === id)?.name || "—";
+    const ctpRows = Object.keys(c.ctp || {}).map(Number).sort((a, b) => a - b).map((h) => ({ hole: h, ...c.ctp[h] }));
+    const longRows = Object.keys(c.long || {}).map(Number).sort((a, b) => a - b).map((h) => ({ hole: h, ...c.long[h] }));
+    if (!ctpRows.length && !longRows.length) return <p className="foot" style={{ marginTop: 24 }}>No contest entries yet. On a par 3, post Closest to the Pin; on a par 4 or 5, post your Long Drive.</p>;
+    return (
+      <div className="contests-board">
+        {ctpRows.length > 0 && <div className="contest-sec"><div className="contest-sec-h">Closest to the pin</div>{ctpRows.map((r) => (<div className="contest-row" key={"c" + r.hole}><span className="cr-hole">Hole {r.hole}</span><span className="cr-name">{nameOf(r.id)}</span><span className="cr-dist">{r.dist} ft</span></div>))}</div>}
+        {longRows.length > 0 && <div className="contest-sec"><div className="contest-sec-h">Long drive</div>{longRows.map((r) => (<div className="contest-row" key={"l" + r.hole}><span className="cr-hole">Hole {r.hole}</span><span className="cr-name">{nameOf(r.id)}</span><span className="cr-dist">{r.dist} yds</span></div>))}</div>}
+      </div>
     );
   };
 
@@ -808,9 +842,10 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
               ))}
               {state.outing && <button className={`seg-btn ${view === "teams" ? "on" : ""}`} onClick={() => setView("teams")}>Teams</button>}
               {state.outing && <button className={`seg-btn ${view === "fieldskins" ? "on" : ""}`} onClick={() => setView("fieldskins")}>Skins</button>}
+              {state.outing && <button className={`seg-btn ${view === "contests" ? "on" : ""}`} onClick={() => setView("contests")}>Contests</button>}
             </div>
 
-            {view === "teams" ? <TeamsPanel /> : view === "fieldskins" ? <FieldSkinsPanel /> : (
+            {view === "teams" ? <TeamsPanel /> : view === "fieldskins" ? <FieldSkinsPanel /> : view === "contests" ? <ContestsPanel /> : (
               <>
                 <div className="board">
                   {standings.map((r, i) => {
@@ -938,6 +973,7 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
             </div>
             </>
             )}
+            <ContestCard />
             {(() => {
               if (holeMap == null) return null; // still loading
               if (!holeMap.available) {

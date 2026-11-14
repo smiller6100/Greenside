@@ -158,6 +158,9 @@ export function useRound(code: string, me?: string | null, adminToken?: string) 
   const sendStat = useCallback((id: string, hole: number, key: "fir" | "putts", val: boolean | number | null) => {
     wsRef.current?.send(JSON.stringify({ type: "stat", playerId: id, hole, key, val }));
   }, []);
+  const sendContest = useCallback((kind: "ctp" | "long", hole: number, playerId: string, dist: number) => {
+    wsRef.current?.send(JSON.stringify({ type: "contest", kind, hole, playerId, dist }));
+  }, []);
 
-  return { state, connected, missing, positions, sendScore, sendWolfPick, sendBbb, sendPress, sendSixesMode, sendAddPlayer, sendTeamScore, sendTeamMode, sendDeleteGroup, sendRemovePlayer, sendSetRules, sendPos, sendPosClear, sendChat, sendStat };
+  return { state, connected, missing, positions, sendScore, sendWolfPick, sendBbb, sendPress, sendSixesMode, sendAddPlayer, sendTeamScore, sendTeamMode, sendDeleteGroup, sendRemovePlayer, sendSetRules, sendPos, sendPosClear, sendChat, sendStat, sendContest };
 }

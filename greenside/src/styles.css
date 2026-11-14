@@ -944,3 +944,23 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .st-club-track span { display: block; height: 100%; border-radius: 6px; background: #7c3aed; min-width: 2px; }
 .st-club-v { flex: 0 0 auto; min-width: 62px; text-align: right; font-size: 14px; font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; }
 .st-club-v em { display: block; font-style: normal; font-size: 10px; font-weight: 600; color: var(--mut); }
+
+/* Field contests: CTP + long drive */
+.contest { margin-top: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 13px 15px; }
+.contest-h { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 800; color: var(--pine); }
+.contest-h svg { color: var(--brass); }
+.contest-hole { margin-left: auto; font-size: 11px; font-weight: 700; color: var(--mut); text-transform: uppercase; letter-spacing: .04em; }
+.contest-lead { display: flex; align-items: baseline; gap: 8px; margin: 9px 0; }
+.contest-lead b { font-size: 16px; color: var(--ink); }
+.contest-lead span { font-size: 14px; font-weight: 700; color: var(--brass); }
+.contest-lead.none { color: var(--mut); font-size: 13px; font-weight: 500; margin: 9px 0; }
+.contest-entry { display: flex; gap: 8px; }
+.contest-in { flex: 1; border: 1.5px solid var(--line); background: var(--cream); border-radius: 10px; padding: 10px 12px; font: inherit; font-size: 15px; color: var(--ink); min-width: 0; }
+.contest-post { border: none; background: var(--pine); color: #f4f6f5; font: inherit; font-size: 14px; font-weight: 700; padding: 10px 16px; border-radius: 10px; cursor: pointer; flex: none; }
+.contest-post:disabled { opacity: .5; }
+.contests-board { display: flex; flex-direction: column; gap: 18px; margin-top: 8px; }
+.contest-sec-h { font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--brass); margin-bottom: 8px; }
+.contest-row { display: flex; align-items: center; gap: 10px; padding: 11px 14px; background: var(--card); border: 1px solid var(--line); border-radius: 11px; margin-bottom: 6px; }
+.cr-hole { font-size: 12px; font-weight: 800; color: var(--mut); flex: 0 0 58px; }
+.cr-name { font-weight: 700; color: var(--ink); }
+.cr-dist { margin-left: auto; font-weight: 800; color: var(--brass); font-variant-numeric: tabular-nums; }
