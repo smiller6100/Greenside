@@ -224,7 +224,7 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
     if (state) { localStorage.setItem("gs:lastRound", code); localStorage.setItem("gs:lastRoundName", state.name || code); }
   }, [state, code]);
 
-  const standings = useMemo(() => (state && !["card", "teams", "fieldskins", "contests", "flights"].includes(view) ? computeStandings(state, view) : []), [state, view]);
+  const standings = useMemo(() => (state && !["card", "teams", "fieldskins", "contests", "flights", "results"].includes(view) ? computeStandings(state, view) : []), [state, view]);
   const games = useMemo(() => (state ? computeGames(state) : null), [state]);
   const settle = useMemo(() => {
     if (!state) return null;
@@ -318,6 +318,46 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
           );
         })}
         <p className="foot">Auto-flighted by handicap · ranked on {FORMAT_LABELS[fmt] || fmt}</p>
+      </div>
+    );
+  };
+
+  const ResultsPanel = () => {
+    const primary = (["net", "gross", "stableford", "chicago"].find((f) => (state.formats as any)?.[f]) || "net") as string;
+    const stand = computeStandings(state, primary);
+    const thru = Math.max(0, ...stand.map((s: any) => s.thru));
+    const valOf = (r: any) => primary === "stableford" ? `${r.points} pts` : primary === "chicago" ? `${r.chicago} pts` : fmtToPar(primary === "gross" ? r.toParGross : r.toParNet);
+    const top = stand.filter((s: any) => s.thru > 0).slice(0, 3);
+    const grossW = (state.formats as any)?.gross && primary !== "gross" ? computeStandings(state, "gross").filter((s: any) => s.thru > 0)[0] : null;
+    const field = state.players.length;
+    const flightWinners: { label: string; name: string; val: string }[] = [];
+    if (field >= 6) {
+      const nF = Math.max(2, Math.min(4, Math.ceil(field / 8)));
+      const byHcp = [...state.players].sort((a, b) => (a.hcp || 0) - (b.hcp || 0));
+      const size = Math.ceil(field / nF);
+      for (let i = 0; i < nF; i++) { const m = byHcp.slice(i * size, (i + 1) * size); if (!m.length) continue; const ids = new Set(m.map((p) => p.id)); const w = stand.filter((s: any) => ids.has(s.id) && s.thru > 0)[0]; if (w) flightWinners.push({ label: String.fromCharCode(65 + i), name: w.name, val: valOf(w) }); }
+    }
+    const fs = computeFieldSkins(state, state.handicapMode !== "gross");
+    const skinRows = state.players.map((p) => ({ name: p.name, skins: fs.skins[p.id] || 0 })).filter((r) => r.skins > 0).sort((a, b) => b.skins - a.skins);
+    const c: any = (state as any).contests || { ctp: {}, long: {} };
+    const nameOf = (id: string) => state.players.find((p) => p.id === id)?.name || "—";
+    const ctpRows = Object.keys(c.ctp || {}).map(Number).sort((a, b) => a - b).map((h) => ({ hole: h, name: nameOf(c.ctp[h].id), dist: c.ctp[h].dist }));
+    const longRows = Object.keys(c.long || {}).map(Number).sort((a, b) => a - b).map((h) => ({ hole: h, name: nameOf(c.long[h].id), dist: c.long[h].dist }));
+    if (thru === 0) return <p className="foot" style={{ marginTop: 24 }}>Results appear here as scores come in.</p>;
+    const holes = state.course?.length || 18;
+    return (
+      <div className="results">
+        <div className="res-title">{(state as any).name || "Outing"} — Results</div>
+        <div className="res-sec">
+          <div className="res-h">Overall{primary !== "gross" ? " (net)" : ""}</div>
+          {top.map((r: any, i: number) => (<div className="res-row" key={r.id}><span className="res-rank">{i + 1}</span><span className="res-name">{r.name}</span><span className="res-val">{valOf(r)}</span></div>))}
+          {grossW && <div className="res-row"><span className="res-rank">★</span><span className="res-name">{grossW.name}</span><span className="res-val">low gross · {fmtToPar(grossW.toParGross)}</span></div>}
+        </div>
+        {flightWinners.length > 0 && <div className="res-sec"><div className="res-h">Flight winners</div>{flightWinners.map((f, i) => (<div className="res-row" key={i}><span className="res-rank">{f.label}</span><span className="res-name">{f.name}</span><span className="res-val">{f.val}</span></div>))}</div>}
+        {skinRows.length > 0 && <div className="res-sec"><div className="res-h">Skins</div>{skinRows.map((r, i) => (<div className="res-row" key={i}><span className="res-name">{r.name}</span><span className="res-val">{r.skins} skin{r.skins === 1 ? "" : "s"}</span></div>))}</div>}
+        {ctpRows.length > 0 && <div className="res-sec"><div className="res-h">Closest to the pin</div>{ctpRows.map((r, i) => (<div className="res-row" key={i}><span className="res-name">Hole {r.hole} — {r.name}</span><span className="res-val">{r.dist} ft</span></div>))}</div>}
+        {longRows.length > 0 && <div className="res-sec"><div className="res-h">Long drive</div>{longRows.map((r, i) => (<div className="res-row" key={i}><span className="res-name">Hole {r.hole} — {r.name}</span><span className="res-val">{r.dist} yds</span></div>))}</div>}
+        <p className="foot">{thru >= holes ? "Final" : `Live — field thru ${thru}`} · screenshot or share this for the board</p>
       </div>
     );
   };
@@ -887,9 +927,10 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
               {state.outing && <button className={`seg-btn ${view === "fieldskins" ? "on" : ""}`} onClick={() => setView("fieldskins")}>Skins</button>}
               {state.outing && <button className={`seg-btn ${view === "contests" ? "on" : ""}`} onClick={() => setView("contests")}>Contests</button>}
               {state.outing && <button className={`seg-btn ${view === "flights" ? "on" : ""}`} onClick={() => setView("flights")}>Flights</button>}
+              {state.outing && <button className={`seg-btn ${view === "results" ? "on" : ""}`} onClick={() => setView("results")}>Results</button>}
             </div>
 
-            {view === "teams" ? <TeamsPanel /> : view === "fieldskins" ? <FieldSkinsPanel /> : view === "contests" ? <ContestsPanel /> : view === "flights" ? <FlightsPanel /> : (
+            {view === "teams" ? <TeamsPanel /> : view === "fieldskins" ? <FieldSkinsPanel /> : view === "contests" ? <ContestsPanel /> : view === "flights" ? <FlightsPanel /> : view === "results" ? <ResultsPanel /> : (
               <>
                 <div className="board">
                   {standings.map((r, i) => {
