@@ -155,6 +155,9 @@ export function useRound(code: string, me?: string | null, adminToken?: string) 
   const sendChat = useCallback((name: string, text: string) => {
     wsRef.current?.send(JSON.stringify({ type: "chat", name, text }));
   }, []);
+  const sendStat = useCallback((id: string, hole: number, key: "fir" | "putts", val: boolean | number | null) => {
+    wsRef.current?.send(JSON.stringify({ type: "stat", playerId: id, hole, key, val }));
+  }, []);
 
-  return { state, connected, missing, positions, sendScore, sendWolfPick, sendBbb, sendPress, sendSixesMode, sendAddPlayer, sendTeamScore, sendTeamMode, sendDeleteGroup, sendRemovePlayer, sendSetRules, sendPos, sendPosClear, sendChat };
+  return { state, connected, missing, positions, sendScore, sendWolfPick, sendBbb, sendPress, sendSixesMode, sendAddPlayer, sendTeamScore, sendTeamMode, sendDeleteGroup, sendRemovePlayer, sendSetRules, sendPos, sendPosClear, sendChat, sendStat };
 }

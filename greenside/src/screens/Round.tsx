@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Minus, Plus, Crown, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Trophy, ClipboardList, Copy, Check, Home, Settings, MapPin, Users, Share2, MessageCircle, Send, Wallet } from "lucide-react";
+import { Minus, Plus, Crown, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Trophy, ClipboardList, Copy, Check, X, Home, Settings, MapPin, Users, Share2, MessageCircle, Send, Wallet } from "lucide-react";
 import { LogoMark } from "../components/Logo";
 import HoleMap from "../components/HoleMap";
 import { useRound } from "../lib/useRound";
@@ -16,11 +16,13 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
   const isCreator = localStorage.getItem(`gs:creator:${code}`) === "1";
   const adminToken = localStorage.getItem(`gs:admin:${code}`) || "";
   const isAdmin = !!adminToken || isCreator;
-  const { state, connected, missing, positions, sendScore, sendWolfPick, sendBbb, sendPress, sendSixesMode, sendAddPlayer, sendTeamScore, sendTeamMode, sendDeleteGroup, sendRemovePlayer, sendSetRules, sendPos, sendPosClear, sendChat } = useRound(code, me, adminToken);
+  const { state, connected, missing, positions, sendScore, sendWolfPick, sendBbb, sendPress, sendSixesMode, sendAddPlayer, sendTeamScore, sendTeamMode, sendDeleteGroup, sendRemovePlayer, sendSetRules, sendPos, sendPosClear, sendChat, sendStat } = useRound(code, me, adminToken);
   const [tab, setTab] = useState<"board" | "score">("board");
   const [view, setView] = useState("net"); // a scoring format (leaderboard side)
   const [scView, setScView] = useState<"hole" | "card" | "games">("hole"); // scorecard side
   const [holeIdx, setHoleIdx] = useState(0);
+  const [trackStats, setTrackStats] = useState(() => { try { return localStorage.getItem("gs:trackStats") !== "0"; } catch { return true; } });
+  const toggleStats = () => setTrackStats((v) => { const n = !v; try { localStorage.setItem("gs:trackStats", n ? "1" : "0"); } catch { /* */ } return n; });
   const [grp, setGrp] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [edFormats, setEdFormats] = useState<Record<string, boolean>>({});
@@ -460,6 +462,37 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
           ))}
         </tbody>
       </table>
+      {(() => {
+        const stats = (state as any).stats || {};
+        const anyStats = state.players.some((p) => Object.keys(stats[p.id] || {}).length);
+        if (!anyStats) return null;
+        const ps = (pid: string) => {
+          const st = stats[pid] || {};
+          let fwHit = 0, fwAtt = 0, girC = 0, girElig = 0, puttsTot = 0, puttsHoles = 0;
+          for (const h of course) {
+            const cell = st[h.num] || {}; const sc = sp(pid, h.num);
+            if (h.par >= 4 && (cell.fir === true || cell.fir === false)) { fwAtt++; if (cell.fir === true) fwHit++; }
+            if (sc != null && cell.putts != null) { girElig++; if (sc - cell.putts <= h.par - 2) girC++; }
+            if (cell.putts != null) { puttsTot += cell.putts; puttsHoles++; }
+          }
+          return { fwHit, fwAtt, girC, girElig, puttsTot, puttsHoles };
+        };
+        return (
+          <table className="nine statsum">
+            <thead><tr><th className="stik">Stats</th><th>Fairways</th><th>GIR</th><th className="tot">Putts</th></tr></thead>
+            <tbody>
+              {state.players.map((p) => { const s = ps(p.id); return (
+                <tr key={p.id} className={p.id === me ? "meRow" : ""}>
+                  <th className="stik">{p.name}</th>
+                  <td>{s.fwAtt ? `${s.fwHit}/${s.fwAtt}` : "–"}</td>
+                  <td>{s.girElig ? `${s.girC}/${s.girElig}` : "–"}</td>
+                  <td className="tot">{s.puttsHoles ? s.puttsTot : "–"}</td>
+                </tr>
+              ); })}
+            </tbody>
+          </table>
+        );
+      })()}
       {nineChunks.length > 1 && nineChunks.some((c) => c.label !== "Out" && c.label !== "In") && (
         <p className="foot">{nineChunks.map((c) => c.label).join(" · ")}</p>
       )}
@@ -789,6 +822,10 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
                 })()}
               </div>
             ) : (
+            <>
+            <div className="statline">
+              <button className={`statstoggle ${trackStats ? "on" : ""}`} onClick={toggleStats}>{trackStats ? "Tracking fairways & putts" : "Track fairways & putts"}</button>
+            </div>
             <div className="cards">
               {state.players.filter((p) => !state.outing || (p.group || "1") === effGrp).map((p) => {
                 const rec = useHcp ? strokesOn(p.hcp, hole.si) : 0;
@@ -812,10 +849,35 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
                       <button className={`num ${val != null ? scoreTone(rel as number) : ""}`} onClick={() => setPar(p.id)}><span className={val == null ? "ghost" : ""}>{val ?? hole.par}</span>{rel != null && <small className={toParClass(rel)}>{fmtToPar(rel)}</small>}</button>
                       <button onClick={() => adjust(p.id, 1)} aria-label="plus"><Plus size={18} strokeWidth={2.4} /></button>
                     </div>
+                    {trackStats && (() => {
+                      const stc = (state.stats?.[p.id] || {})[hole.num] || {};
+                      const firV = stc.fir as boolean | undefined;
+                      const puttsV = stc.putts as number | undefined;
+                      const gir = val != null && puttsV != null ? val - puttsV <= hole.par - 2 : null;
+                      return (
+                        <div className="statstrip">
+                          {hole.par >= 4 && (
+                            <div className="statgrp">
+                              <span className="stat-lbl">FW</span>
+                              <button className={`fwb ${firV === true ? "hit" : ""}`} onClick={() => sendStat(p.id, hole.num, "fir", firV === true ? null : true)} aria-label="fairway hit"><Check size={13} strokeWidth={3} /></button>
+                              <button className={`fwb ${firV === false ? "miss" : ""}`} onClick={() => sendStat(p.id, hole.num, "fir", firV === false ? null : false)} aria-label="fairway miss"><X size={13} strokeWidth={3} /></button>
+                            </div>
+                          )}
+                          <div className="statgrp">
+                            <span className="stat-lbl">Putts</span>
+                            <button className="pbtn" onClick={() => { if (puttsV == null) return; const n = puttsV - 1; sendStat(p.id, hole.num, "putts", n < 0 ? null : n); }} aria-label="putts minus"><Minus size={13} strokeWidth={2.6} /></button>
+                            <span className="pnum">{puttsV ?? "–"}</span>
+                            <button className="pbtn" onClick={() => sendStat(p.id, hole.num, "putts", Math.min(10, (puttsV ?? 0) + 1))} aria-label="putts plus"><Plus size={13} strokeWidth={2.6} /></button>
+                          </div>
+                          {gir != null && <span className={`girb ${gir ? "on" : ""}`}>GIR</span>}
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })}
             </div>
+            </>
             )}
             {(() => {
               if (holeMap == null) return null; // still loading

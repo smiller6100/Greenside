@@ -165,6 +165,26 @@ export class GolfRound implements DurableObject {
         await this.ctx.storage.put("state", state);
         this.broadcast({ type: "state", state });
       }
+    } else if (data.type === "stat") {
+      // Per-hole stat capture: fairway hit (fir) and putts. Same edit-scoping as a score.
+      const hole = Number(data.hole);
+      if (!Number.isInteger(hole) || hole < 1 || hole > 18) return;
+      if (!state.players.some((p: any) => p.id === data.playerId)) return;
+      if (!this.canEdit(ws, state, String(data.playerId))) return;
+      const key = String(data.key);
+      if (key !== "fir" && key !== "putts") return;
+      state.stats = state.stats || {};
+      state.stats[data.playerId] = state.stats[data.playerId] || {};
+      const cell = { ...(state.stats[data.playerId][hole] || {}) };
+      if (key === "fir") {
+        if (data.val === null) delete cell.fir; else cell.fir = !!data.val;
+      } else {
+        const n = Number(data.val);
+        if (data.val === null || !Number.isInteger(n) || n < 0 || n > 10) delete cell.putts; else cell.putts = n;
+      }
+      if (Object.keys(cell).length) state.stats[data.playerId][hole] = cell; else delete state.stats[data.playerId][hole];
+      await this.ctx.storage.put("state", state);
+      this.broadcast({ type: "state", state });
     } else if (data.type === "wolfPick") {
       const hole = Number(data.hole);
       if (!Number.isInteger(hole) || hole < 1 || hole > 18) return;
@@ -257,7 +277,7 @@ export class GolfRound implements DurableObject {
       if (!g) return;
       const removed = state.players.filter((p: any) => (p.group || "1") === g).map((p: any) => p.id);
       state.players = state.players.filter((p: any) => (p.group || "1") !== g);
-      removed.forEach((id: string) => { if (state.scores) delete state.scores[id]; });
+      removed.forEach((id: string) => { if (state.scores) delete state.scores[id]; if (state.stats) delete state.stats[id]; });
       if (state.teamScores) delete state.teamScores[g];
       await this.ctx.storage.put("state", state);
       this.broadcast({ type: "state", state });
@@ -268,6 +288,7 @@ export class GolfRound implements DurableObject {
       if (!id) return;
       state.players = state.players.filter((p: any) => p.id !== id);
       if (state.scores) delete state.scores[id];
+      if (state.stats) delete state.stats[id];
       await this.ctx.storage.put("state", state);
       this.broadcast({ type: "state", state });
     } else if (data.type === "setMode") {
