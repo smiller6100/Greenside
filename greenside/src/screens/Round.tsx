@@ -1,7 +1,10 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, lazy, Suspense } from "react";
 import { Minus, Plus, Crown, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Trophy, ClipboardList, Copy, Check, X, Home, Settings, MapPin, Users, Share2, MessageCircle, Send, Wallet, Target, Camera, RefreshCw } from "lucide-react";
 import { LogoMark } from "../components/Logo";
 import HoleMap from "../components/HoleMap";
+// MapLibre is heavy, so the satellite view is split into its own chunk and only
+// downloaded when a player actually opens a hole map.
+const HoleMapGL = lazy(() => import("../components/HoleMapGL"));
 import { useRound } from "../lib/useRound";
 import { pushRound } from "../lib/account";
 import { getLeagues, submitToLeague } from "../lib/leagues";
@@ -138,6 +141,7 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
   const [shareGrp, setShareGrp] = useState(1);
   const [gCopied, setGCopied] = useState(false);
   const [holeMap, setHoleMap] = useState<any>(null);
+  const [satView, setSatView] = useState(true); // satellite map vs. the vector diagram
   const [gps, setGps] = useState<{ lat: number; lng: number; acc?: number } | null>(null);
   const [gpsErr, setGpsErr] = useState("");
   const [share, setShare] = useState(false);
@@ -1159,8 +1163,12 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
                 .filter(Boolean) as { lat: number; lng: number; name: string; color: string }[];
               return (
                 <div className="holemap-wrap">
-                  <div className="holemap-head">Hole {hole.num}{hm.par ? ` · Par ${hm.par}` : ""} · {hm.teeToGreenYds} yds tee→green</div>
-                  <HoleMap hole={hm} me={gps} others={groupOthers} weather={weather} shots={shots[hole.num] || []} />
+                  <div className="holemap-head">Hole {hole.num}{hm.par ? ` · Par ${hm.par}` : ""} · {hm.teeToGreenYds} yds tee→green
+                    <button className="hm-toggle" onClick={() => setSatView((v) => !v)}>{satView ? "Diagram" : "Satellite"}</button>
+                  </div>
+                  {satView
+                    ? <Suspense fallback={<div className="holemap-empty"><span className="spin sm" /> Loading satellite…</div>}><HoleMapGL key={hole.num} hole={hm} me={gps} /></Suspense>
+                    : <HoleMap hole={hm} me={gps} others={groupOthers} weather={weather} shots={shots[hole.num] || []} />}
                   <div className="holemap-legend">
                     <span className="lg lg-t">Tee</span><span className="lg lg-f">Fairway</span>
                     <span className="lg lg-r">Rough</span><span className="lg lg-g">Green</span>
