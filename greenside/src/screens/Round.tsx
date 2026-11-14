@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Minus, Plus, Crown, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Trophy, ClipboardList, Copy, Check, X, Home, Settings, MapPin, Users, Share2, MessageCircle, Send, Wallet, Target, Camera } from "lucide-react";
+import { Minus, Plus, Crown, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Trophy, ClipboardList, Copy, Check, X, Home, Settings, MapPin, Users, Share2, MessageCircle, Send, Wallet, Target, Camera, RefreshCw } from "lucide-react";
 import { LogoMark } from "../components/Logo";
 import HoleMap from "../components/HoleMap";
 import { useRound } from "../lib/useRound";
@@ -226,19 +226,27 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
   const [settleOpen, setSettleOpen] = useState(false);
   const [paid, setPaid] = useState<Record<string, boolean>>({});
 
-  // Fetch the OSM hole-map data once, when the round first loads.
-  const hmFetched = useRef(false);
+  // Fetch the OSM hole-map data when the round loads. Keyed on the (stable) course
+  // coordinates — not the whole live state — so a score update doesn't refetch it.
+  // Capped at 24s with an abort so the client can never sit on "Loading…" forever;
+  // "Try again" bumps hmReload to retry on demand.
+  const [hmReload, setHmReload] = useState(0);
+  const hmLat = (state as any)?.lat, hmLng = (state as any)?.lng;
+  const hmN = Array.isArray((state as any)?.course) ? (state as any).course.length : 0;
   useEffect(() => {
-    if (!state || hmFetched.current) return;
-    hmFetched.current = true;
-    const lat = (state as any).lat, lng = (state as any).lng;
-    if (lat == null || lng == null) { setHoleMap({ available: false, counts: null }); return; }
-    const nHoles = Array.isArray((state as any).course) ? (state as any).course.length : 0;
-    fetch(`/api/holemap?lat=${lat}&lng=${lng}&holes=${nHoles}`, { cache: "no-store" })
+    if (!state) return;
+    if (hmLat == null || hmLng == null) { setHoleMap({ available: false, counts: null }); return; }
+    setHoleMap(null);
+    let done = false;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => { if (!done) ctrl.abort(); }, 24000);
+    fetch(`/api/holemap?lat=${hmLat}&lng=${hmLng}&holes=${hmN}`, { cache: "no-store", signal: ctrl.signal })
       .then((r) => r.json())
-      .then(setHoleMap)
-      .catch(() => setHoleMap({ available: false, error: "fetch" }));
-  }, [state]);
+      .then((d) => { done = true; setHoleMap(d); })
+      .catch(() => { done = true; setHoleMap({ available: false, error: "timeout", retry: true }); })
+      .finally(() => clearTimeout(timer));
+    return () => { clearTimeout(timer); ctrl.abort(); };
+  }, [hmLat, hmLng, hmN, hmReload]);
 
   // Current weather at the course, refreshed every 10 min, for the rangefinder "plays like".
   const [weather, setWeather] = useState<any>(null);
@@ -1121,6 +1129,12 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
             <ContestCard />
             {(() => {
               if (holeMap == null) return <div className="holemap-empty"><span className="spin sm" /> Loading the hole map…</div>;
+              if (holeMap.retry) return (
+                <div className="holemap-empty">
+                  Couldn't load the hole map — the map service is slow right now.
+                  <button className="hm-maplink" onClick={() => setHmReload((n) => n + 1)}><RefreshCw size={13} /> Try again</button>
+                </div>
+              );
               if (!holeMap.available) {
                 const c = holeMap.counts;
                 return (
@@ -1128,6 +1142,7 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
                     No hole map for this course yet.
                     {c && (c.greens || c.bunkers || c.water) ? <span className="hm-diag"> (OpenStreetMap has greens and hazards here, but no hole lines to draw from.)</span> : null}
                     <a className="hm-maplink" href="/mapper" target="_blank" rel="noreferrer"><MapPin size={13} /> Map this course once — it saves for everyone</a>
+                    <button className="hm-maplink" onClick={() => setHmReload((n) => n + 1)}><RefreshCw size={13} /> Try again</button>
                   </div>
                 );
               }

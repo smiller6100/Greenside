@@ -7,7 +7,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog, UserProfile, League };
 
-const BUILD = "v92";
+const BUILD = "v93";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -384,7 +384,7 @@ function parseHoleMap(data: any, qLat: number, qLng: number, wantHoles: number) 
   // mapped with greens/tees/fairways but no routing lines, e.g. Songbird Hills). Pairs each green
   // with its back tee; numbers by OSM hole-number tags when present, else a nearest-neighbour walk.
   let synthesized = false;
-  if (!holeWays.length && greens.length >= 3) {
+  try { if (!holeWays.length && greens.length >= 3) {
     const nearT = tees.map((t: any) => { let bg: any = null, bd = 1e12; for (const gr of greens) { const d = hmHav(t.c, gr.c); if (d < bd) { bd = d; bg = gr; } } return { t, g: bg, d: bd }; }).filter((x: any) => x.g && x.d < 360);
     const byGreen = new Map<any, any[]>();
     for (const x of nearT) { const arr = byGreen.get(x.g) || []; arr.push(x); byGreen.set(x.g, arr); }
@@ -412,7 +412,7 @@ function parseHoleMap(data: any, qLat: number, qLng: number, wantHoles: number) 
     }
     holeWays = synth.filter((h) => h.tags.ref);
     synthesized = holeWays.length > 0;
-  }
+  } } catch { synthesized = false; }
 
   // Course boundaries (to isolate ONE course when several are nearby). Ways + relation outers.
   const boundaries: number[][][] = [];
@@ -1057,11 +1057,27 @@ export default {
       // A saved map (hand-mapped, or a persisted OSM success) wins — instant and reliable,
       // no Overpass round-trip. Falls through to the live OSM fetch when there isn't one.
       const ck = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+      // The DO read is capped at 3s: a slow or wedged catalog can never leave the client
+      // stuck on "Loading…" — it just falls through to the live OSM fetch.
+      const withTimeout = (p: Promise<any>, ms: number): Promise<any> =>
+        Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("do-timeout")), ms))]);
       try {
-        const sm: any = await (await catalog(env).fetch(`https://do/getmap?key=${encodeURIComponent(ck)}`)).json();
+        const sm: any = await withTimeout(catalog(env).fetch(`https://do/getmap?key=${encodeURIComponent(ck)}`).then((r) => r.json()), 3000);
         if (sm && sm.found && sm.map && sm.map.available) return Response.json(sm.map);
       } catch { /* fall through to OSM */ }
-      return holeMapFor(lat, lng, wantHoles);
+      // Live OSM fetch. Persist a fresh success to the durable, global catalog so this course
+      // is instant and reliable for everyone from now on — independent of Overpass being up
+      // or the per-colo edge cache being evicted.
+      const resp = await holeMapFor(lat, lng, wantHoles);
+      try {
+        if (resp.ok) {
+          const map: any = await resp.clone().json();
+          if (map && map.available) {
+            ctx.waitUntil(catalog(env).fetch(`https://do/savemap`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ coordkey: ck, name: "osm", map }) }).catch(() => {}));
+          }
+        }
+      } catch { /* non-JSON/read failure — serve what we have */ }
+      return resp;
     }
 
     // Save a Course Mapper export as a course's permanent hole map (admin only).
