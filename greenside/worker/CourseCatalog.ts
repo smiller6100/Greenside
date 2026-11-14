@@ -1,5 +1,13 @@
 /// <reference types="@cloudflare/workers-types" />
 
+// Great-circle distance in meters between two lat/lng points.
+function haversineM(la1: number, ln1: number, la2: number, ln2: number): number {
+  const R = 6371000, d = Math.PI / 180;
+  const dLa = (la2 - la1) * d, dLn = (ln2 - ln1) * d;
+  const x = Math.sin(dLa / 2) ** 2 + Math.cos(la1 * d) * Math.cos(la2 * d) * Math.sin(dLn / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+
 // A single global instance holds every course anyone has confirmed.
 // Each saved card makes the next person's search better.
 export class CourseCatalog implements DurableObject {
@@ -130,6 +138,24 @@ export class CourseCatalog implements DurableObject {
       return Response.json({
         courses: rows.map((r: any) => ({ id: r.id, name: r.name, where: r.where_txt, lat: r.lat, lng: r.lng, saved: true })),
       });
+    }
+
+    // Nearest saved course to a lat/lng (for Quick round — "the course you're standing on").
+    // Returns the closest course within ~2.5 miles, with its holes and tees ready to start.
+    if (url.pathname.endsWith("/near")) {
+      const lat = parseFloat(url.searchParams.get("lat") || "");
+      const lng = parseFloat(url.searchParams.get("lng") || "");
+      if (!isFinite(lat) || !isFinite(lng)) return Response.json({ found: false });
+      const rows = sql.exec("SELECT id,name,where_txt,lat,lng,holes,tees,default_tee FROM courses WHERE lat IS NOT NULL AND lng IS NOT NULL").toArray() as any[];
+      let best: any = null, bestD = Infinity;
+      for (const r of rows) {
+        const d = haversineM(lat, lng, r.lat, r.lng);
+        if (d < bestD) { bestD = d; best = r; }
+      }
+      if (!best || bestD > 4000) return Response.json({ found: false });
+      let tees: any = []; try { tees = best.tees ? JSON.parse(best.tees) : []; } catch {}
+      let holes: any = []; try { holes = JSON.parse(best.holes); } catch {}
+      return Response.json({ found: true, distance: Math.round(bestD), course: { id: best.id, name: best.name, where: best.where_txt, lat: best.lat, lng: best.lng, holes, tees, defaultTee: best.default_tee || null } });
     }
 
     if (url.pathname.endsWith("/get")) {

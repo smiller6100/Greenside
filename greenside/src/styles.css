@@ -199,16 +199,23 @@ body { font-family: 'Libre Franklin', sans-serif; }
 .rs-txt em { font-style: normal; font-size: 12px; color: var(--mut); font-weight: 500; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rs-code { font-family: 'Fraunces', serif; font-weight: 600; font-size: 18px; color: var(--brass); letter-spacing: .08em; flex: none; }
 
-/* Quick round — the one-tap start at the top of the create panel */
-.quickround { display: flex; align-items: center; gap: 12px; width: 100%; padding: 15px 16px; border-radius: 15px; border: none; background: var(--pine); color: #f4f6f5; font: inherit; cursor: pointer; text-align: left; box-shadow: 0 6px 18px rgba(14,42,31,.25); transition: .18s; }
-.quickround:active { transform: translateY(1px); }
-.quickround:disabled { opacity: .6; }
-.quickround > svg { color: var(--gold); flex: none; }
-.qr-txt { display: flex; flex-direction: column; flex: 1; min-width: 0; font-size: 16px; font-weight: 700; line-height: 1.2; }
-.qr-txt em { font-style: normal; font-size: 12.5px; color: rgba(244,246,245,.78); font-weight: 500; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.qr-go { flex: none; font-size: 13px; font-weight: 800; letter-spacing: .04em; background: rgba(255,255,255,.16); border-radius: 999px; padding: 6px 13px; }
-.qr-or { display: flex; align-items: center; gap: 12px; margin: 16px 2px 2px; color: var(--mut); font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
-.qr-or::before, .qr-or::after { content: ""; height: 1px; background: var(--line); flex: 1; }
+/* Quick round panel — GPS-detect the course you're on, pick a tee, go */
+.qloading { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 34px 0 30px; }
+.qfound { display: flex; align-items: center; gap: 11px; padding: 14px 15px; border-radius: 13px; border: 1px solid var(--brass); background: rgba(169,118,15,.09); margin-bottom: 18px; }
+.qfound > svg { color: var(--brass); flex: none; }
+.qf-txt { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.qf-txt b { font-size: 16px; font-weight: 700; color: var(--pine); }
+.qf-txt em { font-style: normal; font-size: 12.5px; color: var(--mut); font-weight: 500; margin-top: 1px; }
+.tees { display: flex; flex-direction: column; gap: 9px; }
+.teebtn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 15px 15px; border-radius: 13px; border: 1.5px solid var(--line); background: var(--card); color: var(--ink); font: inherit; cursor: pointer; text-align: left; transition: .16s; }
+.teebtn:active { transform: translateY(1px); }
+.teebtn:hover { border-color: var(--pine); }
+.teebtn:disabled { opacity: .55; }
+.tb-name { flex: 1; font-size: 16px; font-weight: 700; }
+.tb-yds { font-size: 13px; font-weight: 600; color: var(--mut); font-variant-numeric: tabular-nums; }
+.teebtn > svg { color: var(--brass); flex: none; }
+.qfallback { display: flex; flex-direction: column; gap: 12px; }
+.qactions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 2px; }
 
 /* Recent-player chips — tap to add a usual partner instead of typing */
 .recentchips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 11px; }

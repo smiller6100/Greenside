@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from "react";
-import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw, Trash2, ChevronLeft, Zap } from "lucide-react";
+import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { computeStandings, fmtToPar } from "../lib/golf";
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, GAME_HELP, composeNines, ninesFromHoles } from "../lib/golf";
 
-const VERSION = "v86";
+const VERSION = "v87";
 
 
 
@@ -21,7 +21,7 @@ async function fileToJpeg(file: File, max = 1800, q = 0.85): Promise<Blob> {
 }
 
 export default function Home() {
-  const [mode, setMode] = useState<"create" | "join">("create");
+  const [mode, setMode] = useState<"create" | "quick" | "join">("create");
   const [roundName, setRoundName] = useState("Saturday Round");
   const [nameTouched, setNameTouched] = useState(false);
   const [players, setPlayers] = useState<{ name: string; hcp: string; group: string }[]>([{ name: "", hcp: "12", group: "A" }]);
@@ -46,15 +46,17 @@ export default function Home() {
   const loadMyRounds = () => { try { setMyRounds(JSON.parse(localStorage.getItem("gs:rounds") || "[]")); } catch { setMyRounds([]); } };
   useEffect(() => { loadMyRounds(); }, []);
 
-  // --- Device profile ("remember me"): recent players, last scoring/handicap, last real course ---
-  const quickRef = useRef(false); // true while a Quick round is waiting on the "replace old round?" prompt
+  // --- Device profile ("remember me") + Quick round (the course you're standing on) ---
+  const pendingPayload = useRef<any>(null); // a built Quick payload waiting on the "replace old round?" prompt
   const [recent, setRecent] = useState<{ name: string; hcp: any }[]>([]);
-  const [quickCourse, setQuickCourse] = useState("");
+  type QState = "idle" | "locating" | "found" | "none" | "denied" | "error";
+  const [qState, setQState] = useState<QState>("idle");
+  const [qHit, setQHit] = useState<any>(null); // nearest course the GPS fix resolved to
+  const [qDist, setQDist] = useState(0);
   const loadProfile = (): any => { try { return JSON.parse(localStorage.getItem("gs:profile") || "{}"); } catch { return {}; } };
   useEffect(() => {
     const prof = loadProfile();
     if (Array.isArray(prof.recent)) setRecent(prof.recent);
-    if (prof.course?.name) setQuickCourse(prof.course.name);
     // Prefill so a repeat visit needs no typing: your name + handicap, and last scoring/handicap choices.
     if (prof.recent && prof.recent[0]?.name) setPlayers([{ name: prof.recent[0].name, hcp: String(prof.recent[0].hcp ?? "12"), group: "A" }]);
     if (prof.formats && Object.values(prof.formats).some(Boolean)) setFormats((f) => ({ ...f, ...prof.formats }));
@@ -358,14 +360,14 @@ export default function Home() {
     const named = players.map((p) => p.name.trim()).filter(Boolean);
     if (!outing && !named.length) { setErr("Add at least one player."); return; }
     if (!Object.values(formats).some(Boolean)) { setErr("Pick at least one format."); return; }
-    quickRef.current = false;
+    pendingPayload.current = null;
     if (last.code) { setConfirmNew(true); return; }
     doCreate();
   }
   function deleteOldAndCreate() {
     localStorage.removeItem("gs:lastRound"); localStorage.removeItem("gs:lastRoundName");
     setConfirmNew(false);
-    if (quickRef.current) { quickRef.current = false; doQuick(); } else doCreate();
+    if (pendingPayload.current) { const p = pendingPayload.current; pendingPayload.current = null; submitPayload(p); } else doCreate();
   }
   async function doCreate() {
     setConfirmNew(false); setBusy(true);
@@ -433,32 +435,51 @@ export default function Home() {
     } catch { setErr("Couldn't create the round. Try again."); setBusy(false); }
   }
 
-  // Quick round: one tap, no typing. Solo casual round with your remembered name / course / scoring,
-  // falling back to "You" + the demo Par 72 for a first-time golfer.
-  function doQuick() {
-    setConfirmNew(false); setErr("");
+  // Build a solo casual Quick-round payload. Pass the course to play (GPS-detected, last-played, or
+  // null for the demo Par 72); your remembered name / handicap / scoring fill in the rest.
+  function quickPayload(c: any) {
     const prof = loadProfile();
     const me = (prof.recent && prof.recent[0]) || { name: "You", hcp: 0 };
     const fmts = prof.formats && Object.values(prof.formats).some(Boolean) ? prof.formats : { net: true, gross: true, stableford: false, chicago: false, skins: false };
-    const c = prof.course || null;
     const dateStr = new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" });
-    const payload = {
+    return {
       name: `${c?.name || "Round"} · ${dateStr} · Casual`,
       formats: fmts, games: { wolf: false, nines: false, sixes: false, vegas: false, nassau: false, bbb: false, bestball: false },
       outing: false, roundType: "casual", groupCount: 4, handicapMode: prof.hcpMode || "perHole",
       course: c?.holes && c.holes.length ? c.holes : DEFAULT_COURSE,
       lat: c?.lat ?? null, lng: c?.lng ?? null,
       courseName: c?.name || "", courseWhere: c?.where || "", teeName: c?.teeName || "",
-      tees: c?.tees || null, defaultTee: c?.teeName || "",
+      tees: c?.tees && c.tees.length ? c.tees : null, defaultTee: c?.teeName || "",
       catalogHoles: null, catalogTees: null,
       players: [{ id: "p1", name: String(me.name || "You").trim() || "You", hcp: Math.max(0, Math.min(54, parseInt(me.hcp) || 0)) }],
     };
+  }
+  function startQuick(c: any) {
+    setErr("");
+    const payload = quickPayload(c);
+    if (last.code) { pendingPayload.current = payload; setConfirmNew(true); return; }
     submitPayload(payload);
   }
-  function quickRound() {
-    setErr("");
-    if (last.code) { quickRef.current = true; setConfirmNew(true); return; }
-    doQuick();
+  // Start on a specific tee at the GPS-detected course: the two-click path (slide to Quick → tap a tee).
+  function startQuickTee(hit: any, tee: any) {
+    startQuick({ name: hit.name, where: hit.where, lat: hit.lat, lng: hit.lng, holes: tee?.holes?.length ? tee.holes : hit.holes, tees: hit.tees, teeName: tee?.name || hit.defaultTee || "" });
+  }
+  // Find the course the golfer is standing on. One-time browser location prompt, then nearest match.
+  function locateQuick() {
+    setErr(""); setQHit(null); setQState("locating");
+    if (!navigator.geolocation) { setQState("denied"); return; }
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const r = await fetch(`/api/courses/near?lat=${pos.coords.latitude}&lng=${pos.coords.longitude}`);
+          const d = await r.json();
+          if (d.found && d.course) { setQHit(d.course); setQDist(d.distance || 0); setQState("found"); }
+          else setQState("none");
+        } catch { setQState("error"); }
+      },
+      () => setQState("denied"),
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+    );
   }
   function join() {
     const c = joinCode.trim().toUpperCase();
@@ -486,18 +507,13 @@ export default function Home() {
         )}
 
         <div className="seg big">
-          <button className={`seg-btn ${mode === "create" ? "on" : ""}`} onClick={() => { setMode("create"); setErr(""); }}>Start a round</button>
-          <button className={`seg-btn ${mode === "join" ? "on" : ""}`} onClick={() => { setMode("join"); setErr(""); }}>Join a round</button>
+          <button className={`seg-btn ${mode === "create" ? "on" : ""}`} onClick={() => { setMode("create"); setErr(""); }}>Start</button>
+          <button className={`seg-btn ${mode === "quick" ? "on" : ""}`} onClick={() => { setMode("quick"); setErr(""); if (qState === "idle" || qState === "denied" || qState === "error") locateQuick(); }}>Quick</button>
+          <button className={`seg-btn ${mode === "join" ? "on" : ""}`} onClick={() => { setMode("join"); setErr(""); }}>Join</button>
         </div>
 
         {mode === "create" ? (
           <div className="panel">
-            <button className="quickround" disabled={busy} onClick={quickRound}>
-              <Zap size={18} strokeWidth={2.5} />
-              <span className="qr-txt">Quick round<em>{quickCourse ? `You · ${quickCourse}` : "Just you — keep score now"}</em></span>
-              <span className="qr-go">Start</span>
-            </button>
-            <div className="qr-or"><span>or set it up</span></div>
             <div className="field">
               <span>Course</span>
               {!loaded ? (
@@ -739,6 +755,56 @@ export default function Home() {
               </div>
             )}
           </div>
+        ) : mode === "quick" ? (
+          <div className="panel">
+            {qState === "locating" && (
+              <div className="qloading"><div className="spin" /><p className="hint" style={{ textAlign: "center" }}>Finding the course you're on…</p></div>
+            )}
+
+            {qState === "found" && qHit && (
+              <>
+                <div className="qfound">
+                  <MapPin size={16} />
+                  <div className="qf-txt"><b>You're at {qHit.name}</b><em>{qHit.where || (qDist ? `about ${Math.max(0.1, Math.round(qDist / 160.9) / 10)} mi away` : "")}</em></div>
+                </div>
+                <div className="field">
+                  <span>Which tees?</span>
+                  <div className="tees">
+                    {(qHit.tees && qHit.tees.length ? qHit.tees : [null]).map((t: any, i: number) => (
+                      <button key={i} className="teebtn" disabled={busy} onClick={() => startQuickTee(qHit, t)}>
+                        <span className="tb-name">{t ? t.name : "Start round"}</span>
+                        {t && t.total ? <span className="tb-yds">{t.total.toLocaleString()} yds</span> : <span className="tb-yds">{busy ? "Starting…" : "tap to start"}</span>}
+                        <ChevronRight size={18} />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <button className="linkbtn" onClick={() => setMode("create")}>Not this course? Set it up manually →</button>
+              </>
+            )}
+
+            {(qState === "none" || qState === "denied" || qState === "error") && (
+              <div className="qfallback">
+                <p className="hint left">
+                  {qState === "denied" ? "Location is off, so we can't spot your course. Turn it on and try again — or start one of these now:"
+                    : qState === "none" ? "No saved course near you yet. Scan its scorecard once from Start and it'll be here next time. For now:"
+                    : "Couldn't check your location just now. Try again, or start one of these:"}
+                </p>
+                <div className="tees">
+                  {(() => { const c = loadProfile().course; return c?.name ? (
+                    <button className="teebtn" disabled={busy} onClick={() => startQuick(c)}><span className="tb-name">{c.name}</span><span className="tb-yds">last played</span><ChevronRight size={18} /></button>
+                  ) : null; })()}
+                  <button className="teebtn" disabled={busy} onClick={() => startQuick(null)}><span className="tb-name">Blank round</span><span className="tb-yds">Par 72</span><ChevronRight size={18} /></button>
+                </div>
+                <div className="qactions">
+                  <button className="addp" onClick={locateQuick}><RotateCcw size={15} /> Try location again</button>
+                  <button className="addp" onClick={() => setMode("create")}><Search size={15} /> Search a course</button>
+                </div>
+              </div>
+            )}
+
+            {err && <p className="err">{err}</p>}
+          </div>
         ) : (
           <div className="panel">
             <label className="field">
@@ -756,8 +822,8 @@ export default function Home() {
             <h3>Start a new round?</h3>
             <p>You've still got <strong>{last.name || last.code}</strong> ({last.code}) going. Delete it and start fresh, or keep it?</p>
             <button className="primary" onClick={deleteOldAndCreate}>Delete old round &amp; start new</button>
-            <button className="ghostbtn" onClick={() => { quickRef.current = false; setConfirmNew(false); location.hash = `#/r/${last.code}`; }}>Go back to that round</button>
-            <button className="ghostbtn" onClick={() => { quickRef.current = false; setConfirmNew(false); }}>Cancel</button>
+            <button className="ghostbtn" onClick={() => { pendingPayload.current = null; setConfirmNew(false); location.hash = `#/r/${last.code}`; }}>Go back to that round</button>
+            <button className="ghostbtn" onClick={() => { pendingPayload.current = null; setConfirmNew(false); }}>Cancel</button>
           </div></div>
         )}
 

@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v83";
+const BUILD = "v84";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -574,6 +574,13 @@ export default {
       const seen = new Set(saved.map((c) => c.name.toLowerCase().replace(/[^a-z0-9]/g, "")));
       const merged = [...saved, ...online.filter((c) => !seen.has(c.name.toLowerCase().replace(/[^a-z0-9]/g, "")))].slice(0, 12);
       return Response.json({ courses: merged, unconfigured: !env.GOLF_API_KEY && saved.length === 0 });
+    }
+
+    // ---- Nearest saved course to a GPS fix (Quick round) ----
+    if (path === "/api/courses/near" && request.method === "GET") {
+      const lat = url.searchParams.get("lat") || "", lng = url.searchParams.get("lng") || "";
+      const r = await catalog(env).fetch(`https://do/near?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`);
+      return new Response(r.body, { status: r.status, headers: { "content-type": "application/json" } });
     }
 
     // ---- Course detail ----
