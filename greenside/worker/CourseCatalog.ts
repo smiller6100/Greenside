@@ -89,9 +89,9 @@ export class CourseCatalog implements DurableObject {
     // Fetch a saved hole map by coord key, if one exists.
     if (url.pathname.endsWith("/getmap")) {
       const key = url.searchParams.get("key") || "";
-      const rows = sql.exec("SELECT map FROM holemaps WHERE coordkey = ?", key).toArray();
+      const rows = sql.exec("SELECT map,name FROM holemaps WHERE coordkey = ?", key).toArray();
       if (!rows.length) return Response.json({ found: false });
-      try { return Response.json({ found: true, map: JSON.parse((rows[0] as any).map) }); }
+      try { return Response.json({ found: true, name: (rows[0] as any).name || "", map: JSON.parse((rows[0] as any).map) }); }
       catch { return Response.json({ found: false }); }
     }
 
