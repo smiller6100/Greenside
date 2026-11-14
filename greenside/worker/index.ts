@@ -7,7 +7,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog, UserProfile, League };
 
-const BUILD = "v95";
+const BUILD = "v96";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -32,14 +32,18 @@ async function accountAuth(env: Env, request: Request): Promise<{ id: string; se
 // Produce (and cache) a hole map for a coordinate. Shared by the public route and the admin probe.
 async function holeMapFor(lat: number, lng: number, wantHoles: number): Promise<Response> {
   return cachedJson(`https://cache/holemap/v16/${lat.toFixed(4)},${lng.toFixed(4)},${wantHoles}`, 7 * 86400, async () => {
-    // Full query: everything within 5km (handles sprawling courses) plus nearby water hazards.
-    const qFull = `[out:json][timeout:25];(way["golf"](around:5000,${lat},${lng});relation["golf"](around:5000,${lat},${lng});way["leisure"="golf_course"](around:5000,${lat},${lng});relation["leisure"="golf_course"](around:5000,${lat},${lng});way["natural"="water"](around:2200,${lat},${lng});relation["natural"="water"](around:2200,${lat},${lng}););out geom;`;
-    // Lite query: smaller radius, golf features only, no water. Much lighter, so a loaded free
-    // mirror can still answer it quickly when the full query would time out.
-    const qLite = `[out:json][timeout:25];(way["golf"](around:3500,${lat},${lng});relation["golf"](around:3500,${lat},${lng});way["leisure"="golf_course"](around:3500,${lat},${lng}););out geom;`;
+    // Full query: a course fits well inside 2.5km of its center, so we ask only for that plus
+    // nearby water — ~1/4 the data of the old 5km query, light enough that a busy mirror can
+    // still answer it in a second or two instead of timing out.
+    const qFull = `[out:json][timeout:25];(way["golf"](around:2500,${lat},${lng});relation["golf"](around:2500,${lat},${lng});way["leisure"="golf_course"](around:2500,${lat},${lng});relation["leisure"="golf_course"](around:2500,${lat},${lng});way["natural"="water"](around:2000,${lat},${lng});relation["natural"="water"](around:2000,${lat},${lng}););out geom;`;
+    // Lite query: tighter still, golf features only, no water — the lightest possible ask, used
+    // when the full query is slow or a mirror is loaded.
+    const qLite = `[out:json][timeout:25];(way["golf"](around:1600,${lat},${lng});relation["golf"](around:1600,${lat},${lng});way["leisure"="golf_course"](around:1600,${lat},${lng}););out geom;`;
+    // Community mirrors first (fast, lightly loaded); the busy main de server is the last resort.
     const servers = [
       "https://overpass.private.coffee/api/interpreter",
       "https://overpass.kumi.systems/api/interpreter",
+      "https://overpass.osm.ch/api/interpreter",
       "https://overpass-api.de/api/interpreter",
     ];
     // Hit every mirror at once and take whichever answers first, with a generous 28s cutoff so a
