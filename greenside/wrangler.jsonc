@@ -14,14 +14,16 @@
       { "name": "GOLF_ROUND", "class_name": "GolfRound" },
       { "name": "COURSE_CATALOG", "class_name": "CourseCatalog" },
       { "name": "USER_PROFILE", "class_name": "UserProfile" },
-      { "name": "LEAGUE", "class_name": "League" }
+      { "name": "LEAGUE", "class_name": "League" },
+      { "name": "CUP_EVENT", "class_name": "CupEvent" }
     ]
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["GolfRound"] },
     { "tag": "v2", "new_sqlite_classes": ["CourseCatalog"] },
     { "tag": "v3", "new_sqlite_classes": ["UserProfile"] },
-    { "tag": "v4", "new_sqlite_classes": ["League"] }
+    { "tag": "v4", "new_sqlite_classes": ["League"] },
+    { "tag": "v5", "new_sqlite_classes": ["CupEvent"] }
   ],
   "ai": { "binding": "AI" },
   "observability": { "enabled": true }

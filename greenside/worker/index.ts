@@ -3,11 +3,12 @@ import { GolfRound } from "./GolfRound";
 import { CourseCatalog } from "./CourseCatalog";
 import { UserProfile } from "./UserProfile";
 import { League } from "./League";
+import { CupEvent } from "./CupEvent";
 import type { Env } from "./GolfRound";
 
-export { GolfRound, CourseCatalog, UserProfile, League };
+export { GolfRound, CourseCatalog, UserProfile, League, CupEvent };
 
-const BUILD = "v98";
+const BUILD = "v99";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -1116,6 +1117,21 @@ export default {
       const stub = env.GOLF_ROUND.get(env.GOLF_ROUND.idFromName(spm[1].toUpperCase()));
       if (request.method === "GET") { const r = await stub.fetch("https://do/getsponsors"); return new Response(r.body, { status: r.status, headers: { "content-type": "application/json" } }); }
       if (request.method === "POST") { const r = await stub.fetch("https://do/setsponsors", { method: "POST", headers: { "content-type": "application/json" }, body: await request.text() }); return new Response(r.body, { status: r.status, headers: { "content-type": "application/json" } }); }
+    }
+
+    // ---- Ryder Cup event ----
+    if (path === "/api/cup/create" && request.method === "POST") {
+      const cfg = await request.json<any>().catch(() => ({}));
+      const code = genCode();
+      const adminToken = genCode(20);
+      const stub = env.CUP_EVENT.get(env.CUP_EVENT.idFromName(code));
+      await stub.fetch("https://do/init", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...cfg, code, adminToken }) });
+      return Response.json({ code, adminToken });
+    }
+    const cupM = path.match(/^\/api\/cup\/([A-Za-z0-9]+)(?:\/connect)?$/);
+    if (cupM) {
+      const stub = env.CUP_EVENT.get(env.CUP_EVENT.idFromName(cupM[1].toUpperCase()));
+      return stub.fetch(request);
     }
 
     // ---- A round's live object ----
