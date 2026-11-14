@@ -5,7 +5,7 @@ import { computeStandings, fmtToPar, roundDiffs, estimateHandicap } from "../lib
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, GAME_HELP, composeNines, ninesFromHoles } from "../lib/golf";
 
-const VERSION = "v129";
+const VERSION = "v130";
 
 
 
@@ -532,6 +532,7 @@ export default function Home() {
                 <button onClick={() => { setMenuOpen(false); location.hash = "#/profile"; }}><User size={18} /> {getAccount() ? (getAccount()!.name || "Profile") : "Sign in / Profile"}</button>
                 <button onClick={() => { setMenuOpen(false); location.hash = "#/stats"; }}><BarChart3 size={18} /> My stats</button>
                 <button onClick={() => { setMenuOpen(false); location.hash = "#/leagues"; }}><Trophy size={18} /> Leagues</button>
+                <button onClick={() => { setMenuOpen(false); location.hash = "#/cup"; }}><Flag size={18} /> Ryder Cup</button>
                 <button onClick={() => { setMenuOpen(false); loadMyRounds(); setRoundsOpen(true); }}><ListChecks size={18} /> My rounds{myRounds.length ? <span className="dn-n">{myRounds.length}</span> : null}</button>
                 <div className="drawer-sep">Organizers &amp; courses</div>
                 <button onClick={() => { setMenuOpen(false); location.hash = "#/outing"; }}><Flag size={18} /> Outing dashboard</button>
