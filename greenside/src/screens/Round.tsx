@@ -224,7 +224,7 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
     if (state) { localStorage.setItem("gs:lastRound", code); localStorage.setItem("gs:lastRoundName", state.name || code); }
   }, [state, code]);
 
-  const standings = useMemo(() => (state && view !== "card" ? computeStandings(state, view) : []), [state, view]);
+  const standings = useMemo(() => (state && !["card", "teams", "fieldskins", "contests", "flights"].includes(view) ? computeStandings(state, view) : []), [state, view]);
   const games = useMemo(() => (state ? computeGames(state) : null), [state]);
   const settle = useMemo(() => {
     if (!state) return null;
@@ -276,6 +276,49 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
         </div>
         <p className="foot">{fs.settled === 0 ? "Skins settle as the whole field finishes each hole." : `${fs.settled} hole${fs.settled === 1 ? "" : "s"} settled${fs.carry > 0 ? ` · ${fs.carry} carrying` : ""} · ${useNet ? "net" : "gross"}`}</p>
       </>
+    );
+  };
+
+  const FlightsPanel = () => {
+    const field = state.players.length;
+    if (field < 6) return <p className="foot" style={{ marginTop: 24 }}>Flights kick in with 6+ players — you have {field}. They split the field into divisions by handicap.</p>;
+    const fmt = (["net", "gross", "stableford", "chicago"].find((f) => (state.formats as any)?.[f]) || "net") as string;
+    const fstand = computeStandings(state, fmt);
+    const valOf = (r: any) => {
+      if (fmt === "stableford") return { txt: `${r.points}`, unit: "pts", cls: "" };
+      if (fmt === "chicago") return { txt: `${r.chicago}`, unit: "pts", cls: "" };
+      const tp = fmt === "gross" ? r.toParGross : r.toParNet;
+      return { txt: fmtToPar(tp), unit: "", cls: toParClass(tp) };
+    };
+    const nF = Math.max(2, Math.min(4, Math.ceil(field / 8)));
+    const byHcp = [...state.players].sort((a, b) => (a.hcp || 0) - (b.hcp || 0));
+    const size = Math.ceil(field / nF);
+    const flights: any[][] = [];
+    for (let i = 0; i < nF; i++) { const m = byHcp.slice(i * size, (i + 1) * size); if (m.length) flights.push(m); }
+    const label = (i: number) => String.fromCharCode(65 + i);
+    return (
+      <div className="flights">
+        {flights.map((members, fi) => {
+          const ids = new Set(members.map((p) => p.id));
+          const rows = fstand.filter((s: any) => ids.has(s.id));
+          const hcps = members.map((p) => p.hcp || 0);
+          return (
+            <div className="flight" key={fi}>
+              <div className="flight-h">{label(fi)} Flight <span>hcp {Math.min(...hcps)}–{Math.max(...hcps)}</span></div>
+              <div className="board">
+                {rows.map((r: any, i: number) => { const v = valOf(r); return (
+                  <div key={r.id} className={`row ${i === 0 && r.thru > 0 ? "lead" : ""} ${r.id === me ? "self" : ""}`}>
+                    <div className="pos">{i === 0 && r.thru > 0 ? <Crown size={16} strokeWidth={2.2} /> : i + 1}</div>
+                    <div className="who"><div className="nm">{r.name}{r.id === me && <em>You</em>}</div><div className="mt">Hcp {r.hcp} · Thru {r.thru === 18 ? "F" : r.thru}</div></div>
+                    <div className={`val ${v.cls}`}>{r.thru === 0 ? "–" : v.txt}{r.thru > 0 && v.unit && <span className="unit">{v.unit}</span>}</div>
+                  </div>
+                ); })}
+              </div>
+            </div>
+          );
+        })}
+        <p className="foot">Auto-flighted by handicap · ranked on {FORMAT_LABELS[fmt] || fmt}</p>
+      </div>
     );
   };
 
@@ -843,9 +886,10 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
               {state.outing && <button className={`seg-btn ${view === "teams" ? "on" : ""}`} onClick={() => setView("teams")}>Teams</button>}
               {state.outing && <button className={`seg-btn ${view === "fieldskins" ? "on" : ""}`} onClick={() => setView("fieldskins")}>Skins</button>}
               {state.outing && <button className={`seg-btn ${view === "contests" ? "on" : ""}`} onClick={() => setView("contests")}>Contests</button>}
+              {state.outing && <button className={`seg-btn ${view === "flights" ? "on" : ""}`} onClick={() => setView("flights")}>Flights</button>}
             </div>
 
-            {view === "teams" ? <TeamsPanel /> : view === "fieldskins" ? <FieldSkinsPanel /> : view === "contests" ? <ContestsPanel /> : (
+            {view === "teams" ? <TeamsPanel /> : view === "fieldskins" ? <FieldSkinsPanel /> : view === "contests" ? <ContestsPanel /> : view === "flights" ? <FlightsPanel /> : (
               <>
                 <div className="board">
                   {standings.map((r, i) => {
