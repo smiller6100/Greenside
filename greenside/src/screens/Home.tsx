@@ -4,7 +4,7 @@ import { computeStandings, fmtToPar } from "../lib/golf";
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, GAME_HELP, composeNines, ninesFromHoles } from "../lib/golf";
 
-const VERSION = "v87";
+const VERSION = "v88";
 
 
 
@@ -46,14 +46,41 @@ export default function Home() {
   const loadMyRounds = () => { try { setMyRounds(JSON.parse(localStorage.getItem("gs:rounds") || "[]")); } catch { setMyRounds([]); } };
   useEffect(() => { loadMyRounds(); }, []);
 
-  // --- Device profile ("remember me") + Quick round (the course you're standing on) ---
+  // --- Device profile ("remember me") + GPS course awareness (Quick round + Start suggestions) ---
   const pendingPayload = useRef<any>(null); // a built Quick payload waiting on the "replace old round?" prompt
   const [recent, setRecent] = useState<{ name: string; hcp: any }[]>([]);
   type QState = "idle" | "locating" | "found" | "none" | "denied" | "error";
   const [qState, setQState] = useState<QState>("idle");
-  const [qHit, setQHit] = useState<any>(null); // nearest course the GPS fix resolved to
+  const [qHit, setQHit] = useState<any>(null); // nearest course the GPS fix resolved to (Quick)
   const [qDist, setQDist] = useState(0);
+  const [nearby, setNearby] = useState<CourseHit[]>([]); // closest courses for the Start tab
+  const [nearState, setNearState] = useState<"idle" | "locating" | "ok" | "off">("idle");
+  const posRef = useRef<{ lat: number; lng: number; ts: number } | null>(null);
   const loadProfile = (): any => { try { return JSON.parse(localStorage.getItem("gs:profile") || "{}"); } catch { return {}; } };
+  const miTxt = (m: number) => Math.max(0.1, Math.round(m / 160.9) / 10);
+  // One shared location fix, cached briefly, so Quick and the Start suggestions share a single prompt.
+  function getPos(): Promise<{ lat: number; lng: number }> {
+    return new Promise((resolve, reject) => {
+      const c = posRef.current;
+      if (c && Date.now() - c.ts < 120000) return resolve(c);
+      if (!navigator.geolocation) return reject({ code: 2 });
+      navigator.geolocation.getCurrentPosition(
+        (p) => { const v = { lat: p.coords.latitude, lng: p.coords.longitude, ts: Date.now() }; posRef.current = v; resolve(v); },
+        (e) => reject(e),
+        { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 },
+      );
+    });
+  }
+  async function findNearby() {
+    if (nearState === "locating") return;
+    setNearState("locating");
+    try {
+      const p = await getPos();
+      const r = await fetch(`/api/courses/nearby?lat=${p.lat}&lng=${p.lng}`);
+      const d = await r.json();
+      setNearby(d.courses || []); setNearState("ok");
+    } catch { setNearby([]); setNearState("off"); }
+  }
   useEffect(() => {
     const prof = loadProfile();
     if (Array.isArray(prof.recent)) setRecent(prof.recent);
@@ -61,6 +88,7 @@ export default function Home() {
     if (prof.recent && prof.recent[0]?.name) setPlayers([{ name: prof.recent[0].name, hcp: String(prof.recent[0].hcp ?? "12"), group: "A" }]);
     if (prof.formats && Object.values(prof.formats).some(Boolean)) setFormats((f) => ({ ...f, ...prof.formats }));
     if (prof.hcpMode) setHcpMode(prof.hcpMode);
+    findNearby(); // surface courses near you the moment the app opens
   }, []);
   const deleteMyRound = (code: string) => {
     const next = myRounds.filter((r) => r.code !== code);
@@ -465,21 +493,15 @@ export default function Home() {
     startQuick({ name: hit.name, where: hit.where, lat: hit.lat, lng: hit.lng, holes: tee?.holes?.length ? tee.holes : hit.holes, tees: hit.tees, teeName: tee?.name || hit.defaultTee || "" });
   }
   // Find the course the golfer is standing on. One-time browser location prompt, then nearest match.
-  function locateQuick() {
+  async function locateQuick() {
     setErr(""); setQHit(null); setQState("locating");
-    if (!navigator.geolocation) { setQState("denied"); return; }
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        try {
-          const r = await fetch(`/api/courses/near?lat=${pos.coords.latitude}&lng=${pos.coords.longitude}`);
-          const d = await r.json();
-          if (d.found && d.course) { setQHit(d.course); setQDist(d.distance || 0); setQState("found"); }
-          else setQState("none");
-        } catch { setQState("error"); }
-      },
-      () => setQState("denied"),
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
-    );
+    try {
+      const p = await getPos();
+      const r = await fetch(`/api/courses/near?lat=${p.lat}&lng=${p.lng}`);
+      const d = await r.json();
+      if (d.found && d.course) { setQHit(d.course); setQDist(d.distance || 0); setQState("found"); }
+      else setQState("none");
+    } catch (e: any) { setQState(e && e.code === 1 ? "denied" : "error"); }
   }
   function join() {
     const c = joinCode.trim().toUpperCase();
@@ -531,6 +553,23 @@ export default function Home() {
                     </button>
                   ))}
                   {msg && <div className="srow muted">{msg}</div>}
+                  {!query.trim() && !results.length && (
+                    <div className="nearby">
+                      {nearState === "locating" && <div className="srow muted"><span className="spin sm" /> Finding courses near you…</div>}
+                      {nearState === "ok" && nearby.length > 0 && (
+                        <>
+                          <div className="nearby-h">Near you</div>
+                          {nearby.map((c) => (
+                            <button className="srow" key={c.id} onClick={() => pickCourse(c)}>
+                              <MapPin size={14} />
+                              <span className="sr-name">{c.name}<em>{c.where}{(c as any).distance ? ` · ${miTxt((c as any).distance)} mi` : ""}</em></span>
+                            </button>
+                          ))}
+                        </>
+                      )}
+                      {nearState === "off" && <button className="srow muted nearby-on" onClick={findNearby}><MapPin size={14} /> Turn on location to see courses near you</button>}
+                    </div>
+                  )}
                   <input ref={fileIn} type="file" accept="image/*" onChange={onScan} style={{ display: "none" }} />
                   {!scanChoose ? (
                     <button className="scanbtn" disabled={scanning} onClick={() => setScanChoose(true)}>

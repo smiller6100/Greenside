@@ -158,6 +158,17 @@ export class CourseCatalog implements DurableObject {
       return Response.json({ found: true, distance: Math.round(bestD), course: { id: best.id, name: best.name, where: best.where_txt, lat: best.lat, lng: best.lng, holes, tees, defaultTee: best.default_tee || null } });
     }
 
+    // Nearest saved courses to a lat/lng, sorted by distance (for the Start tab's "near you" list).
+    if (url.pathname.endsWith("/nearby")) {
+      const lat = parseFloat(url.searchParams.get("lat") || "");
+      const lng = parseFloat(url.searchParams.get("lng") || "");
+      const n = Math.min(Math.max(parseInt(url.searchParams.get("n") || "6") || 6, 1), 12);
+      if (!isFinite(lat) || !isFinite(lng)) return Response.json({ courses: [] });
+      const rows = sql.exec("SELECT id,name,where_txt,lat,lng FROM courses WHERE lat IS NOT NULL AND lng IS NOT NULL").toArray() as any[];
+      const withD = rows.map((r) => ({ r, d: haversineM(lat, lng, r.lat, r.lng) })).filter((x) => x.d <= 64000).sort((a, b) => a.d - b.d).slice(0, n);
+      return Response.json({ courses: withD.map(({ r, d }) => ({ id: r.id, name: r.name, where: r.where_txt, lat: r.lat, lng: r.lng, distance: Math.round(d) })) });
+    }
+
     if (url.pathname.endsWith("/get")) {
       const id = url.searchParams.get("id") || "";
       const rows = sql.exec("SELECT * FROM courses WHERE id = ?", id).toArray();

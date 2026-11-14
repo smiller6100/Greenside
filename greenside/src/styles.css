@@ -216,6 +216,11 @@ body { font-family: 'Libre Franklin', sans-serif; }
 .teebtn > svg { color: var(--brass); flex: none; }
 .qfallback { display: flex; flex-direction: column; gap: 12px; }
 .qactions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 2px; }
+/* "Near you" suggestions on the Start tab */
+.nearby { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.nearby-h { font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--mut); margin: 6px 2px 2px; }
+.nearby-on { cursor: pointer; text-align: left; }
+.spin.sm { width: 15px; height: 15px; border-width: 2px; display: inline-block; vertical-align: middle; margin-right: 6px; }
 
 /* Recent-player chips — tap to add a usual partner instead of typing */
 .recentchips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 11px; }

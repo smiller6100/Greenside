@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v84";
+const BUILD = "v85";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -580,6 +580,13 @@ export default {
     if (path === "/api/courses/near" && request.method === "GET") {
       const lat = url.searchParams.get("lat") || "", lng = url.searchParams.get("lng") || "";
       const r = await catalog(env).fetch(`https://do/near?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`);
+      return new Response(r.body, { status: r.status, headers: { "content-type": "application/json" } });
+    }
+
+    // ---- Nearby saved courses, sorted by distance (Start tab suggestions) ----
+    if (path === "/api/courses/nearby" && request.method === "GET") {
+      const lat = url.searchParams.get("lat") || "", lng = url.searchParams.get("lng") || "", n = url.searchParams.get("n") || "6";
+      const r = await catalog(env).fetch(`https://do/nearby?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}&n=${encodeURIComponent(n)}`);
       return new Response(r.body, { status: r.status, headers: { "content-type": "application/json" } });
     }
 
