@@ -1023,12 +1023,16 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
             </div>
             {scView === "card" ? (state.outing && state.teamMode === "scramble" ? <ScrambleCard /> : <FullCard />) : scView === "games" ? <GamesPanel /> : (
               <>
+            {/* When the satellite map is up it carries the hole selector itself; show this header
+                only for the diagram view or while the map is still loading. */}
+            {(!satView || !holeMap?.available) && (<>
             <div className="holehead">
               <button className="nav" disabled={holeIdx === 0} onClick={() => setHoleIdx((i) => Math.max(0, i - 1))}><ChevronLeft size={20} /></button>
               <div className="holemid"><div className="hnum">Hole {hole.num}</div><div className="hmeta">Par {hole.par} · {hole.yards} yds · SI {hole.si}</div></div>
               <button className="nav" disabled={holeIdx === course.length - 1} onClick={() => setHoleIdx((i) => Math.min(course.length - 1, i + 1))}><ChevronRight size={20} /></button>
             </div>
             <div className="prog"><span style={{ width: `${((holeIdx + 1) / course.length) * 100}%` }} /></div>
+            </>)}
             {state.outing && groups.length > 1 && (
               <div className="grpswitch">
                 {groups.map((gname) => (
@@ -1072,61 +1076,56 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
             <div className="statline">
               <button className={`statstoggle ${trackStats ? "on" : ""}`} onClick={toggleStats}>{trackStats ? "Tracking fairways & putts" : "Track fairways & putts"}</button>
             </div>
-            <div className={`holescore ${trackStats && me ? "withtrack" : ""}`}>
-              {trackStats && me && (() => {
-                const stc = (state.stats?.[me] || {})[hole.num] || {};
-                const firV = stc.fir as boolean | undefined;
-                const puttsV = stc.putts as number | undefined;
-                const myVal = (state.scores[me] || {})[hole.num];
-                const gir = myVal != null && puttsV != null ? myVal - puttsV <= hole.par - 2 : null;
+            <div className="cards">
+              {state.players.filter((p) => !state.outing || (p.group || "1") === effGrp).map((p) => {
+                const rec = useHcp ? strokesOn(p.hcp, hole.si) : 0;
+                const val = (state.scores[p.id] || {})[hole.num];
+                const rel = val != null ? val - hole.par : null;
+                const sc = state.scores[p.id] || {};
+                const ppPlayed = course.filter((h) => sc[h.num] != null);
+                const toPar = ppPlayed.reduce((s, h) => s + (sc[h.num] - h.par), 0);
                 return (
-                  <div className="hs-track">
-                    <div className="hs-hdr">This hole</div>
-                    {hole.par >= 4 && (
-                      <div className="hs-stat">
-                        <span className="stat-lbl">Fairway</span>
-                        <div className="hs-btns">
-                          <button className={`fwb ${firV === true ? "hit" : ""}`} onClick={() => sendStat(me, hole.num, "fir", firV === true ? null : true)} aria-label="fairway hit"><Check size={15} strokeWidth={3} /></button>
-                          <button className={`fwb ${firV === false ? "miss" : ""}`} onClick={() => sendStat(me, hole.num, "fir", firV === false ? null : false)} aria-label="fairway miss"><X size={15} strokeWidth={3} /></button>
-                        </div>
-                      </div>
-                    )}
-                    <div className="hs-stat">
-                      <span className="stat-lbl">Putts</span>
-                      <div className="hs-btns">
-                        <button className="pbtn" onClick={() => { if (puttsV == null) return; const n = puttsV - 1; sendStat(me, hole.num, "putts", n < 0 ? null : n); }} aria-label="putts minus"><Minus size={15} strokeWidth={2.6} /></button>
-                        <span className="pnum">{puttsV ?? "–"}</span>
-                        <button className="pbtn" onClick={() => sendStat(me, hole.num, "putts", Math.min(10, (puttsV ?? 0) + 1))} aria-label="putts plus"><Plus size={15} strokeWidth={2.6} /></button>
-                      </div>
+                  <div key={p.id} className={`pcard ${p.id === me ? "self" : ""}`}>
+                    <div className="pinfo"><div className="pn">{p.name}{p.id === me && <em>You</em>}
+                      {ppPlayed.length > 0 && (
+                        <span className={`tpar ${toParClass(toPar)}`}>
+                          {toPar > 0 ? <ChevronUp size={13} strokeWidth={2.8} /> : toPar < 0 ? <ChevronDown size={13} strokeWidth={2.8} /> : null}
+                          {fmtToPar(toPar)}
+                        </span>
+                      )}</div>
+                      <div className="dots">{Array.from({ length: rec }).map((_, k) => <i key={k} />)}<span className="ph">{rec ? `${rec} stroke${rec > 1 ? "s" : ""}` : (useHcp ? "scratch here" : "gross")}</span></div></div>
+                    <div className="stepper">
+                      <button onClick={() => adjust(p.id, -1)} aria-label="minus"><Minus size={18} strokeWidth={2.4} /></button>
+                      <button className={`num ${val != null ? scoreTone(rel as number) : ""}`} onClick={() => setPar(p.id)}><span className={val == null ? "ghost" : ""}>{val ?? hole.par}</span>{rel != null && <small className={toParClass(rel)}>{fmtToPar(rel)}</small>}</button>
+                      <button onClick={() => adjust(p.id, 1)} aria-label="plus"><Plus size={18} strokeWidth={2.4} /></button>
                     </div>
-                    {gir != null && <span className={`girb ${gir ? "on" : ""}`}>GIR</span>}
+                    {trackStats && (() => {
+                      const stc = (state.stats?.[p.id] || {})[hole.num] || {};
+                      const firV = stc.fir as boolean | undefined;
+                      const puttsV = stc.putts as number | undefined;
+                      const gir = val != null && puttsV != null ? val - puttsV <= hole.par - 2 : null;
+                      return (
+                        <div className="statstrip">
+                          {hole.par >= 4 && (
+                            <div className="statgrp">
+                              <span className="stat-lbl">FW</span>
+                              <button className={`fwb ${firV === true ? "hit" : ""}`} onClick={() => sendStat(p.id, hole.num, "fir", firV === true ? null : true)} aria-label="fairway hit"><Check size={13} strokeWidth={3} /></button>
+                              <button className={`fwb ${firV === false ? "miss" : ""}`} onClick={() => sendStat(p.id, hole.num, "fir", firV === false ? null : false)} aria-label="fairway miss"><X size={13} strokeWidth={3} /></button>
+                            </div>
+                          )}
+                          <div className="statgrp">
+                            <span className="stat-lbl">Putts</span>
+                            <button className="pbtn" onClick={() => { if (puttsV == null) return; const n = puttsV - 1; sendStat(p.id, hole.num, "putts", n < 0 ? null : n); }} aria-label="putts minus"><Minus size={13} strokeWidth={2.6} /></button>
+                            <span className="pnum">{puttsV ?? "–"}</span>
+                            <button className="pbtn" onClick={() => sendStat(p.id, hole.num, "putts", Math.min(10, (puttsV ?? 0) + 1))} aria-label="putts plus"><Plus size={13} strokeWidth={2.6} /></button>
+                          </div>
+                          {gir != null && <span className={`girb ${gir ? "on" : ""}`}>GIR</span>}
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
-              })()}
-              <div className="hs-scores">
-                {state.players.filter((p) => !state.outing || (p.group || "1") === effGrp).map((p) => {
-                  const rec = useHcp ? strokesOn(p.hcp, hole.si) : 0;
-                  const val = (state.scores[p.id] || {})[hole.num];
-                  const rel = val != null ? val - hole.par : null;
-                  const sc = state.scores[p.id] || {};
-                  const ppPlayed = course.filter((h) => sc[h.num] != null);
-                  const toPar = ppPlayed.reduce((s, h) => s + (sc[h.num] - h.par), 0);
-                  return (
-                    <div key={p.id} className={`hs-prow ${p.id === me ? "self" : ""}`}>
-                      <div className="hs-pn"><span className="hs-nm">{p.name}{p.id === me && <em>You</em>}</span>
-                        {ppPlayed.length > 0
-                          ? <span className={`tpar ${toParClass(toPar)}`}>{fmtToPar(toPar)}</span>
-                          : rec ? <span className="hs-strokes">{rec} stroke{rec > 1 ? "s" : ""}</span> : null}
-                      </div>
-                      <div className="stepper sm">
-                        <button onClick={() => adjust(p.id, -1)} aria-label="minus"><Minus size={17} strokeWidth={2.4} /></button>
-                        <button className={`num ${val != null ? scoreTone(rel as number) : ""}`} onClick={() => setPar(p.id)}><span className={val == null ? "ghost" : ""}>{val ?? hole.par}</span>{rel != null && <small className={toParClass(rel)}>{fmtToPar(rel)}</small>}</button>
-                        <button onClick={() => adjust(p.id, 1)} aria-label="plus"><Plus size={17} strokeWidth={2.4} /></button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              })}
             </div>
             </>
             )}
@@ -1167,16 +1166,28 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
                   return { lat: (p as any).lat, lng: (p as any).lng, name: state.players[pi].name.split(" ")[0], color: GROUP_COLORS[pi % GROUP_COLORS.length] };
                 })
                 .filter(Boolean) as { lat: number; lng: number; name: string; color: string }[];
+              // Group scores for the on-map right rail (you first, then the rest of your group).
+              const glPlayers = state.players
+                .filter((p) => !state.outing || (p.group || "1") === effGrp)
+                .map((p) => {
+                  const sc = state.scores[p.id] || {};
+                  const ppPlayed = course.filter((h) => sc[h.num] != null);
+                  const toPar = ppPlayed.reduce((s, h) => s + (sc[h.num] - h.par), 0);
+                  return { id: p.id, name: p.name, isMe: p.id === me, val: sc[hole.num] ?? null, toParTxt: ppPlayed.length > 0 ? fmtToPar(toPar) : "", toParCls: toParClass(toPar) };
+                })
+                .sort((a, b) => (a.isMe ? -1 : 0) - (b.isMe ? -1 : 0));
+              const myHcp = state.players.find((p: any) => p.id === me)?.hcp ?? 0;
+              const myStats = me ? (state.stats?.[me]?.[hole.num] || {}) : {};
               return (
                 <div className="holemap-wrap">
                   <button className="hm-toggle-float" onClick={() => setSatView((v) => !v)}>{satView ? "Diagram" : "Satellite"}</button>
                   {satView
                     ? <Suspense fallback={<div className="holemap-empty"><span className="spin sm" /> Loading satellite…</div>}><HoleMapGL key={hole.num} hole={hm} me={gps}
-                        par={hole.par}
-                        score={me ? ((state.scores[me] || {})[hole.num] ?? null) : null}
-                        onDec={me ? () => adjust(me, -1) : undefined}
-                        onInc={me ? () => adjust(me, 1) : undefined}
-                        onSetPar={me ? () => setPar(me) : undefined} /></Suspense>
+                        nav={{ num: hole.num, par: hole.par, yards: hole.yards, si: hole.si, onPrev: () => setHoleIdx((i) => Math.max(0, i - 1)), onNext: () => setHoleIdx((i) => Math.min(course.length - 1, i + 1)), canPrev: holeIdx > 0, canNext: holeIdx < course.length - 1 }}
+                        track={me ? { on: trackStats, strokes: useHcp ? strokesOn(myHcp, hole.si) : 0, fir: (myStats.fir ?? null) as boolean | null, onFir: (v) => sendStat(me, hole.num, "fir", v), putts: (myStats.putts ?? null) as number | null, onPutts: (v) => sendStat(me, hole.num, "putts", v) } : undefined}
+                        players={glPlayers}
+                        onAdjust={(id, d) => adjust(id, d)}
+                        onScorePar={(id) => setPar(id)} /></Suspense>
                     : <HoleMap hole={hm} me={gps} others={groupOthers} weather={weather} shots={shots[hole.num] || []} />}
                   <div className="holemap-legend">
                     <span className="lg lg-t">Tee</span><span className="lg lg-f">Fairway</span>

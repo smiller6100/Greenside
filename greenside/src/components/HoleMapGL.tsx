@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Minus, Plus } from "lucide-react";
+import { Minus, Plus, Check, X, ChevronLeft, ChevronRight } from "lucide-react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import distance from "@turf/distance";
@@ -33,10 +33,15 @@ function initialBearing(a: LL, b: LL): number {
   return (Math.atan2(y, x) * toD + 360) % 360;
 }
 
-export default function HoleMapGL({ hole, me, par, score, onDec, onInc, onSetPar }: {
+type PlayerScore = { id: string; name: string; isMe: boolean; val: number | null; toParTxt: string; toParCls: string };
+
+export default function HoleMapGL({ hole, me, nav, track, players, onAdjust, onScorePar }: {
   hole: Hole; me?: { lat: number; lng: number; acc?: number } | null;
-  par?: number | null; score?: number | null;
-  onDec?: () => void; onInc?: () => void; onSetPar?: () => void;
+  nav?: { num: number; par: number; yards: number; si: number; onPrev: () => void; onNext: () => void; canPrev: boolean; canNext: boolean };
+  track?: { on: boolean; strokes: number; fir?: boolean | null; onFir: (v: boolean | null) => void; putts?: number | null; onPutts: (v: number | null) => void };
+  players?: PlayerScore[];
+  onAdjust?: (id: string, d: number) => void;
+  onScorePar?: (id: string) => void;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -158,24 +163,67 @@ export default function HoleMapGL({ hole, me, par, score, onDec, onInc, onSetPar
   // Only surface the target readout once the golfer has actually dragged it off the green.
   const showTarget = target != null && targetToGreen != null && targetToGreen > 12;
 
+  const par = nav?.par ?? hole.par ?? null;
+
   return (
     <div className="glmap">
       <div ref={wrapRef} className="glmap-canvas" />
-      {/* Distances hug the left edge (over the rough), clear of the playing corridor. */}
-      <div className="glmap-fcb">
-        <div className="fcb-row"><b>{gd.back}</b><span>back</span></div>
-        <div className="fcb-row hi"><b>{gd.center}</b><span>center</span></div>
-        <div className="fcb-row"><b>{gd.front}</b><span>front</span></div>
-        <div className="fcb-from">yds {me ? "from you" : "from tee"}</div>
-      </div>
-      {/* Score control hugs the right edge. */}
-      {onInc && onDec && (
-        <div className="glmap-scorecol">
-          <button onClick={onInc} aria-label="score up"><Plus size={18} strokeWidth={2.6} /></button>
-          <button className="gs-num" onClick={onSetPar}><span className={score == null ? "ghost" : ""}>{score ?? par ?? "–"}</span></button>
-          <button onClick={onDec} aria-label="score down"><Minus size={18} strokeWidth={2.6} /></button>
+
+      {/* Hole selector + par/yards/SI across the top. */}
+      {nav && (
+        <div className="glmap-top">
+          <button className="gm-navbtn" disabled={!nav.canPrev} onClick={nav.onPrev} aria-label="previous hole"><ChevronLeft size={20} /></button>
+          <div className="gm-navmid"><b>Hole {nav.num}</b><span>Par {nav.par} · {nav.yards} yds · SI {nav.si}</span></div>
+          <button className="gm-navbtn" disabled={!nav.canNext} onClick={nav.onNext} aria-label="next hole"><ChevronRight size={20} /></button>
         </div>
       )}
+
+      {/* LEFT: distances, then (when tracking) strokes, fairway, putts. */}
+      <div className="glmap-left">
+        <div className="glmap-fcb">
+          <div className="fcb-row"><b>{gd.back}</b><span>back</span></div>
+          <div className="fcb-row hi"><b>{gd.center}</b><span>center</span></div>
+          <div className="fcb-row"><b>{gd.front}</b><span>front</span></div>
+          <div className="fcb-from">yds {me ? "from you" : "from tee"}</div>
+        </div>
+        {track?.on && (
+          <div className="glmap-track">
+            {track.strokes > 0 && <div className="gm-strokes">{track.strokes} stroke{track.strokes > 1 ? "s" : ""}</div>}
+            {par != null && par >= 4 && (
+              <div className="gm-trow"><span>FW</span>
+                <button className={`fwb ${track.fir === true ? "hit" : ""}`} onClick={() => track.onFir(track.fir === true ? null : true)} aria-label="fairway hit"><Check size={14} strokeWidth={3} /></button>
+                <button className={`fwb ${track.fir === false ? "miss" : ""}`} onClick={() => track.onFir(track.fir === false ? null : false)} aria-label="fairway miss"><X size={14} strokeWidth={3} /></button>
+              </div>
+            )}
+            <div className="gm-trow"><span>Putts</span>
+              <button className="pbtn" onClick={() => { if (track.putts == null) return; const n = (track.putts as number) - 1; track.onPutts(n < 0 ? null : n); }} aria-label="putts minus"><Minus size={14} strokeWidth={2.6} /></button>
+              <span className="pnum">{track.putts ?? "–"}</span>
+              <button className="pbtn" onClick={() => track.onPutts(Math.min(10, (track.putts ?? 0) + 1))} aria-label="putts plus"><Plus size={14} strokeWidth={2.6} /></button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* RIGHT: your score, then the rest of your group. */}
+      {players && players.length > 0 && (
+        <div className="glmap-right">
+          {players.map((p) => {
+            const rel = p.val != null && par != null ? p.val - par : null;
+            const relCls = rel == null ? "" : rel < 0 ? "under" : rel > 0 ? "over" : "even";
+            return (
+              <div key={p.id} className={`gm-score ${p.isMe ? "self" : ""}`}>
+                <div className="gm-sname">{p.isMe ? "You" : p.name.split(" ")[0]}{p.toParTxt ? <i className={p.toParCls}>{p.toParTxt}</i> : null}</div>
+                <div className="gm-sstep">
+                  <button onClick={() => onAdjust?.(p.id, 1)} aria-label="score up"><Plus size={16} strokeWidth={2.6} /></button>
+                  <button className="gm-snum" onClick={() => onScorePar?.(p.id)}><span className={p.val == null ? "ghost" : ""}>{p.val ?? par ?? "–"}</span>{rel != null && <small className={relCls}>{rel === 0 ? "E" : rel > 0 ? `+${rel}` : rel}</small>}</button>
+                  <button onClick={() => onAdjust?.(p.id, -1)} aria-label="score down"><Minus size={16} strokeWidth={2.6} /></button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {showTarget && <div className="glmap-tgt"><b>{toTarget}</b> yds<small>{targetToGreen} to green</small></div>}
     </div>
   );
