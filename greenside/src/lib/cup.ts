@@ -144,7 +144,9 @@ export function computeMatch(m: MatchInput): MatchResult {
   else statusShort = up === 0 ? `All square · thru ${holesPlayed}` : `${leader} ${curLead} UP · thru ${holesPlayed}`;
 
   const points = final ? (winner === "A" ? { A: 1, B: 0 } : winner === "B" ? { A: 0, B: 1 } : { A: 0.5, B: 0.5 }) : { A: 0, B: 0 };
-  const projected = final ? points : up > 0 ? { A: 1, B: 0 } : up < 0 ? { A: 0, B: 1 } : { A: 0.5, B: 0.5 };
+  // Projection reflects only matches that are actually under way: a match nobody has teed off in
+  // contributes nothing (so the board doesn't read "projected 1.5–1.5" before the first tee shot).
+  const projected = final ? points : !holesPlayed ? { A: 0, B: 0 } : up > 0 ? { A: 1, B: 0 } : up < 0 ? { A: 0, B: 1 } : { A: 0.5, B: 0.5 };
 
   return { holesPlayed, holesTotal: n, up, leader, decided, final, dormie, label, statusShort, points, projected, holeResults };
 }
