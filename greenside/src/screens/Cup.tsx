@@ -32,14 +32,94 @@ const DEMO_COURSE = {
 function wsUrl(code: string) { return (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/api/cup/" + code; }
 function parseCup(): string | null { const m = location.hash.match(/#\/cup\/([A-Za-z0-9]+)/); return m ? m[1].toUpperCase() : null; }
 
+type MyCup = { code: string; name: string };
+function getMyCups(): MyCup[] { try { return JSON.parse(localStorage.getItem("gs:cups") || "[]"); } catch { return []; } }
+function addMyCup(code: string, name: string) {
+  try { const list = getMyCups().filter((c) => c.code !== code); list.unshift({ code, name }); localStorage.setItem("gs:cups", JSON.stringify(list.slice(0, 40))); } catch { /* */ }
+}
+function forgetMyCup(code: string) { try { localStorage.setItem("gs:cups", JSON.stringify(getMyCups().filter((c) => c.code !== code))); } catch { /* */ } }
+
+// Current team totals for a Cup state (banked), plus whether every match is final.
+function scoreCup(state: any): { a: number; b: number; matches: number; allDone: boolean } {
+  const course = state.course || DEMO_COURSE;
+  const pars: number[] = course.holes.map((h: any) => h.par);
+  const sis: number[] = course.holes.map((h: any) => h.si);
+  const byId: Record<string, any> = Object.fromEntries((state.roster || []).map((p: any) => [p.id, p]));
+  const results = (state.matches || []).map((mt: any) => {
+    const sideA = mt.sideA.map((id: string) => ({ id, hcp: byId[id]?.hcp || 0 }));
+    const sideB = mt.sideB.map((id: string) => ({ id, hcp: byId[id]?.hcp || 0 }));
+    const gross: Record<string, (number | null)[]> = {};
+    if (isTeamBall(mt.format)) { gross["A"] = mt.scores["A"] || []; gross["B"] = mt.scores["B"] || []; }
+    else for (const id of [...mt.sideA, ...mt.sideB]) gross[id] = mt.scores[id] || [];
+    return computeMatch({ format: mt.format, method: state.method, sideA, sideB, gross, course: { pars, sis } });
+  });
+  const t = cupTotals(results);
+  return { a: t.banked.A, b: t.banked.B, matches: results.length, allDone: results.length > 0 && results.every((r) => r.final) };
+}
+
 export default function Cup() {
   const [code, setCode] = useState<string | null>(parseCup());
   useEffect(() => { const on = () => setCode(parseCup()); window.addEventListener("hashchange", on); return () => window.removeEventListener("hashchange", on); }, []);
-  return code ? <CupBoard code={code} /> : <CupCreate />;
+  return code ? <CupBoard code={code} /> : <CupHome />;
+}
+
+/* ------------------------------------------------------------------ Home list */
+function CupHome() {
+  const [cups, setCups] = useState<any[] | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [joinCode, setJoinCode] = useState("");
+  useEffect(() => {
+    const mine = getMyCups();
+    if (!mine.length) { setCups([]); return; }
+    Promise.all(mine.map(async (c) => {
+      try { const r = await fetch("/api/cup/" + c.code); if (!r.ok) return { code: c.code, name: c.name, gone: true }; const s = await r.json(); return { code: c.code, name: s.name, teams: s.teams, score: scoreCup(s) }; }
+      catch { return { code: c.code, name: c.name, offline: true }; }
+    })).then(setCups);
+  }, []);
+
+  if (creating) return <CupCreate onBack={() => setCreating(false)} />;
+
+  return (
+    <div className="gs"><div className="frame home">
+      <header className="dash-head"><button className="backbtn" onClick={() => { location.hash = ""; }}><ChevronLeft size={20} /></button><h2>Ryder Cup</h2><span /></header>
+      <div className="panel">
+        <button className="primary" onClick={() => setCreating(true)}><Trophy size={16} style={{ marginRight: 6, verticalAlign: "-3px" }} /> Create a new Cup</button>
+        <div className="pf-coderow" style={{ marginTop: 10 }}>
+          <input className="dash-pw" style={{ margin: 0 }} value={joinCode} onChange={(e) => setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))} placeholder="Join with a Cup code" maxLength={6} />
+          <button className="primary pf-codebtn" disabled={joinCode.length < 4} onClick={() => { location.hash = "#/cup/" + joinCode; }}><ChevronRight size={16} /></button>
+        </div>
+
+        {cups === null ? <p className="hint" style={{ textAlign: "center", marginTop: 18 }}><span className="spin sm" /> Loading your cups…</p> : cups.length === 0 ? (
+          <p className="hint" style={{ textAlign: "center", marginTop: 18 }}>No cups yet. Create one for your next guys' trip, or join with a code.</p>
+        ) : (
+          <div className="cuphome-list">
+            <div className="cup-sub" style={{ marginTop: 18 }}><Trophy size={14} /> My cups</div>
+            {cups.map((c) => (
+              <button key={c.code} className="cuphome-item" onClick={() => { location.hash = "#/cup/" + c.code; }}>
+                <div className="chi-main">
+                  <b>{c.name}</b>
+                  {c.gone ? <span className="chi-sub">no longer available</span>
+                    : c.offline ? <span className="chi-sub">offline — tap to open</span>
+                    : c.score.matches === 0 ? <span className="chi-sub">setup · {c.code}</span>
+                    : <span className="chi-sub">{c.teams.A.name} {fmtPts(c.score.a)} – {fmtPts(c.score.b)} {c.teams.B.name}{c.score.allDone ? " · final" : ""}</span>}
+                </div>
+                {!c.gone && !c.offline && c.score.matches > 0 && (
+                  <span className="chi-badge" style={{ background: c.score.allDone ? (c.score.a > c.score.b ? c.teams.A.color : c.score.b > c.score.a ? c.teams.B.color : "#6b7280") : "#fff4d6", color: c.score.allDone ? "#fff" : "#7a5a00" }}>
+                    {c.score.allDone ? (c.score.a > c.score.b ? "A wins" : c.score.b > c.score.a ? "B wins" : "Tied") : "Live"}
+                  </span>
+                )}
+                {c.gone && <span className="chi-x" onClick={(e) => { e.stopPropagation(); forgetMyCup(c.code); setCups((cs) => (cs || []).filter((x) => x.code !== c.code)); }}><X size={14} /></span>}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div></div>
+  );
 }
 
 /* ------------------------------------------------------------------ Create / Join */
-function CupCreate() {
+function CupCreate({ onBack }: { onBack?: () => void }) {
   const [name, setName] = useState("");
   const [teamA, setTeamA] = useState("Team USA");
   const [teamB, setTeamB] = useState("Team Europe");
@@ -57,13 +137,13 @@ function CupCreate() {
         body: JSON.stringify({ name: name.trim() || "Ryder Cup", method, teams: { A: { name: teamA.trim() || "Team A", color: colorA }, B: { name: teamB.trim() || "Team B", color: colorB } }, course: DEMO_COURSE }),
       });
       const d = await r.json();
-      if (d.code) { try { localStorage.setItem("gs:cup:" + d.code + ":token", d.adminToken); } catch { /* */ } location.hash = "#/cup/" + d.code; }
+      if (d.code) { try { localStorage.setItem("gs:cup:" + d.code + ":token", d.adminToken); } catch { /* */ } addMyCup(d.code, name.trim() || "Ryder Cup"); location.hash = "#/cup/" + d.code; }
     } finally { setBusy(false); }
   };
 
   return (
     <div className="gs"><div className="frame home">
-      <header className="dash-head"><button className="backbtn" onClick={() => { location.hash = ""; }}><ChevronLeft size={20} /></button><h2>Ryder Cup</h2><span /></header>
+      <header className="dash-head"><button className="backbtn" onClick={() => { onBack ? onBack() : (location.hash = ""); }}><ChevronLeft size={20} /></button><h2>New Cup</h2><span /></header>
       <div className="panel">
         <p className="cup-intro"><Trophy size={15} /> A team match-play event for a guys' golf weekend — sessions of Four-Ball, Foursomes and Singles, live match status, and a running Cup scoreboard.</p>
 
@@ -127,6 +207,9 @@ function CupBoard({ code }: { code: string }) {
   }, [code]);
 
   const send = (obj: any) => { try { wsRef.current?.send(JSON.stringify({ ...obj, token: token.current || undefined })); } catch { /* */ } };
+
+  // Remember any Cup I open so it lists on the Ryder Cup home.
+  useEffect(() => { if (state?.name) addMyCup(code, state.name); }, [code, state?.name]);
 
   // Who am I in this Cup — a roster entry I registered by joining with the code.
   const meId = useRef<string>("");

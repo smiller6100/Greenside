@@ -1267,3 +1267,10 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .cup-join p { font-size: 12px; color: var(--mut); margin: 4px 0 9px; }
 .cup-waiting { text-align: center; font-size: 12px; color: var(--mut); background: rgba(184,134,11,.08); border-radius: 10px; padding: 8px; margin: 0 0 10px; }
 .cup-waiting b { color: var(--ink); }
+.cuphome-list { display: flex; flex-direction: column; gap: 7px; }
+.cuphome-item { display: flex; align-items: center; gap: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 11px 13px; cursor: pointer; font: inherit; text-align: left; width: 100%; }
+.chi-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.chi-main b { font-size: 15px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chi-sub { font-size: 12px; color: var(--mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chi-badge { flex: 0 0 auto; font-size: 11px; font-weight: 800; padding: 4px 9px; border-radius: 8px; }
+.chi-x { flex: 0 0 auto; color: var(--mut); display: flex; padding: 4px; }
