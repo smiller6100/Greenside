@@ -5,7 +5,7 @@ import { computeStandings, fmtToPar, roundDiffs, estimateHandicap } from "../lib
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, GAME_HELP, composeNines, ninesFromHoles } from "../lib/golf";
 
-const VERSION = "v104";
+const VERSION = "v105";
 
 
 
@@ -57,6 +57,7 @@ export default function Home() {
   const [qDist, setQDist] = useState(0);
   const [nearby, setNearby] = useState<CourseHit[]>([]); // closest courses for the Start tab
   const [nearState, setNearState] = useState<"idle" | "locating" | "ok" | "off">("idle");
+  const [searchOpen, setSearchOpen] = useState(false); // only surface nearby courses after tapping search
   const [autoHcp, setAutoHcp] = useState<number | null>(null); // estimated handicap from round history
   const posRef = useRef<{ lat: number; lng: number; ts: number } | null>(null);
   const loadProfile = (): any => { try { return JSON.parse(localStorage.getItem("gs:profile") || "{}"); } catch { return {}; } };
@@ -94,7 +95,6 @@ export default function Home() {
     if (prof.recent && prof.recent[0]?.name) setPlayers([{ name: prof.recent[0].name, hcp: String(auto ?? prof.recent[0].hcp ?? "12"), group: "A" }]);
     if (prof.formats && Object.values(prof.formats).some(Boolean)) setFormats((f) => ({ ...f, ...prof.formats }));
     if (prof.hcpMode) setHcpMode(prof.hcpMode);
-    findNearby(); // surface courses near you the moment the app opens
     if (getAccount()) syncDown().then((d) => { if (d) loadMyRounds(); }); // pull cloud rounds if signed in
   }, []);
   const deleteMyRound = (code: string) => {
@@ -569,7 +569,7 @@ export default function Home() {
                 <>
                   <div className="searchbox">
                     <Search size={16} className="si" />
-                    <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search for a course…" />
+                    <input value={query} onChange={(e) => setQuery(e.target.value)} onFocus={() => { setSearchOpen(true); if (nearState === "idle") findNearby(); }} placeholder="Search for a course…" />
                   </div>
                   {searching && <div className="srow muted">Searching…</div>}
                   {results.map((c) => (
@@ -580,7 +580,7 @@ export default function Home() {
                     </button>
                   ))}
                   {msg && <div className="srow muted">{msg}</div>}
-                  {!query.trim() && !results.length && (
+                  {searchOpen && !query.trim() && !results.length && (
                     <div className="nearby">
                       {nearState === "locating" && <div className="srow muted"><span className="spin sm" /> Finding courses near you…</div>}
                       {nearState === "ok" && nearby.length > 0 && (
@@ -706,15 +706,6 @@ export default function Home() {
                   )}
                 </>
               )}
-            </div>
-
-            <div className="field">
-              <span>Format of play</span>
-              <div className="seg sub">
-                <button className={`seg-btn ${roundType === "casual" ? "on" : ""}`} onClick={() => chooseType("casual")}>Casual</button>
-                <button className={`seg-btn ${roundType === "league" ? "on" : ""}`} onClick={() => chooseType("league")}>League</button>
-              </div>
-              {outing && <p className="hint">One outing code, and each foursome gets its own join link — Group 1, Group 2, and so on, up to 36. Players open their link, type their name, and they're on that team. You'll get the links to share the moment you create it.</p>}
             </div>
 
             {!outing && (

@@ -1120,13 +1120,14 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
             )}
             <ContestCard />
             {(() => {
-              if (holeMap == null) return null; // still loading
+              if (holeMap == null) return <div className="holemap-empty"><span className="spin sm" /> Loading the hole map…</div>;
               if (!holeMap.available) {
                 const c = holeMap.counts;
                 return (
                   <div className="holemap-empty">
                     No hole map for this course yet.
-                    {c && (c.greens || c.bunkers || c.water) ? <span className="hm-diag"> (OSM has {c.greens} greens, {c.bunkers} bunkers, {c.water} water — but no hole lines to map)</span> : null}
+                    {c && (c.greens || c.bunkers || c.water) ? <span className="hm-diag"> (OpenStreetMap has greens and hazards here, but no hole lines to draw from.)</span> : null}
+                    <a className="hm-maplink" href="/mapper" target="_blank" rel="noreferrer"><MapPin size={13} /> Map this course once — it saves for everyone</a>
                   </div>
                 );
               }

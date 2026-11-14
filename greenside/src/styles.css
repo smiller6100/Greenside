@@ -1041,3 +1041,8 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .spm-item b { color: var(--ink); }
 .spm-item span { color: var(--mut); flex: 1; }
 .spm-item button { border: none; background: none; color: var(--mut); cursor: pointer; padding: 2px; }
+
+/* Hole map empty/loading helpers */
+.holemap-empty { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.hm-maplink { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; color: var(--pine); font-weight: 700; font-size: 13px; text-decoration: none; border: 1px solid var(--line); background: var(--card); padding: 9px 15px; border-radius: 999px; }
+.hm-maplink svg { color: var(--brass); }
