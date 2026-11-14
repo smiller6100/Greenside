@@ -155,23 +155,28 @@ export default function HoleMapGL({ hole, me, par, score, onDec, onInc, onSetPar
   const toTarget = target ? yds(originLL, target) : null;
   const targetToGreen = target ? yds(target, greenCLL) : null;
 
+  // Only surface the target readout once the golfer has actually dragged it off the green.
+  const showTarget = target != null && targetToGreen != null && targetToGreen > 12;
+
   return (
     <div className="glmap">
       <div ref={wrapRef} className="glmap-canvas" />
-      <div className="glmap-dist">
-        <div className="gd-fcb"><span>{gd.front}</span><span className="gd-c">{gd.center}</span><span>{gd.back}</span></div>
-        <div className="gd-lbl">front · center · back · yds {me ? "from you" : "from tee"}</div>
+      {/* Distances hug the left edge (over the rough), clear of the playing corridor. */}
+      <div className="glmap-fcb">
+        <div className="fcb-row"><b>{gd.back}</b><span>back</span></div>
+        <div className="fcb-row hi"><b>{gd.center}</b><span>center</span></div>
+        <div className="fcb-row"><b>{gd.front}</b><span>front</span></div>
+        <div className="fcb-from">yds {me ? "from you" : "from tee"}</div>
       </div>
-      <div className="glmap-bottom">
-        {onInc && onDec && (
-          <div className="glmap-score">
-            <button onClick={onDec} aria-label="score down"><Minus size={18} strokeWidth={2.6} /></button>
-            <button className="gs-num" onClick={onSetPar}><span className={score == null ? "ghost" : ""}>{score ?? par ?? "–"}</span></button>
-            <button onClick={onInc} aria-label="score up"><Plus size={18} strokeWidth={2.6} /></button>
-          </div>
-        )}
-        {target && <div className="glmap-tgt"><b>{toTarget}</b> yds<small>{targetToGreen} to green</small></div>}
-      </div>
+      {/* Score control hugs the right edge. */}
+      {onInc && onDec && (
+        <div className="glmap-scorecol">
+          <button onClick={onInc} aria-label="score up"><Plus size={18} strokeWidth={2.6} /></button>
+          <button className="gs-num" onClick={onSetPar}><span className={score == null ? "ghost" : ""}>{score ?? par ?? "–"}</span></button>
+          <button onClick={onDec} aria-label="score down"><Minus size={18} strokeWidth={2.6} /></button>
+        </div>
+      )}
+      {showTarget && <div className="glmap-tgt"><b>{toTarget}</b> yds<small>{targetToGreen} to green</small></div>}
     </div>
   );
 }
