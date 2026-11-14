@@ -1078,13 +1078,15 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .fcb-from { font-size: 9px; opacity: 0.7; margin-top: 3px; letter-spacing: 0.02em; }
 .glmap-track { pointer-events: auto; background: rgba(20,30,22,0.80); backdrop-filter: blur(4px); color: #fff; border-radius: 12px; padding: 7px 9px; display: flex; flex-direction: column; gap: 6px; width: max-content; }
 .gm-strokes { font-size: 11px; opacity: 0.85; font-weight: 600; }
-.gm-trow { display: flex; align-items: center; gap: 6px; }
-.gm-trow > span { font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; opacity: 0.75; min-width: 42px; }
-.glmap-track .fwb { width: 30px; height: 30px; border-radius: 9px; border: 1.5px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.08); color: #fff; }
+.gm-trow { display: flex; align-items: center; gap: 5px; }
+.gm-trow > span { font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; opacity: 0.75; min-width: 40px; }
+.glmap-track .fwb { width: 28px; height: 28px; border-radius: 8px; border: 1.5px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.08); color: #fff; }
 .glmap-track .fwb.hit { background: #2ecc71; border-color: #2ecc71; color: #10351f; }
 .glmap-track .fwb.miss { background: #e5563f; border-color: #e5563f; color: #fff; }
-.glmap-track .pbtn { width: 30px; height: 30px; border-radius: 9px; background: rgba(255,255,255,0.10); color: #fff; }
-.glmap-track .pnum { min-width: 14px; text-align: center; color: #fff; font-weight: 700; font-size: 15px; }
+.glmap-track .pbtn { width: 28px; height: 28px; border-radius: 8px; background: rgba(255,255,255,0.10); color: #fff; }
+/* Empty collapses so the −/+ sit tight; a logged number gets just enough room. */
+.glmap-track .pnum { min-width: 0; padding: 0 2px; text-align: center; color: #fff; font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; }
+.glmap-track .pnum:not(:empty) { padding: 0 5px; }
 
 /* RIGHT rail: your score, then the rest of your group. */
 .glmap-right { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); z-index: 3; display: flex; flex-direction: column; gap: 6px; pointer-events: auto; max-width: 46%; }
