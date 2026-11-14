@@ -5,10 +5,19 @@ import type { Green, GroupDot } from "./CourseMap";
 
 // Clubhouse command-center map: the whole course on satellite imagery, framed to its extent, with
 // a faint numbered marker per green and a live colored dot per group (updated every poll). North-up.
-export default function CourseMapGL({ center, greens, groups }: {
+// [lat,lon] -> [lon,lat], closing the ring for a valid GeoJSON polygon.
+const toLL = (p: number[]): [number, number] => [p[1], p[0]];
+const ring = (poly: number[][]): [number, number][] => {
+  const r = poly.map(toLL);
+  if (r.length && (r[0][0] !== r[r.length - 1][0] || r[0][1] !== r[r.length - 1][1])) r.push(r[0]);
+  return r;
+};
+
+export default function CourseMapGL({ center, greens, groups, holes }: {
   center: { lat: number; lng: number };
   greens: Green[];
   groups: GroupDot[];
+  holes?: any[];
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -44,6 +53,27 @@ export default function CourseMapGL({ center, greens, groups }: {
     return () => { map.remove(); mapRef.current = null; greenMarks.current = []; groupMarks.current.clear(); framed.current = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Fairway + green outlines over the busy satellite, so the holes read clearly.
+  useEffect(() => {
+    const map = mapRef.current; if (!map) return;
+    const build = () => {
+      ["cmh-fw-fill", "cmh-fw-line", "cmh-gr-fill", "cmh-gr-line"].forEach((id) => { if (map.getLayer(id)) map.removeLayer(id); });
+      if (map.getSource("holes")) map.removeSource("holes");
+      const feats: any[] = [];
+      (holes || []).forEach((h: any) => {
+        (h.fairways || []).forEach((poly: number[][]) => feats.push({ type: "Feature", properties: { k: "fw" }, geometry: { type: "Polygon", coordinates: [ring(poly)] } }));
+        if (h.green) feats.push({ type: "Feature", properties: { k: "gr" }, geometry: { type: "Polygon", coordinates: [ring(h.green)] } });
+      });
+      if (!feats.length) return;
+      map.addSource("holes", { type: "geojson", data: { type: "FeatureCollection", features: feats } });
+      map.addLayer({ id: "cmh-fw-fill", type: "fill", source: "holes", filter: ["==", ["get", "k"], "fw"], paint: { "fill-color": "#8ed081", "fill-opacity": 0.32 } });
+      map.addLayer({ id: "cmh-fw-line", type: "line", source: "holes", filter: ["==", ["get", "k"], "fw"], paint: { "line-color": "#eafff0", "line-width": 1.4, "line-opacity": 0.85 } });
+      map.addLayer({ id: "cmh-gr-fill", type: "fill", source: "holes", filter: ["==", ["get", "k"], "gr"], paint: { "fill-color": "#2ecc71", "fill-opacity": 0.5 } });
+      map.addLayer({ id: "cmh-gr-line", type: "line", source: "holes", filter: ["==", ["get", "k"], "gr"], paint: { "line-color": "#eafff0", "line-width": 1.2, "line-opacity": 0.9 } });
+    };
+    if (map.loaded()) build(); else map.once("load", build);
+  }, [holes]);
 
   // Green markers + frame the course once the hole map arrives.
   useEffect(() => {

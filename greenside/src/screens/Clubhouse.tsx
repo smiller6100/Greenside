@@ -25,6 +25,7 @@ export default function Clubhouse() {
 
   const [rounds, setRounds] = useState<any[]>([]);
   const [greens, setGreens] = useState<Green[]>([]);
+  const [holesGeo, setHolesGeo] = useState<any[]>([]);
   const [holePos, setHolePos] = useState<Record<number, { tee: number[]; green: number[] }>>({});
   const [updated, setUpdated] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -73,8 +74,8 @@ export default function Clubhouse() {
       holes.forEach((h: any) => {
         if (h.ref && Array.isArray(h.tee) && Array.isArray(h.greenC)) pos[h.ref] = { tee: h.tee, green: h.greenC };
       });
-      setGreens(gs); setHolePos(pos);
-    } catch { setGreens([]); setHolePos({}); }
+      setGreens(gs); setHolePos(pos); setHolesGeo(holes);
+    } catch { setGreens([]); setHolePos({}); setHolesGeo([]); }
   };
 
   const pickCourse = async (hit: any) => {
@@ -199,7 +200,7 @@ export default function Clubhouse() {
             <div className="dash-meta">
               <div className="dm-title">{course.name}</div>
               <div className="dm-sub">{course.where}{updated ? ` · updated ${new Date(updated).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""}</div>
-              <button className="linkbtn" style={{ marginTop: 6 }} onClick={() => { setCourse(null); courseRef.current = null; setRounds([]); setGreens([]); setCQuery(""); }}>← Change course</button>
+              <button className="linkbtn" style={{ marginTop: 6 }} onClick={() => { setCourse(null); courseRef.current = null; setRounds([]); setGreens([]); setHolesGeo([]); setHolePos({}); setCQuery(""); }}>← Change course</button>
             </div>
 
             <div className="ch-tiles">
@@ -210,7 +211,7 @@ export default function Clubhouse() {
 
             <div className="ch-map">
               <Suspense fallback={<div className="cm-gl-load"><span className="spin sm" /> Loading course map…</div>}>
-                <CourseMapGL center={{ lat: course.lat, lng: course.lng }} greens={greens} groups={dots} />
+                <CourseMapGL center={{ lat: course.lat, lng: course.lng }} greens={greens} groups={dots} holes={holesGeo} />
               </Suspense>
               {dots.length === 0 && <p className="hint" style={{ textAlign: "center", marginTop: 6 }}>{greens.length === 0 ? "This course has no saved hole map yet, so groups can't be placed on it. Open a round here once to build it." : "No groups out on the course right now."}</p>}
             </div>
