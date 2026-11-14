@@ -182,37 +182,41 @@ export default function HoleMapGL({ hole, me, nav, track, players, onAdjust, onS
         </div>
       )}
 
-      {/* LEFT: distances, then (when tracking) strokes, fairway, putts. */}
-      <div className="glmap-left">
-        <div className="glmap-fcb">
-          <div className="fcb-row"><b>{gd.back}</b><span>back</span></div>
-          <div className="fcb-row hi"><b>{gd.center}</b><span>center</span></div>
-          <div className="fcb-row"><b>{gd.front}</b><span>front</span></div>
-          <div className="fcb-from">yds {me ? "from you" : "from tee"}</div>
+      {/* LEFT: one caddie panel — distances, tracking, score, cleanly sectioned. */}
+      <div className="glmap-panel">
+        <div className="gp-dist">
+          <div className="dist-row"><span>Back</span><b>{gd.back}</b></div>
+          <div className="dist-row hi"><span>Center</span><b>{gd.center}</b></div>
+          <div className="dist-row"><span>Front</span><b>{gd.front}</b></div>
+          <div className="dist-cap">yards {me ? "from you" : "from tee"}</div>
         </div>
         {track?.on && (
-          <div className="glmap-track">
-            {track.strokes > 0 && <div className="gm-strokes">{track.strokes} stroke{track.strokes > 1 ? "s" : ""}</div>}
+          <div className="gp-sec">
+            {track.strokes > 0 && <div className="gp-strokes">{track.strokes} handicap stroke{track.strokes > 1 ? "s" : ""}</div>}
             {par != null && par >= 4 && (
-              <div className="gm-trow"><span>FW</span>
-                <button className={`fwb ${track.fir === true ? "hit" : ""}`} onClick={() => track.onFir(track.fir === true ? null : true)} aria-label="fairway hit"><Check size={14} strokeWidth={3} /></button>
-                <button className={`fwb ${track.fir === false ? "miss" : ""}`} onClick={() => track.onFir(track.fir === false ? null : false)} aria-label="fairway miss"><X size={14} strokeWidth={3} /></button>
+              <div className="gp-row"><span className="gp-lbl">Fairway</span>
+                <div className="gp-ctrl">
+                  <button className={`fwb ${track.fir === true ? "hit" : ""}`} onClick={() => track.onFir(track.fir === true ? null : true)} aria-label="fairway hit"><Check size={15} strokeWidth={3} /></button>
+                  <button className={`fwb ${track.fir === false ? "miss" : ""}`} onClick={() => track.onFir(track.fir === false ? null : false)} aria-label="fairway miss"><X size={15} strokeWidth={3} /></button>
+                </div>
               </div>
             )}
-            <div className="gm-trow"><span>Putts</span>
-              <button className="pbtn" onClick={() => { if (track.putts == null) return; const n = (track.putts as number) - 1; track.onPutts(n < 0 ? null : n); }} aria-label="putts minus"><Minus size={14} strokeWidth={2.6} /></button>
-              <span className="pnum">{track.putts ?? ""}</span>
-              <button className="pbtn" onClick={() => track.onPutts(Math.min(10, (track.putts ?? 0) + 1))} aria-label="putts plus"><Plus size={14} strokeWidth={2.6} /></button>
+            <div className="gp-row"><span className="gp-lbl">Putts</span>
+              <div className="gp-ctrl">
+                <button className="pbtn" onClick={() => { if (track.putts == null) return; const n = (track.putts as number) - 1; track.onPutts(n < 0 ? null : n); }} aria-label="putts minus"><Minus size={15} strokeWidth={2.6} /></button>
+                <span className="pnum">{track.putts ?? ""}</span>
+                <button className="pbtn" onClick={() => track.onPutts(Math.min(10, (track.putts ?? 0) + 1))} aria-label="putts plus"><Plus size={15} strokeWidth={2.6} /></button>
+              </div>
             </div>
           </div>
         )}
-        {/* Your score for THIS hole (+/-). */}
         {myP && (
-          <div className="glmap-holescore">
-            <span className="ghs-lbl">Score</span>
-            <button className="ghs-b" onClick={() => onAdjust?.(myP.id, -1)} aria-label="score down"><Minus size={16} strokeWidth={2.6} /></button>
-            <button className="ghs-num" onClick={() => onScorePar?.(myP.id)}><b className={myP.val == null ? "ghost" : ""}>{myP.val ?? par ?? "–"}</b>{myRel != null && <small className={myRelCls}>{myRelTxt}</small>}</button>
-            <button className="ghs-b" onClick={() => onAdjust?.(myP.id, 1)} aria-label="score up"><Plus size={16} strokeWidth={2.6} /></button>
+          <div className="gp-sec gp-row gp-scorerow"><span className="gp-lbl">Score</span>
+            <div className="gp-ctrl">
+              <button className="ghs-b" onClick={() => onAdjust?.(myP.id, -1)} aria-label="score down"><Minus size={16} strokeWidth={2.6} /></button>
+              <button className="ghs-num" onClick={() => onScorePar?.(myP.id)}><b className={myP.val == null ? "ghost" : ""}>{myP.val ?? par ?? "–"}</b>{myRel != null && <small className={myRelCls}>{myRelTxt}</small>}</button>
+              <button className="ghs-b" onClick={() => onAdjust?.(myP.id, 1)} aria-label="score up"><Plus size={16} strokeWidth={2.6} /></button>
+            </div>
           </div>
         )}
       </div>

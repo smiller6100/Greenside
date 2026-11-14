@@ -1064,38 +1064,36 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .gm-navmid b { font-size: 14px; font-weight: 800; }
 .gm-navmid span { font-size: 10px; opacity: 0.82; white-space: nowrap; }
 
-/* LEFT rail: distances, then the tracking panel. */
-.glmap-left { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); z-index: 3; display: flex; flex-direction: column; gap: 6px; max-width: 44%; align-items: flex-start; }
-.glmap-fcb {
-  display: flex; flex-direction: column; gap: 2px; pointer-events: none;
-  background: rgba(20,30,22,0.70); backdrop-filter: blur(4px); color: #fff;
-  border-radius: 12px; padding: 8px 10px;
+/* LEFT: one caddie panel, cleanly sectioned (distances · tracking · score). */
+.glmap-panel {
+  position: absolute; left: 10px; top: 50%; transform: translateY(-50%); z-index: 3;
+  pointer-events: auto; width: max-content; max-width: 48%;
+  background: rgba(16,24,18,0.82); backdrop-filter: blur(7px); color: #fff;
+  border-radius: 16px; overflow: hidden; box-shadow: 0 6px 20px rgba(0,0,0,0.32);
 }
-.fcb-row { display: flex; align-items: baseline; gap: 6px; }
-.fcb-row b { font-size: 18px; font-weight: 700; line-height: 1.05; min-width: 36px; }
-.fcb-row span { font-size: 10px; opacity: 0.75; }
-.fcb-row.hi b { font-size: 25px; color: #ffd60a; }
-.fcb-from { font-size: 9px; opacity: 0.7; margin-top: 3px; letter-spacing: 0.02em; }
-.glmap-track { pointer-events: auto; background: rgba(20,30,22,0.80); backdrop-filter: blur(4px); color: #fff; border-radius: 12px; padding: 7px 9px; display: flex; flex-direction: column; gap: 6px; width: max-content; }
-.gm-strokes { font-size: 11px; opacity: 0.85; font-weight: 600; }
-.gm-trow { display: flex; align-items: center; gap: 5px; }
-.gm-trow > span { font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; opacity: 0.75; min-width: 40px; }
-.glmap-track .fwb { width: 28px; height: 28px; border-radius: 8px; border: 1.5px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.08); color: #fff; }
-.glmap-track .fwb.hit { background: #2ecc71; border-color: #2ecc71; color: #10351f; }
-.glmap-track .fwb.miss { background: #e5563f; border-color: #e5563f; color: #fff; }
-.glmap-track .pbtn { width: 28px; height: 28px; border-radius: 8px; background: rgba(255,255,255,0.10); color: #fff; }
-/* Empty collapses so the −/+ sit tight; a logged number gets just enough room. */
-.glmap-track .pnum { min-width: 0; padding: 0 2px; text-align: center; color: #fff; font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; }
-.glmap-track .pnum:not(:empty) { padding: 0 5px; }
-
-/* Your hole-score stepper, on the LEFT with everything else. */
-.glmap-holescore { pointer-events: auto; background: rgba(20,30,22,0.82); backdrop-filter: blur(4px); color: #fff; border-radius: 12px; padding: 4px 8px; display: flex; align-items: center; gap: 5px; }
-.ghs-lbl { font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; opacity: 0.75; min-width: 40px; }
-.ghs-b { width: 32px; height: 36px; border: none; background: rgba(255,255,255,0.10); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 9px; }
-.ghs-b:active { background: rgba(255,255,255,0.2); }
+.gp-dist { padding: 11px 13px 9px; display: flex; flex-direction: column; gap: 3px; min-width: 132px; }
+.dist-row { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+.dist-row > span { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: rgba(255,255,255,0.52); }
+.dist-row > b { font-size: 21px; font-weight: 700; line-height: 1.12; font-variant-numeric: tabular-nums; color: rgba(255,255,255,0.92); }
+.dist-row.hi > b { color: #ffd60a; font-size: 25px; font-weight: 800; }
+.dist-cap { font-size: 9px; color: rgba(255,255,255,0.48); letter-spacing: .04em; margin-top: 4px; }
+.gp-sec { padding: 9px 13px; border-top: 1px solid rgba(255,255,255,0.10); display: flex; flex-direction: column; gap: 8px; }
+.gp-strokes { font-size: 10.5px; color: rgba(255,255,255,0.78); font-weight: 600; }
+.gp-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.gp-lbl { font-size: 10px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: rgba(255,255,255,0.58); }
+.gp-ctrl { display: flex; align-items: center; gap: 6px; }
+.glmap-panel .fwb { width: 30px; height: 30px; border-radius: 8px; border: 1.5px solid rgba(255,255,255,0.22); background: rgba(255,255,255,0.07); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.glmap-panel .fwb.hit { background: #2ecc71; border-color: #2ecc71; color: #0c3320; }
+.glmap-panel .fwb.miss { background: #e5563f; border-color: #e5563f; color: #fff; }
+.glmap-panel .pbtn { width: 30px; height: 30px; border-radius: 8px; background: rgba(255,255,255,0.09); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.glmap-panel .pbtn:active, .ghs-b:active { background: rgba(255,255,255,0.2); }
+.glmap-panel .pnum { min-width: 0; padding: 0 2px; text-align: center; color: #fff; font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; }
+.glmap-panel .pnum:not(:empty) { padding: 0 6px; }
+.gp-scorerow .gp-ctrl { gap: 5px; }
+.ghs-b { width: 32px; height: 34px; border: none; background: rgba(255,255,255,0.09); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 8px; }
 .ghs-num { border: none; background: transparent; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; cursor: pointer; min-width: 26px; padding: 0; }
-.ghs-num b { font-size: 24px; font-weight: 800; } .ghs-num b.ghost { opacity: 0.5; }
-.ghs-num small { font-size: 9px; font-weight: 700; margin-top: 1px; }
+.ghs-num b { font-size: 23px; font-weight: 800; } .ghs-num b.ghost { opacity: 0.5; }
+.ghs-num small { font-size: 9px; font-weight: 700; margin-top: 2px; }
 
 /* RIGHT rail: running total (to par), you first. */
 .glmap-right { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); z-index: 3; display: flex; flex-direction: column; gap: 5px; pointer-events: auto; max-width: 46%; align-items: flex-end; }
