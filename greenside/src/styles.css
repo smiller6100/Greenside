@@ -1002,3 +1002,24 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .pf-cardrounds { display: flex; flex-direction: column; gap: 5px; margin: 6px 0 12px; }
 .pf-cr { display: flex; justify-content: space-between; font-size: 14px; padding: 7px 0; border-bottom: 1px solid rgba(15,58,40,.07); }
 .pf-cr em { font-style: normal; color: var(--mut); font-size: 12.5px; }
+
+/* Leagues */
+.leaguesubmit { display: inline-flex; align-items: center; gap: 7px; margin: 2px 0 12px; border: 1px solid var(--brass); background: rgba(169,118,15,.09); color: var(--pine); font: inherit; font-size: 13px; font-weight: 700; padding: 9px 14px; border-radius: 999px; cursor: pointer; }
+.leaguesubmit svg { color: var(--brass); }
+.lg-list { display: flex; flex-direction: column; gap: 7px; }
+.lg-item { display: flex; align-items: center; gap: 11px; border: 1px solid var(--line); background: var(--card); border-radius: 12px; padding: 13px 14px; font: inherit; cursor: pointer; text-align: left; }
+.lg-item svg { color: var(--brass); flex: none; }
+.lg-item-nm { flex: 1; display: flex; flex-direction: column; font-weight: 700; color: var(--ink); font-size: 15px; }
+.lg-item-nm em { font-style: normal; font-size: 12px; color: var(--mut); font-weight: 600; letter-spacing: .06em; }
+.lg-codebar { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--mut); margin-bottom: 14px; }
+.lg-codebar b { font-family: 'Fraunces', serif; font-size: 18px; letter-spacing: .14em; color: var(--brass); }
+.lg-table { display: flex; flex-direction: column; }
+.lg-th, .lg-tr { display: grid; grid-template-columns: 28px 1fr 44px 40px 48px; align-items: center; gap: 6px; padding: 9px 4px; }
+.lg-th { font-size: 10.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--mut); border-bottom: 1px solid var(--line); }
+.lg-tr { border-bottom: 1px solid rgba(15,58,40,.07); }
+.lg-tr.lead { background: rgba(169,118,15,.07); border-radius: 8px; }
+.lg-pos { text-align: center; font-weight: 800; color: var(--mut); display: flex; justify-content: center; }
+.lg-pos svg { color: var(--brass); }
+.lg-nm { font-weight: 700; color: var(--ink); }
+.lg-pts { text-align: right; font-weight: 800; color: var(--pine); font-variant-numeric: tabular-nums; }
+.lg-rd, .lg-avg { text-align: right; font-weight: 600; color: var(--mut); font-variant-numeric: tabular-nums; font-size: 13px; }

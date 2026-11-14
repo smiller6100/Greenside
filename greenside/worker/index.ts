@@ -2,11 +2,12 @@
 import { GolfRound } from "./GolfRound";
 import { CourseCatalog } from "./CourseCatalog";
 import { UserProfile } from "./UserProfile";
+import { League } from "./League";
 import type { Env } from "./GolfRound";
 
-export { GolfRound, CourseCatalog, UserProfile };
+export { GolfRound, CourseCatalog, UserProfile, League };
 
-const BUILD = "v89";
+const BUILD = "v90";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -974,6 +975,27 @@ export default {
       const a = await accountAuth(env, request); if (!a) return new Response("Unauthorized", { status: 401 });
       const r = await env.USER_PROFILE.get(env.USER_PROFILE.idFromName(fcm[1])).fetch("https://do/card");
       return new Response(r.body, { status: r.status, headers: { "content-type": "application/json" } });
+    }
+
+    // ---- Leagues (standing competitions, season standings) ----
+    if (path === "/api/league/create" && request.method === "POST") {
+      const b = await request.json<any>().catch(() => ({}));
+      const code = genCode(5), adminSecret = genCode(16);
+      await env.LEAGUE.get(env.LEAGUE.idFromName(code)).fetch("https://do/create", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: String(b.name || "League"), code, adminSecret }) });
+      return Response.json({ ok: true, code, adminSecret });
+    }
+    const lm = path.match(/^\/api\/league\/([A-Za-z0-9]+)\/(join|submit|standings|info)$/);
+    if (lm) {
+      const stub = env.LEAGUE.get(env.LEAGUE.idFromName(lm[1]));
+      const action = lm[2];
+      if ((action === "standings" || action === "info") && request.method === "GET") {
+        const r = await stub.fetch(`https://do/${action}`);
+        return new Response(r.body, { status: r.status, headers: { "content-type": "application/json" } });
+      }
+      if ((action === "join" || action === "submit") && request.method === "POST") {
+        const r = await stub.fetch(`https://do/${action}`, { method: "POST", headers: { "content-type": "application/json" }, body: await request.text() });
+        return new Response(r.body, { status: r.status, headers: { "content-type": "application/json" } });
+      }
     }
 
     // ---- Current weather at the course (Open-Meteo, no key) for rangefinder "plays like" ----

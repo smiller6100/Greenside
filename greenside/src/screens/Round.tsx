@@ -4,6 +4,7 @@ import { LogoMark } from "../components/Logo";
 import HoleMap from "../components/HoleMap";
 import { useRound } from "../lib/useRound";
 import { pushRound } from "../lib/account";
+import { getLeagues, submitToLeague } from "../lib/leagues";
 import { computeStandings, computeGames, computeTeams, computeFieldSkins, strokesOn, toParClass, fmtToPar, holesUp, sixesSegs, scoreTone, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, computeMoney, netFromGames, settleUp } from "../lib/golf";
 
 const FORMAT_LABELS: Record<string, string> = { net: "Net", gross: "Gross", stableford: "Stableford", chicago: "Chicago", skins: "Skins", card: "Full card", games: "Games", teams: "Teams" };
@@ -35,6 +36,17 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
   const [shotsOpen, setShotsOpen] = useState(false);
   const [contestVal, setContestVal] = useState("");
   const lastCloudPush = useRef(0);
+  const [leagueSheet, setLeagueSheet] = useState(false);
+  const [leagueMsg, setLeagueMsg] = useState("");
+  const submitLeague = async (code: string) => {
+    const net = computeStandings(state, "net").filter((s: any) => s.thru > 0);
+    const entries = net.map((s: any) => ({ name: s.name, netToPar: s.toParNet, gross: s.gross }));
+    if (!entries.length) { setLeagueMsg("No scores to submit yet."); return; }
+    setLeagueMsg("Submitting…");
+    const matched = await submitToLeague(code, code, Date.now(), entries);
+    setLeagueMsg(matched >= 0 ? `Submitted — ${matched} member${matched === 1 ? "" : "s"} matched by name.` : "Couldn't submit. Try again.");
+    setTimeout(() => { setLeagueSheet(false); setLeagueMsg(""); }, 1800);
+  };
   const saveShots = (s: Record<number, any[]>) => { try { localStorage.setItem(`gs:shots:${code}`, JSON.stringify(s)); } catch { /* */ } };
   const markShot = (teePos: number[] | null) => {
     if (!gps) return;
@@ -934,6 +946,10 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
               {state.outing && <button className={`seg-btn ${view === "results" ? "on" : ""}`} onClick={() => setView("results")}>Results</button>}
             </div>
 
+            {getLeagues().length > 0 && totalThru > 0 && (
+              <button className="leaguesubmit" onClick={() => setLeagueSheet(true)}><Trophy size={15} /> Submit to league</button>
+            )}
+
             {view === "teams" ? <TeamsPanel /> : view === "fieldskins" ? <FieldSkinsPanel /> : view === "contests" ? <ContestsPanel /> : view === "flights" ? <FlightsPanel /> : view === "results" ? <ResultsPanel /> : (
               <>
                 <div className="board">
@@ -1254,6 +1270,18 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
                 <button className="ghostbtn" onClick={() => claim(null)}>Just watching</button>
               </>
             )}
+          </div></div>
+        )}
+
+        {leagueSheet && (
+          <div className="modal" onClick={() => { setLeagueSheet(false); setLeagueMsg(""); }}><div className="sheet" onClick={(e) => e.stopPropagation()}>
+            <h3>Submit to a league</h3>
+            <p style={{ fontSize: 13.5, color: "#62756a", margin: "0 0 10px" }}>Credits this round's net scores to the league. Members are matched by the names on the scorecard.</p>
+            {getLeagues().map((l) => (
+              <button className="sharebig" key={l.code} onClick={() => submitLeague(l.code)} style={{ marginBottom: 8 }}><Trophy size={16} /> {l.name}</button>
+            ))}
+            {leagueMsg && <p className="hint" style={{ textAlign: "center" }}>{leagueMsg}</p>}
+            <button className="ghostbtn" onClick={() => { setLeagueSheet(false); setLeagueMsg(""); }}>Cancel</button>
           </div></div>
         )}
 
