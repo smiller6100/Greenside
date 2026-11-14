@@ -47,7 +47,23 @@ export class UserProfile implements DurableObject {
       const friends = (await this.ctx.storage.get<any[]>("friends")) || [];
       const map = await this.ctx.storage.list<any>({ prefix: "round:" });
       const rounds: any[] = []; for (const [, v] of map) rounds.push(v);
-      return Response.json({ ok: true, name, friends, rounds });
+      const cups = (await this.ctx.storage.get<any[]>("cups")) || [];
+      return Response.json({ ok: true, name, friends, rounds, cups });
+    }
+
+    if (path.endsWith("/cup") && request.method === "PUT") {
+      const b = await request.json<any>().catch(() => ({}));
+      if (!b || !b.code) return Response.json({ ok: false });
+      const list = ((await this.ctx.storage.get<any[]>("cups")) || []).filter((c) => c.code !== b.code);
+      list.unshift({ code: String(b.code), name: String(b.name || "Ryder Cup").slice(0, 60), ts: Date.now() });
+      await this.ctx.storage.put("cups", list.slice(0, 60));
+      return Response.json({ ok: true });
+    }
+    if (path.endsWith("/cup") && request.method === "DELETE") {
+      const b = await request.json<any>().catch(() => ({}));
+      const list = ((await this.ctx.storage.get<any[]>("cups")) || []).filter((c) => c.code !== b.code);
+      await this.ctx.storage.put("cups", list);
+      return Response.json({ ok: true });
     }
 
     if (path.endsWith("/round") && request.method === "PUT") {

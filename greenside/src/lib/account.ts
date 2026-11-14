@@ -41,6 +41,32 @@ export function pushRound(snap: any) {
   fetch("/api/account/round", { method: "PUT", headers: { ...authHeaders(), "content-type": "application/json" }, body: JSON.stringify(snap) }).catch(() => {});
 }
 
+// Ryder Cup membership. Mirrors the device's gs:cups list to the account so cups follow the login
+// across devices. Each entry: { code, name, ts }.
+function loadLocalCups(): any[] { try { return JSON.parse(localStorage.getItem("gs:cups") || "[]"); } catch { return []; } }
+function saveLocalCups(cs: any[]) { try { localStorage.setItem("gs:cups", JSON.stringify(cs.slice(0, 60))); } catch { /* */ } }
+
+export function addAccountCup(code: string, name: string) {
+  if (!getAccount() || !code) return;
+  fetch("/api/account/cup", { method: "PUT", headers: { ...authHeaders(), "content-type": "application/json" }, body: JSON.stringify({ code, name }) }).catch(() => {});
+}
+export function removeAccountCup(code: string) {
+  if (!getAccount() || !code) return;
+  fetch("/api/account/cup", { method: "DELETE", headers: { ...authHeaders(), "content-type": "application/json" }, body: JSON.stringify({ code }) }).catch(() => {});
+}
+
+// Merge cloud cups into the local list (newest ts per code wins), write back, and push up any the
+// cloud is missing. Returns the merged list so callers can refresh their view.
+function mergeCups(local: any[], cloud: any[]): any[] {
+  const map: Record<string, any> = {};
+  for (const c of [...(cloud || []), ...(local || [])]) {
+    if (!c || !c.code) continue;
+    const cur = map[c.code];
+    if (!cur || (c.ts || 0) >= (cur.ts || 0)) map[c.code] = { code: String(c.code), name: c.name || cur?.name || "Ryder Cup", ts: c.ts || cur?.ts || Date.now() };
+  }
+  return Object.values(map).sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 60);
+}
+
 // Pull the cloud profile, merge its rounds into local, push back anything the cloud is missing.
 export async function syncDown(): Promise<{ name: string; friends: any[] } | null> {
   const a = getAccount(); if (!a) return null;
@@ -56,6 +82,12 @@ export async function syncDown(): Promise<{ name: string; friends: any[] } | nul
     for (const rr of merged) { const c = cloudByCode[rr.code]; if (!c || (rr.savedAt || 0) > (c.savedAt || 0)) pushRound(rr); }
     // Re-send deletes for any tombstoned round the cloud still has (e.g. a delete that didn't land).
     for (const code of tomb) { if (cloudByCode[code]) fetch("/api/account/round", { method: "DELETE", headers: { ...authHeaders(), "content-type": "application/json" }, body: JSON.stringify({ code }) }).catch(() => {}); }
+    // Cups: merge the cloud list with this device's, write back, and push up any the cloud lacks.
+    const localCups = loadLocalCups();
+    const mergedCups = mergeCups(localCups, d.cups || []);
+    saveLocalCups(mergedCups);
+    const cloudCupCodes = new Set((d.cups || []).map((c: any) => c.code));
+    for (const c of mergedCups) { if (!cloudCupCodes.has(c.code)) addAccountCup(c.code, c.name); }
     if (d.name && d.name !== a.name) setAccount({ ...a, name: d.name });
     return { name: d.name || a.name, friends: d.friends || [] };
   } catch { return null; }

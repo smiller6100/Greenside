@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { ChevronLeft, ChevronRight, Plus, Minus, Trophy, Users, Flag, Settings, X, Share2, Check, MessageCircle, Send } from "lucide-react";
 import { computeMatch, cupTotals, clinch, type Format, type HcpMethod, type MatchResult } from "../lib/cup";
+import { getAccount, syncDown, addAccountCup, removeAccountCup } from "../lib/account";
 
 const FORMATS: { id: Format; label: string; sub: string; team: boolean }[] = [
   { id: "fourball", label: "Four-Ball", sub: "2v2 · each plays own ball, best counts", team: false },
@@ -35,9 +36,13 @@ function parseCup(): string | null { const m = location.hash.match(/#\/cup\/([A-
 type MyCup = { code: string; name: string };
 function getMyCups(): MyCup[] { try { return JSON.parse(localStorage.getItem("gs:cups") || "[]"); } catch { return []; } }
 function addMyCup(code: string, name: string) {
-  try { const list = getMyCups().filter((c) => c.code !== code); list.unshift({ code, name }); localStorage.setItem("gs:cups", JSON.stringify(list.slice(0, 40))); } catch { /* */ }
+  try { const list = getMyCups().filter((c) => c.code !== code); list.unshift({ code, name, ts: Date.now() }); localStorage.setItem("gs:cups", JSON.stringify(list.slice(0, 40))); } catch { /* */ }
+  addAccountCup(code, name); // mirror to the account so it follows the login across devices
 }
-function forgetMyCup(code: string) { try { localStorage.setItem("gs:cups", JSON.stringify(getMyCups().filter((c) => c.code !== code))); } catch { /* */ } }
+function forgetMyCup(code: string) {
+  try { localStorage.setItem("gs:cups", JSON.stringify(getMyCups().filter((c) => c.code !== code))); } catch { /* */ }
+  removeAccountCup(code);
+}
 
 // Current team totals for a Cup state (banked), plus whether every match is final.
 function scoreCup(state: any): { a: number; b: number; matches: number; allDone: boolean } {
@@ -69,12 +74,19 @@ function CupHome() {
   const [creating, setCreating] = useState(false);
   const [joinCode, setJoinCode] = useState("");
   useEffect(() => {
-    const mine = getMyCups();
-    if (!mine.length) { setCups([]); return; }
-    Promise.all(mine.map(async (c) => {
-      try { const r = await fetch("/api/cup/" + c.code); if (!r.ok) return { code: c.code, name: c.name, gone: true }; const s = await r.json(); return { code: c.code, name: s.name, teams: s.teams, score: scoreCup(s) }; }
-      catch { return { code: c.code, name: c.name, offline: true }; }
-    })).then(setCups);
+    let alive = true;
+    (async () => {
+      if (getAccount()) { try { await syncDown(); } catch { /* */ } } // pull cups saved to the account on other devices
+      const mine = getMyCups();
+      if (!alive) return;
+      if (!mine.length) { setCups([]); return; }
+      const loaded = await Promise.all(mine.map(async (c) => {
+        try { const r = await fetch("/api/cup/" + c.code); if (!r.ok) return { code: c.code, name: c.name, gone: true }; const s = await r.json(); return { code: c.code, name: s.name, teams: s.teams, score: scoreCup(s) }; }
+        catch { return { code: c.code, name: c.name, offline: true }; }
+      }));
+      if (alive) setCups(loaded);
+    })();
+    return () => { alive = false; };
   }, []);
 
   if (creating) return <CupCreate onBack={() => setCreating(false)} />;
@@ -211,17 +223,21 @@ function CupBoard({ code }: { code: string }) {
   // Remember any Cup I open so it lists on the Ryder Cup home.
   useEffect(() => { if (state?.name) addMyCup(code, state.name); }, [code, state?.name]);
 
-  // Who am I in this Cup — a roster entry I registered by joining with the code.
+  // Who am I in this Cup — a roster entry I registered by joining with the code. When signed in we
+  // key identity to the account id so the same person is recognized on any device they log into;
+  // otherwise a per-device random id is stored.
+  const acct = getAccount();
   const meId = useRef<string>("");
-  try { meId.current = localStorage.getItem("gs:cup:" + code + ":me") || ""; } catch { /* */ }
+  try { meId.current = localStorage.getItem("gs:cup:" + code + ":me") || (acct ? "acct_" + acct.id : ""); } catch { /* */ }
   const mePlayer = state?.roster?.find((p: any) => p.id === meId.current) || null;
-  const [joinName, setJoinName] = useState(""); const [joinHcp, setJoinHcp] = useState("");
+  const [joinName, setJoinName] = useState(acct?.name || ""); const [joinHcp, setJoinHcp] = useState("");
   const doJoin = () => {
     const n = joinName.trim(); if (!n) return;
     let id = meId.current;
-    if (!id) { id = Math.random().toString(36).slice(2, 10); try { localStorage.setItem("gs:cup:" + code + ":me", id); } catch { /* */ } meId.current = id; }
+    if (!id) { id = Math.random().toString(36).slice(2, 10); meId.current = id; }
+    try { localStorage.setItem("gs:cup:" + code + ":me", id); } catch { /* */ }
     send({ type: "join", id, name: n, hcp: parseInt(joinHcp) || 0 });
-    setJoinName(""); setJoinHcp("");
+    setJoinHcp("");
   };
 
   // Group chat (same as a round).
