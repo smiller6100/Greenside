@@ -892,3 +892,10 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .st-hcp-l { display: flex; flex-direction: column; }
 .st-hcp-l b { font-size: 15px; font-weight: 700; }
 .st-hcp-l span { font-size: 12px; opacity: .82; margin-top: 2px; }
+
+/* Rangefinder weather chip + plays-like */
+.hm-wx { display: flex; align-items: center; gap: 14px; justify-content: center; margin: 2px 0 8px; font-size: 13px; font-weight: 700; color: var(--ink); }
+.hm-wx-wind { display: inline-flex; align-items: center; gap: 5px; color: #2f6da3; }
+.hm-wx-wind svg { color: #2f6da3; transition: transform .3s; }
+.hm-range-v.plays { padding-left: 14px; margin-left: 2px; border-left: 1px solid var(--line); }
+.hm-range-v.plays b { color: #c2410c; }

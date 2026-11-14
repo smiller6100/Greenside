@@ -13,6 +13,14 @@ const hav = (a: number[], b: number[]) => {
   return 2 * R * Math.asin(Math.sqrt(x));
 };
 const yds = (m: number) => Math.round(m * 1.09361);
+// Compass bearing (deg, 0=N clockwise) from point a to point b.
+const bearing = (a: number[], b: number[]) => {
+  const d = Math.PI / 180, toDeg = (r: number) => (r * 180) / Math.PI;
+  const dLon = (b[1] - a[1]) * d;
+  const y = Math.sin(dLon) * Math.cos(b[0] * d);
+  const x = Math.cos(a[0] * d) * Math.sin(b[0] * d) - Math.sin(a[0] * d) * Math.cos(b[0] * d) * Math.cos(dLon);
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+};
 
 type Hole = {
   ref: number | null;
@@ -30,7 +38,7 @@ type Hole = {
 
 const BOXW = 300, BOXH = 380, PAD = 8;
 
-export default function HoleMap({ hole, me, others }: { hole: Hole; me?: { lat: number; lng: number; acc?: number } | null; others?: { lat: number; lng: number; name: string; color: string }[] }) {
+export default function HoleMap({ hole, me, others, weather }: { hole: Hole; me?: { lat: number; lng: number; acc?: number } | null; others?: { lat: number; lng: number; name: string; color: string }[]; weather?: { tempF: number; windMph: number; windDir: number; gustMph?: number } | null }) {
   const fairways = hole.fairways || [];
   const rough = hole.rough || [];
   const tees = hole.tees || [];
@@ -130,6 +138,19 @@ export default function HoleMap({ hole, me, others }: { hole: Hole; me?: { lat: 
     };
   }
 
+  // "Plays like": adjust the center-green yardage for head/tail wind (dominant) and temperature.
+  // Only meaningful when we have your GPS position and current weather.
+  let playsLike: number | null = null;
+  if (meInfo && weather && weather.windMph != null) {
+    const heading = bearing(refPt, hole.greenC);
+    const windTo = (weather.windDir + 180) % 360; // direction the wind is blowing toward
+    const tail = weather.windMph * Math.cos(((windTo - heading) * Math.PI) / 180); // +tailwind / −headwind
+    const head = -tail;
+    const windYds = head > 0 ? meInfo.center * head * 0.01 : meInfo.center * head * 0.005;
+    const tempYds = meInfo.center * (70 - weather.tempF) * 0.0003; // cold air plays longer
+    playsLike = Math.round(meInfo.center + windYds + tempYds);
+  }
+
   const svg = (
     <svg className="holemap" viewBox={`0 0 ${BOXW} ${BOXH}`} preserveAspectRatio="xMidYMid meet" onClick={onMapClick} style={{ cursor: "crosshair" }}>
       {rough.map((r, i) => (
@@ -207,6 +228,15 @@ export default function HoleMap({ hole, me, others }: { hole: Hole; me?: { lat: 
           ))}
         </div>
       )}
+      {weather && weather.windMph != null && (
+        <div className="hm-wx">
+          <span className="hm-wx-t">{weather.tempF}°F</span>
+          <span className="hm-wx-wind">
+            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" style={{ transform: `rotate(${(weather.windDir + 180) % 360}deg)` }}><path d="M12 3 L12 21 M12 3 L7.5 9 M12 3 L16.5 9" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            {weather.windMph} mph{weather.gustMph && weather.gustMph > weather.windMph + 4 ? ` · g${weather.gustMph}` : ""}
+          </span>
+        </div>
+      )}
       {svg}
       {meInfo && (
         <div className="hm-range">
@@ -214,6 +244,7 @@ export default function HoleMap({ hole, me, others }: { hole: Hole; me?: { lat: 
           <span className="hm-range-v"><b>{meInfo.front}</b><i>front</i></span>
           <span className="hm-range-v big"><b>{meInfo.center}</b><i>center</i></span>
           <span className="hm-range-v"><b>{meInfo.back}</b><i>back</i></span>
+          {playsLike != null && <span className="hm-range-v plays"><b>{playsLike}</b><i>plays like</i></span>}
         </div>
       )}
       {measure ? (

@@ -169,6 +169,18 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
       .catch(() => setHoleMap({ available: false, error: "fetch" }));
   }, [state]);
 
+  // Current weather at the course, refreshed every 10 min, for the rangefinder "plays like".
+  const [weather, setWeather] = useState<any>(null);
+  useEffect(() => {
+    const lat = (state as any)?.lat, lng = (state as any)?.lng;
+    if (lat == null || lng == null) return;
+    let alive = true;
+    const load = async () => { try { const r = await fetch(`/api/weather?lat=${lat}&lng=${lng}`); const d = await r.json(); if (alive && d && d.ok) setWeather(d); } catch { /* */ } };
+    load();
+    const id = setInterval(load, 600000);
+    return () => { alive = false; clearInterval(id); };
+  }, [(state as any)?.lat, (state as any)?.lng]);
+
   const enabledFormats = useMemo(
     () => (state ? Object.keys(state.formats).filter((k) => state.formats[k as keyof typeof state.formats]) : []),
     [state]
@@ -907,7 +919,7 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
               return (
                 <div className="holemap-wrap">
                   <div className="holemap-head">Hole {hole.num}{hm.par ? ` · Par ${hm.par}` : ""} · {hm.teeToGreenYds} yds tee→green</div>
-                  <HoleMap hole={hm} me={gps} others={groupOthers} />
+                  <HoleMap hole={hm} me={gps} others={groupOthers} weather={weather} />
                   <div className="holemap-legend">
                     <span className="lg lg-t">Tee</span><span className="lg lg-f">Fairway</span>
                     <span className="lg lg-r">Rough</span><span className="lg lg-g">Green</span>

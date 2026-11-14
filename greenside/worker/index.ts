@@ -5,7 +5,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog };
 
-const BUILD = "v86";
+const BUILD = "v87";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -916,6 +916,22 @@ export default {
         } catch { return null; }
       }));
       return Response.json({ rounds: rounds.filter(Boolean) });
+    }
+
+    // ---- Current weather at the course (Open-Meteo, no key) for rangefinder "plays like" ----
+    if (path === "/api/weather" && request.method === "GET") {
+      const lat = parseFloat(url.searchParams.get("lat") || ""), lng = parseFloat(url.searchParams.get("lng") || "");
+      if (!isFinite(lat) || !isFinite(lng)) return Response.json({ ok: false });
+      return cachedJson(`https://cache/wx/${lat.toFixed(3)},${lng.toFixed(3)}`, 600, async () => {
+        try {
+          const u = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m&temperature_unit=fahrenheit&wind_speed_unit=mph`;
+          const r = await fetch(u, { cf: { cacheTtl: 600 } } as any);
+          if (!r.ok) return Response.json({ ok: false });
+          const d: any = await r.json(); const c = d.current || {};
+          if (c.temperature_2m == null) return Response.json({ ok: false });
+          return Response.json({ ok: true, tempF: Math.round(c.temperature_2m), windMph: Math.round(c.wind_speed_10m || 0), windDir: Math.round(c.wind_direction_10m || 0), gustMph: Math.round(c.wind_gusts_10m || 0) });
+        } catch { return Response.json({ ok: false }); }
+      });
     }
 
     // ---- Hole maps from OpenStreetMap (vector diagrams + distances) ----
