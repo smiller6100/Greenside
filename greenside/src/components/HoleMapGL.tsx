@@ -120,15 +120,15 @@ export default function HoleMapGL({ hole, me, nav, track, players, onAdjust, onS
       map.addSource("aim", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
       map.addLayer({ id: "aim", type: "line", source: "aim", paint: { "line-color": "#ffd60a", "line-width": 2.5 } });
 
-      // Frame and orient the hole so it plays bottom-to-top.
+      // Frame and orient the hole so it plays bottom-to-top. Hug the tee→green line of play
+      // (plus the green itself) rather than the full fairway, so the hole fills the view.
       const pts: LL[] = [teeLL, greenCLL];
       if (hole.green) hole.green.forEach((v) => pts.push(toLL(v)));
-      (hole.fairways || []).forEach((poly) => poly.forEach((v) => pts.push(toLL(v))));
       const bounds = pts.reduce((b, p) => b.extend(p), new maplibregl.LngLatBounds(pts[0], pts[0]));
       // Pad by the actual panel widths so the hole always centers in the clear gap between them.
       const lw = panelRef.current?.offsetWidth ?? 150;
       const rw = rightRef.current?.offsetWidth ?? 110;
-      map.fitBounds(bounds, { bearing: initialBearing(teeLL, greenCLL), padding: { top: 92, bottom: 44, left: lw + 20, right: rw + 20 }, maxZoom: 18, animate: false });
+      map.fitBounds(bounds, { bearing: initialBearing(teeLL, greenCLL), padding: { top: 58, bottom: 26, left: lw + 12, right: rw + 12 }, maxZoom: 19, animate: false });
 
       // Draggable target, starting at the green center. Tap anywhere to move it too.
       const t = new maplibregl.Marker({ draggable: true, color: "#ffd60a" }).setLngLat(greenCLL).addTo(map);
