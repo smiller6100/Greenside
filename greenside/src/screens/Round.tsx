@@ -1163,9 +1163,7 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
                 .filter(Boolean) as { lat: number; lng: number; name: string; color: string }[];
               return (
                 <div className="holemap-wrap">
-                  <div className="holemap-head">Hole {hole.num}{hm.par ? ` · Par ${hm.par}` : ""} · {hm.teeToGreenYds} yds tee→green
-                    <button className="hm-toggle" onClick={() => setSatView((v) => !v)}>{satView ? "Diagram" : "Satellite"}</button>
-                  </div>
+                  <button className="hm-toggle-float" onClick={() => setSatView((v) => !v)}>{satView ? "Diagram" : "Satellite"}</button>
                   {satView
                     ? <Suspense fallback={<div className="holemap-empty"><span className="spin sm" /> Loading satellite…</div>}><HoleMapGL key={hole.num} hole={hm} me={gps} /></Suspense>
                     : <HoleMap hole={hm} me={gps} others={groupOthers} weather={weather} shots={shots[hole.num] || []} />}
@@ -1209,7 +1207,7 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
                       )}
                     </div>
                   )}
-                  <div className="hm-note">{holeMap.synthesized ? "Layout built from mapped greens & tees" : "Diagram from OpenStreetMap"} · straight-line yards{gps ? " · live GPS, ±accuracy varies" : ""}</div>
+                  <div className="hm-note">{satView ? "Satellite © Esri · course features © OpenStreetMap" : `Diagram from OpenStreetMap · straight-line yards${gps ? " · live GPS, ±accuracy varies" : ""}`}</div>
                 </div>
               );
             })()}

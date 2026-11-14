@@ -80,7 +80,7 @@ export default function HoleMapGL({ hole, me }: { hole: Hole; me?: { lat: number
     });
     mapRef.current = map;
     map.addControl(new maplibregl.AttributionControl({ compact: true }));
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+    // No zoom buttons — pinch to zoom keeps the hole view clean and large.
 
     map.on("load", () => {
       const feats: any[] = [];
