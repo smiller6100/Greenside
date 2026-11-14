@@ -164,6 +164,10 @@ export default function HoleMapGL({ hole, me, nav, track, players, onAdjust, onS
   const showTarget = target != null && targetToGreen != null && targetToGreen > 12;
 
   const par = nav?.par ?? hole.par ?? null;
+  const myP = players?.find((p) => p.isMe) || null;
+  const myRel = myP && myP.val != null && par != null ? myP.val - par : null;
+  const myRelCls = myRel == null ? "" : myRel < 0 ? "under" : myRel > 0 ? "over" : "even";
+  const myRelTxt = myRel == null ? "" : myRel === 0 ? "E" : myRel > 0 ? `+${myRel}` : `${myRel}`;
 
   return (
     <div className="glmap">
@@ -202,25 +206,27 @@ export default function HoleMapGL({ hole, me, nav, track, players, onAdjust, onS
             </div>
           </div>
         )}
+        {/* Your score for THIS hole (+/-). */}
+        {myP && (
+          <div className="glmap-holescore">
+            <span className="ghs-lbl">Score</span>
+            <button className="ghs-b" onClick={() => onAdjust?.(myP.id, -1)} aria-label="score down"><Minus size={16} strokeWidth={2.6} /></button>
+            <button className="ghs-num" onClick={() => onScorePar?.(myP.id)}><b className={myP.val == null ? "ghost" : ""}>{myP.val ?? par ?? "–"}</b>{myRel != null && <small className={myRelCls}>{myRelTxt}</small>}</button>
+            <button className="ghs-b" onClick={() => onAdjust?.(myP.id, 1)} aria-label="score up"><Plus size={16} strokeWidth={2.6} /></button>
+          </div>
+        )}
       </div>
 
-      {/* RIGHT: your score, then the rest of your group. */}
+      {/* RIGHT: running totals (to par), you first. */}
       {players && players.length > 0 && (
         <div className="glmap-right">
-          {players.map((p) => {
-            const rel = p.val != null && par != null ? p.val - par : null;
-            const relCls = rel == null ? "" : rel < 0 ? "under" : rel > 0 ? "over" : "even";
-            return (
-              <div key={p.id} className={`gm-score ${p.isMe ? "self" : ""}`}>
-                <div className="gm-sname">{p.isMe ? "You" : p.name.split(" ")[0]}{p.toParTxt ? <i className={p.toParCls}>{p.toParTxt}</i> : null}</div>
-                <div className="gm-sstep">
-                  <button onClick={() => onAdjust?.(p.id, 1)} aria-label="score up"><Plus size={16} strokeWidth={2.6} /></button>
-                  <button className="gm-snum" onClick={() => onScorePar?.(p.id)}><span className={p.val == null ? "ghost" : ""}>{p.val ?? par ?? "–"}</span>{rel != null && <small className={relCls}>{rel === 0 ? "E" : rel > 0 ? `+${rel}` : rel}</small>}</button>
-                  <button onClick={() => onAdjust?.(p.id, -1)} aria-label="score down"><Minus size={16} strokeWidth={2.6} /></button>
-                </div>
-              </div>
-            );
-          })}
+          <div className="gm-ttl-hdr">Total</div>
+          {players.map((p) => (
+            <div key={p.id} className={`gm-total ${p.isMe ? "self" : ""}`}>
+              <span className="gmt-name">{p.isMe ? "You" : p.name.split(" ")[0]}</span>
+              <span className={`gmt-par ${p.toParTxt ? p.toParCls : "even"}`}>{p.toParTxt || "E"}</span>
+            </div>
+          ))}
         </div>
       )}
 

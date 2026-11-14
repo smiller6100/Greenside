@@ -1088,21 +1088,25 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .glmap-track .pnum { min-width: 0; padding: 0 2px; text-align: center; color: #fff; font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; }
 .glmap-track .pnum:not(:empty) { padding: 0 5px; }
 
-/* RIGHT rail: your score, then the rest of your group. */
-.glmap-right { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); z-index: 3; display: flex; flex-direction: column; gap: 6px; pointer-events: auto; max-width: 46%; }
-.gm-score { background: rgba(20,30,22,0.80); backdrop-filter: blur(4px); border-radius: 12px; padding: 4px 6px 5px; display: flex; flex-direction: column; align-items: center; gap: 1px; }
-.gm-score.self { box-shadow: inset 0 0 0 1.5px var(--brass); }
-.gm-sname { color: #fff; font-size: 10px; font-weight: 700; display: flex; align-items: center; gap: 4px; max-width: 112px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.gm-sname i { font-style: normal; font-size: 10px; font-weight: 800; }
-.gm-sstep { display: flex; flex-direction: column; align-items: center; gap: 0; }
-.gm-sstep > button { width: 42px; height: 30px; border: none; background: transparent; color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 8px; }
-.gm-sstep > button:active { background: rgba(255,255,255,0.16); }
-.gm-snum { display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; padding: 1px 0; }
-.gm-snum span { font-size: 22px; font-weight: 800; } .gm-snum span.ghost { opacity: 0.5; }
-.gm-snum small { font-size: 9px; font-weight: 700; margin-top: 1px; }
-.gm-sname i.under, .gm-snum small.under { color: #35d07f; }
-.gm-sname i.over, .gm-snum small.over { color: #ff7a66; }
-.gm-sname i.even, .gm-snum small.even { color: rgba(255,255,255,0.7); }
+/* Your hole-score stepper, on the LEFT with everything else. */
+.glmap-holescore { pointer-events: auto; background: rgba(20,30,22,0.82); backdrop-filter: blur(4px); color: #fff; border-radius: 12px; padding: 4px 8px; display: flex; align-items: center; gap: 5px; }
+.ghs-lbl { font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; opacity: 0.75; min-width: 40px; }
+.ghs-b { width: 32px; height: 36px; border: none; background: rgba(255,255,255,0.10); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 9px; }
+.ghs-b:active { background: rgba(255,255,255,0.2); }
+.ghs-num { border: none; background: transparent; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; cursor: pointer; min-width: 26px; padding: 0; }
+.ghs-num b { font-size: 24px; font-weight: 800; } .ghs-num b.ghost { opacity: 0.5; }
+.ghs-num small { font-size: 9px; font-weight: 700; margin-top: 1px; }
+
+/* RIGHT rail: running total (to par), you first. */
+.glmap-right { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); z-index: 3; display: flex; flex-direction: column; gap: 5px; pointer-events: auto; max-width: 46%; align-items: flex-end; }
+.gm-ttl-hdr { font-size: 9px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: rgba(255,255,255,0.75); background: rgba(20,30,22,0.6); border-radius: 8px; padding: 2px 8px; }
+.gm-total { background: rgba(20,30,22,0.82); backdrop-filter: blur(4px); border-radius: 12px; padding: 6px 10px; display: flex; align-items: center; gap: 10px; }
+.gm-total.self { box-shadow: inset 0 0 0 1.5px var(--brass); }
+.gmt-name { color: #fff; font-size: 11px; font-weight: 700; max-width: 90px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gmt-par { font-size: 19px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.ghs-num small.under, .gmt-par.under { color: #35d07f; }
+.ghs-num small.over, .gmt-par.over { color: #ff7a66; }
+.ghs-num small.even, .gmt-par.even { color: rgba(255,255,255,0.85); }
 /* Target readout: small, bottom-center, only while actively aiming. */
 .glmap-tgt {
   position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); z-index: 2;
