@@ -116,11 +116,14 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
     try {
       const raw = localStorage.getItem("gs:rounds");
       const list = raw ? JSON.parse(raw) : [];
+      const prev = list.find((r: any) => r.code === code);
       const snap = {
         code, savedAt: Date.now(), me: me || "",
         name: state.name, courseName: (state as any).courseName || "",
         course: state.course, players: state.players, scores: (state as any).scores || {},
+        stats: (state as any).stats || {},
         formats: state.formats, handicapMode: state.handicapMode,
+        endedAt: prev?.endedAt || 0, // preserved across live updates; set when the round is ended
       };
       const i = list.findIndex((r: any) => r.code === code);
       if (i >= 0) list[i] = snap; else list.unshift(snap);
@@ -1103,7 +1106,7 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
             )}
             <p>Leaving keeps this round on your phone so you can jump back in. Ending it removes it from your Resume when you’re done for the day.</p>
             <button className="primary" onClick={() => { location.replace(location.pathname + location.search); }}>Leave — keep it</button>
-            <button className="dangerbtn" onClick={() => { localStorage.setItem(`gs:ended:${code}`, "1"); localStorage.removeItem("gs:lastRound"); localStorage.removeItem("gs:lastRoundName"); location.replace(location.pathname + location.search); }}>End round</button>
+            <button className="dangerbtn" onClick={() => { try { const raw = localStorage.getItem("gs:rounds"); const list = raw ? JSON.parse(raw) : []; const i = list.findIndex((r: any) => r.code === code); if (i >= 0) { list[i].endedAt = Date.now(); localStorage.setItem("gs:rounds", JSON.stringify(list)); } } catch { /* */ } localStorage.setItem(`gs:ended:${code}`, "1"); localStorage.removeItem("gs:lastRound"); localStorage.removeItem("gs:lastRoundName"); location.replace(location.pathname + location.search); }}>End round</button>
             <button className="ghostbtn" onClick={() => setLeaving(false)}>Stay</button>
           </div></div>
         )}

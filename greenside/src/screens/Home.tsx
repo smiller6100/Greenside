@@ -4,7 +4,7 @@ import { computeStandings, fmtToPar } from "../lib/golf";
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, GAME_HELP, composeNines, ninesFromHoles } from "../lib/golf";
 
-const VERSION = "v90";
+const VERSION = "v91";
 
 
 
@@ -897,7 +897,7 @@ export default function Home() {
                           ) : (
                             <>
                               <button className="roundrow-main" onClick={() => setViewRound(r)}>
-                                <div className="rr-top"><b>{r.name || r.code}</b><span className="rr-date">{new Date(r.savedAt).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}</span></div>
+                                <div className="rr-top"><b>{r.name || r.code}</b>{r.endedAt ? <span className="rr-final">Final</span> : null}<span className="rr-date">{new Date(r.savedAt).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}</span></div>
                                 <div className="rr-sub">{r.courseName || "Course"}{res ? ` · Won: ${res.winner}` : ""}{thru ? ` · thru ${thru}` : ""}</div>
                               </button>
                               <button className="rr-trash" onClick={() => setDelCode(r.code)} aria-label="delete"><Trash2 size={16} /></button>
@@ -920,6 +920,16 @@ export default function Home() {
                   let s = 0; for (let i = 1; i <= course.length; i++) { if (i === course.length || course[i].nine !== course[s].nine) { chunks.push({ label: course[s].nine || "", holes: course.slice(s, i) }); s = i; } }
                 } else { for (let i = 0; i < course.length; i += 9) chunks.push({ label: course.length <= 9 ? "Out" : ["Out", "In", "Third"][i / 9] || "", holes: course.slice(i, i + 9) }); }
                 const sumSc = (pid: string, hs: any[]) => hs.reduce((t, h) => t + ((snap.scores[pid] || {})[h.num] || 0), 0);
+                const rstats = snap.stats || {};
+                const anyStats = snap.players.some((p: any) => Object.keys(rstats[p.id] || {}).length);
+                const pStat = (pid: string) => {
+                  const st = rstats[pid] || {}; let fwHit = 0, fwAtt = 0, girC = 0, girElig = 0, pt = 0, ph = 0;
+                  for (const h of course) { const cl = st[h.num] || {}; const sc = (snap.scores[pid] || {})[h.num];
+                    if (h.par >= 4 && (cl.fir === true || cl.fir === false)) { fwAtt++; if (cl.fir === true) fwHit++; }
+                    if (sc != null && cl.putts != null) { girElig++; if (sc - cl.putts <= h.par - 2) girC++; }
+                    if (cl.putts != null) { pt += cl.putts; ph++; } }
+                  return { fwHit, fwAtt, girC, girElig, pt, ph };
+                };
                 return (
                   <>
                     <div className="rounds-head">
@@ -966,7 +976,30 @@ export default function Home() {
                       ))}
                     </div>
 
-                    <button className="ghostbtn" onClick={() => { location.hash = `#/r/${snap.code}`; }}>Open round</button>
+                    {anyStats && (
+                      <div className="rd-cards">
+                        <div className="rd-chunk">
+                          <div className="rd-ninelabel">Stats</div>
+                          <div className="rd-scroll">
+                            <table className="rd-grid">
+                              <thead><tr><th>Player</th><th>Fairways</th><th>GIR</th><th className="tot">Putts</th></tr></thead>
+                              <tbody>
+                                {snap.players.map((p: any) => { const s = pStat(p.id); return (
+                                  <tr key={p.id} className={snap.me && p.id === snap.me ? "me" : ""}>
+                                    <th>{p.name.split(" ")[0]}</th>
+                                    <td>{s.fwAtt ? `${s.fwHit}/${s.fwAtt}` : "–"}</td>
+                                    <td>{s.girElig ? `${s.girC}/${s.girElig}` : "–"}</td>
+                                    <td className="tot">{s.ph ? s.pt : "–"}</td>
+                                  </tr>
+                                ); })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <button className="ghostbtn" onClick={() => { localStorage.removeItem(`gs:ended:${snap.code}`); location.hash = `#/r/${snap.code}`; }}>Open round</button>
                   </>
                 );
               })()}

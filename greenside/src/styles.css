@@ -688,6 +688,7 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .roundrow-main { flex:1; min-width:0; text-align:left; border:none; background:none; cursor:pointer; padding:9px 10px; font:inherit; }
 .rr-top { display:flex; align-items:baseline; gap:8px; }
 .rr-top b { font-size:15.5px; font-weight:800; color:var(--ink,#10251a); }
+.rr-final { font-size:9.5px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--pine); background:rgba(21,57,42,.09); border-radius:999px; padding:2px 7px; flex:none; }
 .rr-date { margin-left:auto; font-size:12px; color:#9aab9c; font-weight:600; flex:none; }
 .rr-sub { font-size:13px; color:#62756a; margin-top:2px; }
 .rr-trash { flex:none; border:none; background:none; color:#c0392b; opacity:.7; padding:8px 10px; cursor:pointer; }
