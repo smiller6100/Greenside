@@ -507,3 +507,34 @@ export function computeMoney(state: RoundState, stakes: Stakes): Record<string, 
 
   return games;
 }
+
+// --- Estimated handicap from device round history (WHS-style, course-rating-unknown) ---
+// We don't capture slope/course rating, so differential ≈ (gross − par) normalized to 18 holes
+// (equivalent to assuming slope 113 and rating = par). Honest approximation, labelled "estimated".
+export type RoundDiff = { date: number; diff: number };
+export function roundDiffs(raw: any[]): RoundDiff[] {
+  const out: RoundDiff[] = [];
+  for (const r of raw || []) {
+    const course = r.course || []; const sc = (r.scores || {})[r.me] || {};
+    let gross = 0, par = 0, hp = 0;
+    for (const h of course) { const s = sc[h.num]; if (s != null) { gross += s; par += h.par; hp++; } }
+    if (hp >= 9) out.push({ date: r.endedAt || r.savedAt || 0, diff: (gross - par) * (18 / hp) });
+  }
+  return out.sort((a, b) => b.date - a.date); // newest first
+}
+// WHS "best N of last 20" table, simplified, with low-count adjustments.
+export function estimateHandicap(diffs: RoundDiff[]): { index: number; n: number; used: number } | null {
+  const last = diffs.slice(0, 20); const n = last.length;
+  if (n < 3) return null;
+  const pick = (m: number): [number, number] => {
+    if (m >= 20) return [8, 0]; if (m >= 19) return [7, 0]; if (m >= 17) return [6, 0];
+    if (m >= 15) return [5, 0]; if (m >= 12) return [4, 0]; if (m >= 9) return [3, 0];
+    if (m >= 7) return [2, 0]; if (m >= 6) return [2, -1]; if (m === 5) return [1, 0];
+    if (m === 4) return [1, -1]; return [1, -2];
+  };
+  const [cnt, adj] = pick(n);
+  const lowest = [...last].sort((a, b) => a.diff - b.diff).slice(0, cnt);
+  const index = lowest.reduce((s, d) => s + d.diff, 0) / lowest.length + adj;
+  return { index: Math.round(index * 10) / 10, n, used: cnt };
+}
+export const fmtIndex = (i: number) => (i < 0 ? `+${Math.abs(i).toFixed(1)}` : i.toFixed(1));

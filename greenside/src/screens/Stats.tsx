@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { ChevronLeft, BarChart3 } from "lucide-react";
+import { roundDiffs, estimateHandicap, fmtIndex } from "../lib/golf";
 
 // Your performance across every round saved on this device — no account needed. Aggregates the
 // same round history the "My rounds" list shows, keyed to whoever you were in each round (snap.me).
@@ -36,6 +37,12 @@ export default function Stats() {
     let raw: any[] = [];
     try { raw = JSON.parse(localStorage.getItem("gs:rounds") || "[]"); } catch { raw = []; }
     return raw.map(roundMetrics).filter(Boolean) as RM[];
+  }, []);
+
+  const hcp = useMemo(() => {
+    let raw: any[] = [];
+    try { raw = JSON.parse(localStorage.getItem("gs:rounds") || "[]"); } catch { raw = []; }
+    return estimateHandicap(roundDiffs(raw));
   }, []);
 
   const goHome = () => { location.hash = ""; };
@@ -75,6 +82,10 @@ export default function Stats() {
           </div>
         ) : (
           <>
+            <div className="st-hcp">
+              <div className="st-hcp-v">{hcp ? fmtIndex(hcp.index) : "–"}</div>
+              <div className="st-hcp-l"><b>Handicap index</b><span>{hcp ? `estimated · best ${hcp.used} of your last ${hcp.n}` : `play ${Math.max(0, 3 - N)} more round${3 - N === 1 ? "" : "s"} to set one`}</span></div>
+            </div>
             <div className="st-tiles">
               <div className="st-tile"><b>{N}</b><span>rounds</span></div>
               <div className="st-tile"><b className={agg.avgToPar > 0 ? "over" : "under"}>{fmtParF(agg.avgToPar)}</b><span>avg vs par</span></div>

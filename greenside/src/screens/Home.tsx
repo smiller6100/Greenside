@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw, Trash2, ChevronLeft, ChevronRight, Menu, BarChart3, Flag, Building2, Settings, ListChecks } from "lucide-react";
-import { computeStandings, fmtToPar } from "../lib/golf";
+import { computeStandings, fmtToPar, roundDiffs, estimateHandicap } from "../lib/golf";
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, GAME_HELP, composeNines, ninesFromHoles } from "../lib/golf";
 
-const VERSION = "v93";
+const VERSION = "v94";
 
 
 
@@ -56,6 +56,7 @@ export default function Home() {
   const [qDist, setQDist] = useState(0);
   const [nearby, setNearby] = useState<CourseHit[]>([]); // closest courses for the Start tab
   const [nearState, setNearState] = useState<"idle" | "locating" | "ok" | "off">("idle");
+  const [autoHcp, setAutoHcp] = useState<number | null>(null); // estimated handicap from round history
   const posRef = useRef<{ lat: number; lng: number; ts: number } | null>(null);
   const loadProfile = (): any => { try { return JSON.parse(localStorage.getItem("gs:profile") || "{}"); } catch { return {}; } };
   const miTxt = (m: number) => Math.max(0.1, Math.round(m / 160.9) / 10);
@@ -84,9 +85,12 @@ export default function Home() {
   }
   useEffect(() => {
     const prof = loadProfile();
+    let auto: number | null = null;
+    try { const raw = JSON.parse(localStorage.getItem("gs:rounds") || "[]"); const h = estimateHandicap(roundDiffs(raw)); if (h) auto = Math.max(0, Math.round(h.index)); } catch { /* */ }
+    setAutoHcp(auto);
     if (Array.isArray(prof.recent)) setRecent(prof.recent);
-    // Prefill so a repeat visit needs no typing: your name + handicap, and last scoring/handicap choices.
-    if (prof.recent && prof.recent[0]?.name) setPlayers([{ name: prof.recent[0].name, hcp: String(prof.recent[0].hcp ?? "12"), group: "A" }]);
+    // Prefill so a repeat visit needs no typing: your name, your estimated handicap, and last choices.
+    if (prof.recent && prof.recent[0]?.name) setPlayers([{ name: prof.recent[0].name, hcp: String(auto ?? prof.recent[0].hcp ?? "12"), group: "A" }]);
     if (prof.formats && Object.values(prof.formats).some(Boolean)) setFormats((f) => ({ ...f, ...prof.formats }));
     if (prof.hcpMode) setHcpMode(prof.hcpMode);
     findNearby(); // surface courses near you the moment the app opens
@@ -480,7 +484,7 @@ export default function Home() {
       courseName: c?.name || "", courseWhere: c?.where || "", teeName: c?.teeName || "",
       tees: c?.tees && c.tees.length ? c.tees : null, defaultTee: c?.teeName || "",
       catalogHoles: null, catalogTees: null,
-      players: [{ id: "p1", name: String(me.name || "You").trim() || "You", hcp: Math.max(0, Math.min(54, parseInt(me.hcp) || 0)) }],
+      players: [{ id: "p1", name: String(me.name || "You").trim() || "You", hcp: autoHcp != null ? autoHcp : Math.max(0, Math.min(54, parseInt(me.hcp) || 0)) }],
     };
   }
   function startQuick(c: any) {

@@ -885,3 +885,10 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .dn-n { margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--pine); color: #f4f6f5; font-size: 11px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; }
 .drawer-sep { font-size: 10.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--mut); padding: 16px 10px 6px; }
 .drawer-ver { margin-top: auto; padding: 12px 10px 0; font-size: 12px; color: var(--mut); font-weight: 600; }
+
+/* Handicap band on the stats screen */
+.st-hcp { display: flex; align-items: center; gap: 16px; background: var(--pine); color: #f4f6f5; border-radius: 16px; padding: 17px 20px; margin-bottom: 18px; box-shadow: 0 6px 18px rgba(14,42,31,.22); }
+.st-hcp-v { font-family: 'Fraunces', serif; font-weight: 700; font-size: 40px; line-height: 1; font-variant-numeric: tabular-nums; }
+.st-hcp-l { display: flex; flex-direction: column; }
+.st-hcp-l b { font-size: 15px; font-weight: 700; }
+.st-hcp-l span { font-size: 12px; opacity: .82; margin-top: 2px; }
