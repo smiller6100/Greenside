@@ -7,7 +7,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog, UserProfile, League };
 
-const BUILD = "v94";
+const BUILD = "v95";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -42,12 +42,12 @@ async function holeMapFor(lat: number, lng: number, wantHoles: number): Promise<
       "https://overpass.kumi.systems/api/interpreter",
       "https://overpass-api.de/api/interpreter",
     ];
-    // Each mirror request is capped at 12s — short enough that the whole worker answers inside
-    // the phone's ~30s patience even when the first query has to fall back to the second.
+    // Hit every mirror at once and take whichever answers first, with a generous 28s cutoff so a
+    // busy-but-working server isn't killed before it can reply (the old 10s window was the bug).
     const fetchOne = (ep: string, q: string) => {
       const host = ep.split("/")[2];
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 12000);
+      const timer = setTimeout(() => ctrl.abort(), 28000);
       return fetch(ep, {
         method: "POST", signal: ctrl.signal,
         headers: { "content-type": "application/x-www-form-urlencoded", "accept": "application/json", "user-agent": "GreenSideStrokes/1.0 (+https://greensidestrokes.com; golf hole maps)" },
@@ -57,58 +57,27 @@ async function holeMapFor(lat: number, lng: number, wantHoles: number): Promise<
         return { data: await r.json(), host };
       }).finally(() => clearTimeout(timer));
     };
-    // Run one query across every mirror and resolve with the first response that PARSES to a real
-    // hole map — not merely the first HTTP 200. A fast mirror that returns sparse/incomplete OSM
-    // can't win over a slower mirror that actually has the holes. Returns the parsed map, or the
-    // best parsed-but-empty result (a course that genuinely has no hole lines) when none have holes.
-    const tryQuery = async (q: string): Promise<{ map: any; empty: any }> => {
-      const attempts = servers.map((ep) =>
-        fetchOne(ep, q).then(({ data, host }) => {
-          const result: any = parseHoleMap(data, lat, lng, wantHoles);
-          if (result && result.available) return result;
-          throw Object.assign(new Error("empty@" + host), { result });
-        })
-      );
+    const race = (q: string) => Promise.any(servers.map((ep) => fetchOne(ep, q))) as Promise<{ data: any; host: string }>;
+    let won: { data: any; host: string };
+    try {
+      won = await race(qFull);
+    } catch {
+      // Every mirror failed or timed out on the full query — retry once with the lighter query.
       try {
-        return { map: await Promise.any(attempts), empty: null };
-      } catch {
-        const settled = await Promise.allSettled(attempts);
-        let empty: any = null;
-        for (const s of settled) if (s.status === "rejected" && (s.reason as any)?.result?.counts) empty = (s.reason as any).result;
-        return { map: null, empty };
-      }
-    };
-    // Full query first (includes water hazards and the wider radius for sprawling courses); fall
-    // back to the lighter golf-only query when the full one is too slow or comes back empty.
-    let r = await tryQuery(qFull);
-    if (!r.map) { const lite = await tryQuery(qLite); if (lite.map) r = lite; else if (!r.empty) r = lite; }
-    // Only a map with holes is cached (cachedJson caches 200s only); empties return 503 so a later
-    // visit re-fetches rather than sticking a blank for a week.
-    if (r.map) return Response.json(r.map);
-    if (r.empty) return new Response(JSON.stringify({ available: false, error: "parsed-empty", counts: r.empty.counts }), { status: 503, headers: { "content-type": "application/json" } });
-    return new Response(JSON.stringify({ available: false, error: "all-mirrors-failed-or-slow" }), { status: 503, headers: { "content-type": "application/json" } });
-  });
-}
-
-// Fetch a hole map and, on a fresh OSM success, bank it in the global catalog so the course is
-// instant and reliable for everyone from then on. Never overwrites a hand-drawn map (those are
-// saved under the course name; OSM maps are saved under "osm").
-async function holeMapPersist(env: any, lat: number, lng: number, wantHoles: number): Promise<Response> {
-  const ck = `${lat.toFixed(4)},${lng.toFixed(4)}`;
-  const resp = await holeMapFor(lat, lng, wantHoles);
-  try {
-    if (resp.ok) {
-      const map: any = await resp.clone().json();
-      if (map && map.available) {
-        const existing: any = await catalog(env).fetch(`https://do/getmap?key=${encodeURIComponent(ck)}`).then((r) => r.json()).catch(() => null);
-        const handMapped = existing && existing.found && existing.name && existing.name !== "osm";
-        if (!handMapped) {
-          await catalog(env).fetch(`https://do/savemap`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ coordkey: ck, name: "osm", map }) }).catch(() => {});
-        }
+        won = await race(qLite);
+      } catch (agg: any) {
+        const errs = ((agg && agg.errors) || []).map((e: any) => String((e && e.message) || e)).join("; ") || "all-mirrors-failed";
+        return new Response(JSON.stringify({ available: false, error: errs }), { status: 503, headers: { "content-type": "application/json" } });
       }
     }
-  } catch { /* non-JSON/read failure — just serve what we have */ }
-  return resp;
+    // Parse only the winner (all mirrors return the same OSM data, so one parse is enough).
+    const result: any = parseHoleMap(won.data, lat, lng, wantHoles);
+    // Only cache a map that actually came back with holes. An empty/failed parse returns a
+    // non-200 so it is NOT cached — a later retry re-fetches instead of sticking for a week.
+    if (result && result.available) return Response.json(result);
+    const err = "parsed-empty(found " + ((result && result.counts && result.counts.found) || 0) + ")@" + won.host;
+    return new Response(JSON.stringify({ available: false, error: err, counts: result && result.counts }), { status: 503, headers: { "content-type": "application/json" } });
+  });
 }
 
 const GS_UA = "GreenSideStrokes/1.0 (+https://greensidestrokes.com; golf hole maps)";
@@ -377,7 +346,7 @@ function parseHoleMap(data: any, qLat: number, qLng: number, wantHoles: number) 
   const ways = els.filter((e: any) => e.type === "way" && Array.isArray(e.geometry) && e.geometry.length);
   const g = (v: string) => ways.filter((w: any) => w.tags && w.tags.golf === v);
   let holeWays = g("hole").filter((w: any) => w.geometry.length >= 2);
-  let greens = g("green").map((w: any) => ({ poly: hmRing(w.geometry), c: hmCentroid(w.geometry), ref: parseInt(w.tags.ref), par: parseInt(w.tags.par) }));
+  let greens = g("green").map((w: any) => ({ poly: hmRing(w.geometry), c: hmCentroid(w.geometry) }));
   // Collect a golf-tagged area from both plain ways and relation outers (fairway/rough are often multipolygons).
   const gatherArea = (tag: string) => {
     const out: any[] = [];
@@ -392,7 +361,7 @@ function parseHoleMap(data: any, qLat: number, qLng: number, wantHoles: number) 
   };
   let fairways = gatherArea("fairway");
   let rough = gatherArea("rough");
-  let tees = g("tee").map((w: any) => ({ poly: hmRing(w.geometry), c: hmCentroid(w.geometry), ref: parseInt(w.tags.ref) }));
+  let tees = g("tee").map((w: any) => ({ poly: hmRing(w.geometry), c: hmCentroid(w.geometry) }));
   let bunkers = g("bunker").map((w: any) => ({ poly: hmRing(w.geometry), c: hmCentroid(w.geometry), kind: "bunker" }));
   // Water: golf-tagged hazards AND plain lakes/ponds (often mapped only as natural=water, with no
   // golf tag), from both ways and relation outers (large ponds are frequently multipolygons).
@@ -410,40 +379,6 @@ function parseHoleMap(data: any, qLat: number, qLng: number, wantHoles: number) 
     return out;
   };
   let water = gatherWater();
-
-  // Synthesize hole lines when OSM has greens but no explicit golf=hole ways (common: a course
-  // mapped with greens/tees/fairways but no routing lines, e.g. Songbird Hills). Pairs each green
-  // with its back tee; numbers by OSM hole-number tags when present, else a nearest-neighbour walk.
-  let synthesized = false;
-  try { if (!holeWays.length && greens.length >= 3) {
-    const nearT = tees.map((t: any) => { let bg: any = null, bd = 1e12; for (const gr of greens) { const d = hmHav(t.c, gr.c); if (d < bd) { bd = d; bg = gr; } } return { t, g: bg, d: bd }; }).filter((x: any) => x.g && x.d < 360);
-    const byGreen = new Map<any, any[]>();
-    for (const x of nearT) { const arr = byGreen.get(x.g) || []; arr.push(x); byGreen.set(x.g, arr); }
-    const synth: any[] = [];
-    for (const gr of greens) {
-      const assigned = (byGreen.get(gr) || []).sort((a: any, b: any) => b.d - a.d); // farthest assigned tee = back tee
-      let teePt: number[] | null = null, teeRef = NaN;
-      if (assigned.length) { teePt = assigned[0].t.c; teeRef = assigned[0].t.ref; }
-      else { let bt: any = null, bd = 1e12; for (const t of tees) { const d = hmHav(t.c, gr.c); if (d < bd) { bd = d; bt = t; } } if (bt && bd < 550) { teePt = bt.c; teeRef = bt.ref; } }
-      if (!teePt) continue;
-      const ref = Number.isFinite(gr.ref) ? gr.ref : (Number.isFinite(teeRef) ? teeRef : null);
-      synth.push({ geometry: [{ lat: teePt[0], lon: teePt[1] }, { lat: gr.c[0], lon: gr.c[1] }], tags: { ref: ref != null ? String(ref) : "", par: Number.isFinite(gr.par) ? String(gr.par) : "" }, _ref: ref });
-    }
-    const haveRef = synth.filter((h) => h._ref != null).length;
-    if (synth.length && haveRef < synth.length * 0.5) {
-      const used = new Array(synth.length).fill(false);
-      const cen = synth.reduce((a: number[], h) => [a[0] + h.geometry[0].lat, a[1] + h.geometry[0].lon], [0, 0]).map((v: number) => v / synth.length);
-      let cur = 0, bd = 1e12; synth.forEach((h, i) => { const d = hmHav([h.geometry[0].lat, h.geometry[0].lon], cen); if (d < bd) { bd = d; cur = i; } });
-      for (let n = 1; n <= synth.length; n++) {
-        used[cur] = true; synth[cur].tags.ref = String(n);
-        let nx = -1, nd = 1e12; const g2 = synth[cur].geometry[1];
-        synth.forEach((h, i) => { if (used[i]) return; const d = hmHav([g2.lat, g2.lon], [h.geometry[0].lat, h.geometry[0].lon]); if (d < nd) { nd = d; nx = i; } });
-        if (nx < 0) break; cur = nx;
-      }
-    }
-    holeWays = synth.filter((h) => h.tags.ref);
-    synthesized = holeWays.length > 0;
-  } } catch { synthesized = false; }
 
   // Course boundaries (to isolate ONE course when several are nearby). Ways + relation outers.
   const boundaries: number[][][] = [];
@@ -584,7 +519,7 @@ function parseHoleMap(data: any, qLat: number, qLng: number, wantHoles: number) 
   const seen = new Set<number>();
   holes = holes.filter((h: any) => { if (h.ref == null) return true; if (seen.has(h.ref)) return false; seen.add(h.ref); return true; });
 
-  return { available: true, counts, holes, synthesized };
+  return { available: true, counts, holes };
 }
 
 export default {
@@ -961,10 +896,10 @@ export default {
         ctx.waitUntil(catalog(env).fetch("https://do/field/add", { method: "POST", headers: { "content-type": "application/json" },
           body: JSON.stringify({ code, coordkey: ck, name: cfg.name || cfg.courseName || "", outing: !!cfg.outing }) }).catch(() => {}));
       }
-      // Pre-warm AND durably bank the hole map so it's ready before the group reaches the first tee.
-      // Fire-and-forget with the same coords/hole-count the round screen will request.
+      // Pre-warm the hole map so it's cached before the group reaches the first tee. Fire-and-forget
+      // with the same coords/hole-count the round screen will request, so it lands on the same cache key.
       if (lat != null && lng != null && Array.isArray(cfg.course) && cfg.course.length) {
-        ctx.waitUntil(holeMapPersist(env, lat, lng, cfg.course.length).catch(() => {}));
+        ctx.waitUntil(holeMapFor(lat, lng, cfg.course.length).catch(() => {}));
       }
       return Response.json({ code, adminToken });
     }
@@ -1096,9 +1031,7 @@ export default {
         const sm: any = await withTimeout(catalog(env).fetch(`https://do/getmap?key=${encodeURIComponent(ck)}`).then((r) => r.json()), 3000);
         if (sm && sm.found && sm.map && sm.map.available) return Response.json(sm.map);
       } catch { /* fall through to OSM */ }
-      // Live OSM fetch, banked durably on success so the next visit (anyone, any device) is
-      // instant — independent of Overpass being up or the per-colo edge cache being evicted.
-      return holeMapPersist(env, lat, lng, wantHoles);
+      return holeMapFor(lat, lng, wantHoles);
     }
 
     // Save a Course Mapper export as a course's permanent hole map (admin only).

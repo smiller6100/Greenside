@@ -239,7 +239,7 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
     setHoleMap(null);
     let done = false;
     const ctrl = new AbortController();
-    const timer = setTimeout(() => { if (!done) ctrl.abort(); }, 30000);
+    const timer = setTimeout(() => { if (!done) ctrl.abort(); }, 60000);
     fetch(`/api/holemap?lat=${hmLat}&lng=${hmLng}&holes=${hmN}`, { cache: "no-store", signal: ctrl.signal })
       .then((r) => r.json())
       .then((d) => { done = true; setHoleMap(d); })
