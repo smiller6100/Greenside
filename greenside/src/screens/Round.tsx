@@ -1186,7 +1186,7 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
                       )}
                     </div>
                   )}
-                  <div className="hm-note">Diagram from OpenStreetMap · straight-line yards{gps ? " · live GPS, ±accuracy varies" : ""}</div>
+                  <div className="hm-note">{holeMap.synthesized ? "Layout built from mapped greens & tees" : "Diagram from OpenStreetMap"} · straight-line yards{gps ? " · live GPS, ±accuracy varies" : ""}</div>
                 </div>
               );
             })()}

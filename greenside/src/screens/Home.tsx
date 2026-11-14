@@ -5,7 +5,7 @@ import { computeStandings, fmtToPar, roundDiffs, estimateHandicap } from "../lib
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, GAME_HELP, composeNines, ninesFromHoles } from "../lib/golf";
 
-const VERSION = "v105";
+const VERSION = "v106";
 
 
 

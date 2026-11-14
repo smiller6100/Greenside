@@ -7,7 +7,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog, UserProfile, League };
 
-const BUILD = "v91";
+const BUILD = "v92";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -346,7 +346,7 @@ function parseHoleMap(data: any, qLat: number, qLng: number, wantHoles: number) 
   const ways = els.filter((e: any) => e.type === "way" && Array.isArray(e.geometry) && e.geometry.length);
   const g = (v: string) => ways.filter((w: any) => w.tags && w.tags.golf === v);
   let holeWays = g("hole").filter((w: any) => w.geometry.length >= 2);
-  let greens = g("green").map((w: any) => ({ poly: hmRing(w.geometry), c: hmCentroid(w.geometry) }));
+  let greens = g("green").map((w: any) => ({ poly: hmRing(w.geometry), c: hmCentroid(w.geometry), ref: parseInt(w.tags.ref), par: parseInt(w.tags.par) }));
   // Collect a golf-tagged area from both plain ways and relation outers (fairway/rough are often multipolygons).
   const gatherArea = (tag: string) => {
     const out: any[] = [];
@@ -361,7 +361,7 @@ function parseHoleMap(data: any, qLat: number, qLng: number, wantHoles: number) 
   };
   let fairways = gatherArea("fairway");
   let rough = gatherArea("rough");
-  let tees = g("tee").map((w: any) => ({ poly: hmRing(w.geometry), c: hmCentroid(w.geometry) }));
+  let tees = g("tee").map((w: any) => ({ poly: hmRing(w.geometry), c: hmCentroid(w.geometry), ref: parseInt(w.tags.ref) }));
   let bunkers = g("bunker").map((w: any) => ({ poly: hmRing(w.geometry), c: hmCentroid(w.geometry), kind: "bunker" }));
   // Water: golf-tagged hazards AND plain lakes/ponds (often mapped only as natural=water, with no
   // golf tag), from both ways and relation outers (large ponds are frequently multipolygons).
@@ -379,6 +379,40 @@ function parseHoleMap(data: any, qLat: number, qLng: number, wantHoles: number) 
     return out;
   };
   let water = gatherWater();
+
+  // Synthesize hole lines when OSM has greens but no explicit golf=hole ways (common: a course
+  // mapped with greens/tees/fairways but no routing lines, e.g. Songbird Hills). Pairs each green
+  // with its back tee; numbers by OSM hole-number tags when present, else a nearest-neighbour walk.
+  let synthesized = false;
+  if (!holeWays.length && greens.length >= 3) {
+    const nearT = tees.map((t: any) => { let bg: any = null, bd = 1e12; for (const gr of greens) { const d = hmHav(t.c, gr.c); if (d < bd) { bd = d; bg = gr; } } return { t, g: bg, d: bd }; }).filter((x: any) => x.g && x.d < 360);
+    const byGreen = new Map<any, any[]>();
+    for (const x of nearT) { const arr = byGreen.get(x.g) || []; arr.push(x); byGreen.set(x.g, arr); }
+    const synth: any[] = [];
+    for (const gr of greens) {
+      const assigned = (byGreen.get(gr) || []).sort((a: any, b: any) => b.d - a.d); // farthest assigned tee = back tee
+      let teePt: number[] | null = null, teeRef = NaN;
+      if (assigned.length) { teePt = assigned[0].t.c; teeRef = assigned[0].t.ref; }
+      else { let bt: any = null, bd = 1e12; for (const t of tees) { const d = hmHav(t.c, gr.c); if (d < bd) { bd = d; bt = t; } } if (bt && bd < 550) { teePt = bt.c; teeRef = bt.ref; } }
+      if (!teePt) continue;
+      const ref = Number.isFinite(gr.ref) ? gr.ref : (Number.isFinite(teeRef) ? teeRef : null);
+      synth.push({ geometry: [{ lat: teePt[0], lon: teePt[1] }, { lat: gr.c[0], lon: gr.c[1] }], tags: { ref: ref != null ? String(ref) : "", par: Number.isFinite(gr.par) ? String(gr.par) : "" }, _ref: ref });
+    }
+    const haveRef = synth.filter((h) => h._ref != null).length;
+    if (synth.length && haveRef < synth.length * 0.5) {
+      const used = new Array(synth.length).fill(false);
+      const cen = synth.reduce((a: number[], h) => [a[0] + h.geometry[0].lat, a[1] + h.geometry[0].lon], [0, 0]).map((v: number) => v / synth.length);
+      let cur = 0, bd = 1e12; synth.forEach((h, i) => { const d = hmHav([h.geometry[0].lat, h.geometry[0].lon], cen); if (d < bd) { bd = d; cur = i; } });
+      for (let n = 1; n <= synth.length; n++) {
+        used[cur] = true; synth[cur].tags.ref = String(n);
+        let nx = -1, nd = 1e12; const g2 = synth[cur].geometry[1];
+        synth.forEach((h, i) => { if (used[i]) return; const d = hmHav([g2.lat, g2.lon], [h.geometry[0].lat, h.geometry[0].lon]); if (d < nd) { nd = d; nx = i; } });
+        if (nx < 0) break; cur = nx;
+      }
+    }
+    holeWays = synth.filter((h) => h.tags.ref);
+    synthesized = holeWays.length > 0;
+  }
 
   // Course boundaries (to isolate ONE course when several are nearby). Ways + relation outers.
   const boundaries: number[][][] = [];
@@ -519,7 +553,7 @@ function parseHoleMap(data: any, qLat: number, qLng: number, wantHoles: number) 
   const seen = new Set<number>();
   holes = holes.filter((h: any) => { if (h.ref == null) return true; if (seen.has(h.ref)) return false; seen.add(h.ref); return true; });
 
-  return { available: true, counts, holes };
+  return { available: true, counts, holes, synthesized };
 }
 
 export default {
