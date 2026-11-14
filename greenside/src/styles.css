@@ -1243,6 +1243,52 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .cse-pick > span { font-size: 12px; font-weight: 700; min-width: 72px; }
 .cup-sel { flex: 1; padding: 8px; border: 1px solid var(--line); border-radius: 9px; background: var(--cream); font: inherit; font-size: 13px; min-width: 0; }
 
+/* Captain crown in team columns */
+.crt-crown { color: var(--brass); margin-right: 3px; vertical-align: -1px; }
+
+/* Course picker */
+.cup-course { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 11px; margin-bottom: 4px; }
+.cc-cur { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.cc-cur b { font-size: 15px; color: var(--ink); }
+.cc-cur em { display: block; font-style: normal; font-size: 12px; color: var(--mut); margin-top: 1px; }
+.cc-demo { display: block; font-size: 11px; color: var(--brass); font-weight: 700; margin-top: 2px; }
+.cc-search { display: flex; align-items: center; gap: 8px; color: var(--mut); }
+.cc-search input { flex: 1; border: 1px solid var(--line); background: var(--cream); border-radius: 9px; padding: 9px 11px; font: inherit; font-size: 15px; color: var(--ink); min-width: 0; }
+.cc-search input:focus { outline: none; border-color: var(--pine); }
+.cc-hit { display: block; width: 100%; text-align: left; border: 1px solid var(--line); background: var(--card); border-radius: 10px; padding: 10px 12px; margin-top: 7px; cursor: pointer; }
+.cc-hit b { font-size: 14.5px; color: var(--ink); }
+.cc-hit em { display: block; font-style: normal; font-size: 12px; color: var(--mut); margin-top: 1px; }
+
+/* Captain picker */
+.cup-caps { display: flex; flex-direction: column; gap: 8px; }
+.cap-row { display: flex; align-items: center; gap: 10px; }
+.cap-team { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 800; min-width: 120px; }
+
+/* Assign vs draft segmented control */
+.cup-modeseg { display: flex; gap: 6px; background: rgba(21,57,42,.06); border-radius: 11px; padding: 4px; }
+.cup-modeseg button { flex: 1; border: none; background: transparent; color: var(--mut); font: inherit; font-size: 13.5px; font-weight: 700; padding: 9px; border-radius: 8px; cursor: pointer; transition: .15s; }
+.cup-modeseg button.on { background: var(--pine); color: #f4f6f5; box-shadow: 0 2px 8px rgba(14,42,31,.22); }
+
+/* Draft panel */
+.cup-draft { background: rgba(21,57,42,.04); border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-top: 10px; }
+.cd-setup { display: flex; flex-direction: column; gap: 10px; }
+.cd-first { display: flex; align-items: center; gap: 8px; }
+.cd-first > span { font-size: 12px; font-weight: 700; color: var(--mut); }
+.cd-firstbtn { border: 1.5px solid; background: transparent; font: inherit; font-size: 13px; font-weight: 700; padding: 6px 14px; border-radius: 999px; cursor: pointer; transition: .15s; }
+.cd-turn { display: flex; align-items: center; gap: 9px; background: var(--card); border: 1.5px solid; border-radius: 11px; padding: 10px 12px; font-size: 13.5px; }
+.cd-turn b { font-weight: 800; }
+.cd-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.cd-done { display: flex; align-items: center; justify-content: center; gap: 7px; background: rgba(21,57,42,.06); color: var(--pine); font-size: 13.5px; font-weight: 700; border-radius: 11px; padding: 11px; }
+.cd-pool { margin-top: 10px; }
+.cd-poollbl { font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--mut); }
+.cd-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 7px; }
+.cd-chip { display: inline-flex; align-items: center; gap: 4px; border: 1.5px solid var(--line); background: var(--card); color: var(--ink); font: inherit; font-size: 13.5px; font-weight: 600; padding: 8px 13px; border-radius: 999px; cursor: default; transition: .15s; }
+.cd-chip em { font-style: normal; color: var(--mut); font-size: 11px; }
+.cd-chip.pick { cursor: pointer; border-color: var(--pine); color: var(--pine); }
+.cd-chip.pick:hover { background: var(--pine); color: #f4f6f5; box-shadow: 0 2px 8px rgba(14,42,31,.2); }
+.cd-chip.pick:hover em { color: rgba(255,255,255,.75); }
+.cd-chip:disabled { opacity: .55; }
+
 /* Match scoring */
 .mv-status { background: var(--ink); color: #fff; border-radius: 14px; padding: 12px 14px; margin: 2px 0 10px; }
 .mv-matchup { display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 15px; }

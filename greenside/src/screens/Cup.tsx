@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { ChevronLeft, ChevronRight, Plus, Minus, Trophy, Users, Flag, Settings, X, Share2, Check, MessageCircle, Send } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Minus, Trophy, Users, Flag, Settings, X, Share2, Check, MessageCircle, Send, Crown, Search, MapPin } from "lucide-react";
 import { computeMatch, cupTotals, clinch, type Format, type HcpMethod, type MatchResult } from "../lib/cup";
 import { getAccount, syncDown, addAccountCup, removeAccountCup } from "../lib/account";
 
@@ -33,7 +33,7 @@ const DEMO_COURSE = {
 function wsUrl(code: string) { return (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/api/cup/" + code; }
 function parseCup(): string | null { const m = location.hash.match(/#\/cup\/([A-Za-z0-9]+)/); return m ? m[1].toUpperCase() : null; }
 
-type MyCup = { code: string; name: string };
+type MyCup = { code: string; name: string; ts?: number };
 function getMyCups(): MyCup[] { try { return JSON.parse(localStorage.getItem("gs:cups") || "[]"); } catch { return []; } }
 function addMyCup(code: string, name: string) {
   try { const list = getMyCups().filter((c) => c.code !== code); list.unshift({ code, name, ts: Date.now() }); localStorage.setItem("gs:cups", JSON.stringify(list.slice(0, 40))); } catch { /* */ }
@@ -230,6 +230,9 @@ function CupBoard({ code }: { code: string }) {
   const meId = useRef<string>("");
   try { meId.current = localStorage.getItem("gs:cup:" + code + ":me") || (acct ? "acct_" + acct.id : ""); } catch { /* */ }
   const mePlayer = state?.roster?.find((p: any) => p.id === meId.current) || null;
+  // My role: commissioner (holds the token), captain of a team, or ordinary player.
+  const myCaptainTeam: "A" | "B" | null = state?.captains?.A === meId.current ? "A" : state?.captains?.B === meId.current ? "B" : null;
+  const canSetup = isAdmin || !!myCaptainTeam;
   const [joinName, setJoinName] = useState(acct?.name || ""); const [joinHcp, setJoinHcp] = useState("");
   const doJoin = () => {
     const n = joinName.trim(); if (!n) return;
@@ -297,7 +300,7 @@ function CupBoard({ code }: { code: string }) {
       {!mePlayer && (
         <div className="cup-join">
           <div className="cj-h"><Users size={15} /> Join this Cup</div>
-          <p>Add yourself so a captain can put you on a team.</p>
+          <p>Add yourself so you can be put on a team.</p>
           <div className="pf-coderow">
             <input className="dash-pw" style={{ margin: 0, flex: 2 }} value={joinName} onChange={(e) => setJoinName(e.target.value)} placeholder="Your name" />
             <input className="dash-pw" style={{ margin: 0, width: 56, flex: "none", textAlign: "center" }} value={joinHcp} onChange={(e) => setJoinHcp(e.target.value.replace(/[^0-9]/g, ""))} placeholder="hcp" />
@@ -305,7 +308,7 @@ function CupBoard({ code }: { code: string }) {
           </div>
         </div>
       )}
-      {mePlayer && !mePlayer.team && <div className="cup-waiting">You're in as <b>{mePlayer.name}</b> — waiting for a captain to assign your team.</div>}
+      {mePlayer && !mePlayer.team && <div className="cup-waiting">You're in as <b>{mePlayer.name}</b> — waiting to be assigned a team.</div>}
 
       {/* Headline scoreboard */}
       <div className="cup-score">
@@ -325,12 +328,12 @@ function CupBoard({ code }: { code: string }) {
 
       <div className="cup-tabs">
         <button className={view === "board" ? "on" : ""} onClick={() => setView("board")}><Flag size={15} /> Matches</button>
-        {isAdmin && <button className={view === "setup" ? "on" : ""} onClick={() => setView("setup")}><Settings size={15} /> Setup</button>}
+        {canSetup && <button className={view === "setup" ? "on" : ""} onClick={() => setView("setup")}><Settings size={15} /> {isAdmin ? "Setup" : "My team"}</button>}
       </div>
 
       {view === "board" ? (
         <div className="panel cup-panel">
-          {state.sessions.length === 0 && <p className="hint" style={{ textAlign: "center" }}>{isAdmin ? "No sessions yet — open Setup to build the weekend and set pairings." : "The captain hasn't set up any sessions yet."}</p>}
+          {state.sessions.length === 0 && <p className="hint" style={{ textAlign: "center" }}>{isAdmin ? "No sessions yet — open Setup to build the weekend and set pairings." : "The commissioner hasn't set up any sessions yet."}</p>}
           {state.sessions.map((s: any) => {
             const ms = state.matches.filter((m: any) => m.sessionId === s.id);
             return (
@@ -342,7 +345,7 @@ function CupBoard({ code }: { code: string }) {
           })}
         </div>
       ) : (
-        <CupSetup state={state} send={send} />
+        <CupSetup state={state} send={send} isAdmin={isAdmin} captainTeam={myCaptainTeam} meId={meId.current} />
       )}
       <div className="cup-code-foot">Cup code <b>{code}</b> · share it so everyone sees the same board</div>
 
@@ -399,39 +402,72 @@ function MatchRow({ mt, state, result, rosterById, onOpen }: any) {
   );
 }
 
-/* ------------------------------------------------------------------ Setup */
-function CupSetup({ state, send }: any) {
+/* ------------------------------------------------------------------ Setup (role-aware) */
+function CupSetup(props: any) {
+  // Commissioner gets the full console; a captain gets only their draft/team view; nobody else
+  // reaches this (the Setup tab is hidden for ordinary players).
+  return props.isAdmin ? <CommissionerSetup {...props} /> : <CaptainSetup {...props} />;
+}
+
+// What a captain sees: their squad, and — when the commissioner has chosen a draft — the board to
+// pick their team when it's their turn. No course, sessions, or settings.
+function CaptainSetup({ state, send, captainTeam, meId }: any) {
+  const team = state.teams[captainTeam];
+  return (
+    <div className="panel cup-panel">
+      <div className="cup-sub"><Crown size={14} /> You're captain of <b style={{ color: team.color, marginLeft: 4 }}>{team.name}</b></div>
+      {state.teamMode === "draft" ? (
+        <DraftPanel state={state} send={send} isAdmin={false} captainTeam={captainTeam} meId={meId} />
+      ) : (
+        <p className="hint" style={{ textAlign: "center" }}>The commissioner is assigning teams directly. Your squad appears below as it fills in.</p>
+      )}
+      <TeamColumns state={state} />
+    </div>
+  );
+}
+
+// What the commissioner sees: everything.
+function CommissionerSetup({ state, send, meId }: any) {
   const [pname, setPname] = useState(""); const [phcp, setPhcp] = useState("");
   const addPlayer = () => { const n = pname.trim(); if (!n) return; send({ type: "rosterAdd", name: n, hcp: parseInt(phcp) || 0, team: null }); setPname(""); setPhcp(""); };
   const unassigned = state.roster.filter((p: any) => !p.team);
+  const draftMode = state.teamMode === "draft";
 
   return (
     <div className="panel cup-panel">
+      {/* Course */}
+      <div className="cup-sub"><MapPin size={14} /> Course</div>
+      <CoursePicker state={state} send={send} />
+
+      {/* Captains */}
+      <div className="cup-sub" style={{ marginTop: 20 }}><Crown size={14} /> Captains</div>
+      <CaptainPicker state={state} send={send} />
+
+      {/* How teams are picked */}
+      <div className="cup-sub" style={{ marginTop: 20 }}><Users size={14} /> How teams are picked</div>
+      <div className="cup-modeseg">
+        <button className={!draftMode ? "on" : ""} onClick={() => send({ type: "teamMode", mode: "assign" })}>I assign teams</button>
+        <button className={draftMode ? "on" : ""} onClick={() => send({ type: "teamMode", mode: "draft" })}>Captains draft</button>
+      </div>
+
+      {draftMode && <DraftPanel state={state} send={send} isAdmin={true} captainTeam={null} meId={meId} />}
+
       {/* Roster */}
-      <div className="cup-sub"><Users size={14} /> Players</div>
-      {(["A", "B"] as const).map((side) => (
-        <div key={side} className="cup-roster-team">
-          <div className="crt-h" style={{ color: state.teams[side].color }}>{state.teams[side].name}</div>
-          <div className="crt-list">
-            {state.roster.filter((p: any) => p.team === side).map((p: any) => (
-              <div key={p.id} className="crt-p">
-                <span>{p.name}<em>{p.hcp}</em></span>
-                <button onClick={() => send({ type: "rosterUpdate", id: p.id, team: null })} aria-label="unassign"><X size={13} /></button>
-              </div>
-            ))}
-            {state.roster.filter((p: any) => p.team === side).length === 0 && <span className="crt-empty">—</span>}
-          </div>
-        </div>
-      ))}
+      <div className="cup-sub" style={{ marginTop: 20 }}><Flag size={14} /> Players &amp; teams</div>
+      <TeamColumns state={state} send={send} />
       {unassigned.length > 0 && (
         <div className="cup-unassigned">
-          <span className="cu-lbl">Tap to assign a team:</span>
+          {draftMode ? (
+            <span className="cu-lbl">{state.draft.started ? "Still in the draft pool:" : "Waiting in the pool — start the draft above, or switch to “I assign teams.”"}</span>
+          ) : (
+            <span className="cu-lbl">Tap to assign a team:</span>
+          )}
           {unassigned.map((p: any) => (
             <div key={p.id} className="cu-p">
               <span>{p.name} <em>{p.hcp}</em></span>
               <div className="cu-btns">
-                <button style={{ background: state.teams.A.color }} onClick={() => send({ type: "rosterUpdate", id: p.id, team: "A" })}>{state.teams.A.name.split(" ")[0]}</button>
-                <button style={{ background: state.teams.B.color }} onClick={() => send({ type: "rosterUpdate", id: p.id, team: "B" })}>{state.teams.B.name.split(" ")[0]}</button>
+                {!draftMode && <button style={{ background: state.teams.A.color }} onClick={() => send({ type: "rosterUpdate", id: p.id, team: "A" })}>{state.teams.A.name.split(" ")[0]}</button>}
+                {!draftMode && <button style={{ background: state.teams.B.color }} onClick={() => send({ type: "rosterUpdate", id: p.id, team: "B" })}>{state.teams.B.name.split(" ")[0]}</button>}
                 <button className="cu-x" onClick={() => send({ type: "rosterRemove", id: p.id })}><X size={13} /></button>
               </div>
             </div>
@@ -439,7 +475,7 @@ function CupSetup({ state, send }: any) {
         </div>
       )}
       <div className="pf-coderow" style={{ marginTop: 8 }}>
-        <input className="dash-pw" style={{ margin: 0, flex: 2 }} value={pname} onChange={(e) => setPname(e.target.value)} placeholder="Player name" />
+        <input className="dash-pw" style={{ margin: 0, flex: 2 }} value={pname} onChange={(e) => setPname(e.target.value)} placeholder="Add a player (or let them join by code)" />
         <input className="dash-pw" style={{ margin: 0, width: 56, flex: "none", textAlign: "center" }} value={phcp} onChange={(e) => setPhcp(e.target.value.replace(/[^0-9]/g, ""))} placeholder="hcp" />
         <button className="primary pf-codebtn" disabled={!pname.trim()} onClick={addPlayer}><Plus size={16} /></button>
       </div>
@@ -448,6 +484,160 @@ function CupSetup({ state, send }: any) {
       <div className="cup-sub" style={{ marginTop: 20 }}><Flag size={14} /> Sessions</div>
       {state.sessions.map((s: any) => <SessionEditor key={s.id} s={s} state={state} send={send} />)}
       <AddSession send={send} />
+    </div>
+  );
+}
+
+// Read-only (or commissioner-editable) team columns, with a crown on each captain.
+function TeamColumns({ state, send }: any) {
+  return (
+    <>
+      {(["A", "B"] as const).map((side) => {
+        const members = state.roster.filter((p: any) => p.team === side);
+        return (
+          <div key={side} className="cup-roster-team">
+            <div className="crt-h" style={{ color: state.teams[side].color }}>{state.teams[side].name}</div>
+            <div className="crt-list">
+              {members.map((p: any) => {
+                const isCap = state.captains?.[side] === p.id;
+                return (
+                  <div key={p.id} className="crt-p">
+                    <span>{isCap && <Crown size={12} className="crt-crown" />}{p.name}<em>{p.hcp}</em></span>
+                    {send && !isCap && <button onClick={() => send({ type: "rosterUpdate", id: p.id, team: null })} aria-label="unassign"><X size={13} /></button>}
+                  </div>
+                );
+              })}
+              {members.length === 0 && <span className="crt-empty">—</span>}
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+// Commissioner picks the real course via the same search the rest of the app uses.
+function CoursePicker({ state, send }: any) {
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState<any[]>([]);
+  const [editing, setEditing] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  const cur = state.course;
+  const isDemo = !cur || cur.name === "Demo Course";
+
+  useEffect(() => {
+    if (!editing || q.trim().length < 2) { setResults([]); return; }
+    const t = setTimeout(async () => {
+      try { const r = await fetch(`/api/courses/search?q=${encodeURIComponent(q.trim())}`); const d = await r.json(); setResults(d.courses || []); } catch { /* */ }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [q, editing]);
+
+  const pick = async (hit: any) => {
+    setBusy(true); setMsg("");
+    try {
+      const r = await fetch(`/api/courses/${hit.id}`);
+      const d = await r.json();
+      const holes = (d.holes || []).filter((h: any) => h.num >= 1 && h.num <= 18).map((h: any) => ({ num: h.num, par: h.par, yards: h.yards, si: h.si }));
+      if (!holes.length) { setMsg("That course has no scorecard yet — scan it from the main screen first."); setBusy(false); return; }
+      send({ type: "course", course: { name: d.name || hit.name, where: d.where || hit.where || "", holes } });
+      setEditing(false); setQ(""); setResults([]);
+    } catch { setMsg("Couldn't load that course."); } finally { setBusy(false); }
+  };
+
+  if (!editing) {
+    return (
+      <div className="cup-course">
+        <div className="cc-cur">
+          <div><b>{cur?.name || "No course set"}</b>{cur?.where ? <em>{cur.where}</em> : null}{isDemo && <span className="cc-demo">placeholder par-72 — set the real course</span>}</div>
+          <button className="linkbtn" onClick={() => setEditing(true)}>Change</button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="cup-course">
+      <div className="cc-search">
+        <Search size={15} />
+        <input autoFocus value={q} onChange={(e) => { setQ(e.target.value); setMsg(""); }} placeholder="Search course name…" />
+        <button className="linkbtn" onClick={() => { setEditing(false); setQ(""); setMsg(""); }}>Cancel</button>
+      </div>
+      {busy && <p className="hint"><span className="spin sm" /> Loading…</p>}
+      {msg && <p className="hint">{msg}</p>}
+      {results.map((hit) => (
+        <button key={hit.id} className="cc-hit" onClick={() => pick(hit)}>
+          <b>{hit.name}</b>{hit.where ? <em>{hit.where}</em> : null}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// Commissioner sets each team's captain from the people who've joined.
+function CaptainPicker({ state, send }: any) {
+  return (
+    <div className="cup-caps">
+      {(["A", "B"] as const).map((side) => (
+        <div key={side} className="cap-row">
+          <span className="cap-team" style={{ color: state.teams[side].color }}><Crown size={13} /> {state.teams[side].name}</span>
+          <select className="cup-sel" value={state.captains?.[side] || ""} onChange={(e) => send({ type: "setCaptain", team: side, id: e.target.value || null })}>
+            <option value="">— pick captain —</option>
+            {state.roster.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </div>
+      ))}
+      {state.roster.length === 0 && <p className="hint">Nobody's joined yet. Share the code — names show up here as people join, then pick your captains.</p>}
+    </div>
+  );
+}
+
+// The draft board. Straight alternating A,B,A,B; the DO enforces who may pick and when.
+function DraftPanel({ state, send, isAdmin, captainTeam, meId }: any) {
+  const { teams, captains, draft } = state;
+  const pool = state.roster.filter((p: any) => !p.team);
+  const turn = draft.turn as ("A" | "B" | null);
+  const bothCaps = captains?.A && captains?.B;
+  const myTurn = !!turn && (isAdmin || captainTeam === turn);
+  const nameOf = (id: string) => state.roster.find((p: any) => p.id === id)?.name?.split(" ")[0] || "—";
+
+  return (
+    <div className="cup-draft">
+      {isAdmin && !draft.started && (
+        <div className="cd-setup">
+          <div className="cd-first"><span>First pick</span>
+            {(["A", "B"] as const).map((s) => (
+              <button key={s} className={`cd-firstbtn ${draft.first === s ? "on" : ""}`} style={draft.first === s ? { background: teams[s].color, borderColor: teams[s].color, color: "#fff" } : { borderColor: teams[s].color, color: teams[s].color }} onClick={() => send({ type: "draftFirst", team: s })}>{teams[s].name.split(" ")[0]}</button>
+            ))}
+          </div>
+          <button className="primary" disabled={!bothCaps} onClick={() => send({ type: "draftStart" })}>{bothCaps ? "Start the draft" : "Set both captains first"}</button>
+        </div>
+      )}
+
+      {draft.started && turn && (
+        <div className="cd-turn" style={{ borderColor: teams[turn].color }}>
+          <span className="cd-dot" style={{ background: teams[turn].color }} />
+          <span><b style={{ color: teams[turn].color }}>{teams[turn].name}</b> on the clock — {nameOf(captains[turn])} picks{myTurn ? " · your pick" : ""}</span>
+        </div>
+      )}
+      {draft.started && !turn && <div className="cd-done"><Check size={15} /> Draft complete — every player is on a team.</div>}
+
+      {pool.length > 0 && (
+        <div className="cd-pool">
+          <span className="cd-poollbl">In the pool ({pool.length})</span>
+          <div className="cd-chips">
+            {pool.map((p: any) => (
+              <button key={p.id} className={`cd-chip ${myTurn ? "pick" : ""}`} disabled={!myTurn} onClick={() => myTurn && send({ type: "draftPick", playerId: p.id, me: meId })}>
+                {p.name}<em>{p.hcp}</em>
+              </button>
+            ))}
+          </div>
+          {draft.started && turn && !myTurn && <p className="hint" style={{ marginTop: 6 }}>Waiting for {teams[turn].name} to pick.</p>}
+          {!draft.started && !isAdmin && <p className="hint" style={{ marginTop: 6 }}>Waiting for the commissioner to start the draft.</p>}
+        </div>
+      )}
+
+      {isAdmin && draft.started && <button className="linkbtn" style={{ marginTop: 8 }} onClick={() => send({ type: "draftReset" })}>Reset draft</button>}
     </div>
   );
 }
