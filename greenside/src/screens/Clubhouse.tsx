@@ -25,6 +25,7 @@ export default function Clubhouse() {
 
   const [rounds, setRounds] = useState<any[]>([]);
   const [greens, setGreens] = useState<Green[]>([]);
+  const [holePos, setHolePos] = useState<Record<number, { tee: number[]; green: number[] }>>({});
   const [updated, setUpdated] = useState(0);
   const [loading, setLoading] = useState(false);
 
@@ -58,16 +59,22 @@ export default function Clubhouse() {
     setLoading(false);
   };
 
-  // The saved hole map gives us green locations to draw as a faint basemap under the live dots.
+  // The saved hole map gives us each hole's tee and green — greens draw as markers, and tees let us
+  // place a group at the hole it's on even when no one is sharing GPS (inferred from the scorecard).
   const fetchGreens = async (lat: number, lng: number) => {
     try {
       const r = await fetch(`/api/holemap?lat=${lat}&lng=${lng}`);
       const d = await r.json();
-      const gs: Green[] = (d?.available && Array.isArray(d.holes) ? d.holes : [])
+      const holes = (d?.available && Array.isArray(d.holes) ? d.holes : []);
+      const gs: Green[] = holes
         .filter((h: any) => h.greenC && isFinite(h.greenC[0]) && isFinite(h.greenC[1]))
         .map((h: any) => ({ num: h.ref || 0, lat: h.greenC[0], lng: h.greenC[1] }));
-      setGreens(gs);
-    } catch { setGreens([]); }
+      const pos: Record<number, { tee: number[]; green: number[] }> = {};
+      holes.forEach((h: any) => {
+        if (h.ref && Array.isArray(h.tee) && Array.isArray(h.greenC)) pos[h.ref] = { tee: h.tee, green: h.greenC };
+      });
+      setGreens(gs); setHolePos(pos);
+    } catch { setGreens([]); setHolePos({}); }
   };
 
   const pickCourse = async (hit: any) => {
@@ -144,12 +151,19 @@ export default function Clubhouse() {
         const s = byId[p.id];
         return { name: p.name, txt: s && s.thru ? `${s.gross || "–"} (${fmtToPar(useNet ? s.toParNet : s.toParGross)})` : `${p.hcp ?? 0} hcp` };
       });
+      // The hole the group is playing now: GPS hole, else the one after their last score.
+      const curHole = gpsHole || (thru > 0 ? Math.min(holes, thru + 1) : 0);
+      // Position the dot: live GPS if we have it, otherwise the tee of the hole they're on.
+      let pos: { lat: number; lng: number } | null = null;
+      let estimated = false;
+      if (fix) { pos = { lat: fix.lat, lng: fix.lng }; estimated = !live; }
+      else if (curHole > 0 && holePos[curHole]?.tee) { pos = { lat: holePos[curHole].tee[0], lng: holePos[curHole].tee[1] }; estimated = true; }
       const color = DOT_COLORS[colorI % DOT_COLORS.length];
-      if (fix && !done) {
-        dots.push({ key: rnd.code + g, label: g === "—" ? "•" : g, lat: fix.lat, lng: fix.lng, hole: gpsHole || undefined, color, fresh: live });
+      if (pos && !done) {
+        dots.push({ key: rnd.code + g, label: g === "—" ? "•" : g, lat: pos.lat, lng: pos.lng, hole: curHole || undefined, color, fresh: live, estimated });
         colorI++;
       }
-      return { g, thru, done, holes, pace, mem, live, gpsHole, dotColor: fix && !done ? color : null };
+      return { g, thru, done, holes, pace, mem, live, gpsHole, curHole, dotColor: pos && !done ? color : null };
     });
     return { code: rnd.code, name: rnd.name || st?.courseName || rnd.code, outing: !!rnd.outing, gs };
   });
@@ -198,7 +212,7 @@ export default function Clubhouse() {
               <Suspense fallback={<div className="cm-gl-load"><span className="spin sm" /> Loading course map…</div>}>
                 <CourseMapGL center={{ lat: course.lat, lng: course.lng }} greens={greens} groups={dots} />
               </Suspense>
-              {dots.length === 0 && <p className="hint" style={{ textAlign: "center", marginTop: 6 }}>No groups sharing location right now — dots appear as phones share their spot.</p>}
+              {dots.length === 0 && <p className="hint" style={{ textAlign: "center", marginTop: 6 }}>{greens.length === 0 ? "This course has no saved hole map yet, so groups can't be placed on it. Open a round here once to build it." : "No groups out on the course right now."}</p>}
             </div>
 
             {views.length === 0 ? (
@@ -214,7 +228,7 @@ export default function Clubhouse() {
                           {grp.dotColor && <span className={`livedot ${grp.live ? "" : "stale"}`} style={{ background: grp.dotColor }} />}
                           <b>{grp.g === "—" ? "Group" : `Group ${grp.g}`}</b>
                           {grp.done ? <span className="pacebadge onpace">Done</span> : (grp.thru > 0 || grp.live) ? <span className={`pacebadge ${grp.pace.cls}`}>{grp.pace.label}</span> : null}
-                          <span className="grpthru">{grp.live && grp.gpsHole ? `on ${grp.gpsHole}` : grp.thru > 0 ? `thru ${grp.thru}` : "not started"}</span>
+                          <span className="grpthru">{grp.done ? "finished" : grp.curHole ? `hole ${grp.curHole}${grp.live ? " · live" : ""}` : "not started"}</span>
                         </div>
                         <div className="grpmem">{grp.mem.map((m, i) => (<div className="grpm" key={i}><span>{m.name}</span><em>{m.txt}</em></div>))}</div>
                       </div>

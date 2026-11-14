@@ -83,8 +83,9 @@ export default function CourseMapGL({ center, greens, groups }: {
         } else {
           entry.mk.setLngLat([d.lng, d.lat]);
         }
+        entry.el.className = "cm-gl-dot" + (d.estimated ? " est" : "");
         entry.el.style.background = d.color;
-        entry.el.style.opacity = d.fresh ? "1" : "0.45";
+        entry.el.style.opacity = d.fresh ? "1" : "0.55";
         entry.el.innerHTML = `<span>${d.label}</span>${d.hole ? `<em>${d.hole}</em>` : ""}`;
       });
       for (const [k, v] of groupMarks.current) if (!seen.has(k)) { v.mk.remove(); groupMarks.current.delete(k); }

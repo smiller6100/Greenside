@@ -11,6 +11,7 @@ export type GroupDot = {
   hole?: number;   // current hole, shown under the label
   color: string;
   fresh: boolean;  // dim the dot when the fix is stale
+  estimated?: boolean; // position inferred from the scorecard (no live GPS) — drawn dashed
 };
 
 const BOXW = 340, BOXH = 360, PAD = 22;

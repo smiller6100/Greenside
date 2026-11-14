@@ -1115,3 +1115,4 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 }
 .cm-gl-dot span { font-size: 13px; line-height: 1; }
 .cm-gl-dot em { font-style: normal; font-size: 10px; opacity: 0.95; background: rgba(0,0,0,0.28); border-radius: 6px; padding: 1px 4px; }
+.cm-gl-dot.est { border-style: dashed; }
