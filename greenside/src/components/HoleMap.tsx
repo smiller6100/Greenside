@@ -1,6 +1,6 @@
 // Renders a vector hole diagram from OSM geometry (lat/lng) projected to SVG.
 // `hole` shape comes from the worker /api/holemap response.
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const ctr = (ring: number[][]) => {
   let la = 0, ln = 0; for (const p of ring) { la += p[0]; ln += p[1]; }
@@ -43,6 +43,8 @@ export default function HoleMap({ hole, me, others }: { hole: Hole; me?: { lat: 
   let defIdx = 0;
   if (selectable) { let bd = 1e12; teeOpts.forEach((o, i) => { const d = hav(o.c, hole.tee); if (d < bd) { bd = d; defIdx = i; } }); }
   const [sel, setSel] = useState(defIdx);
+  const [target, setTarget] = useState<{ lat: number; lng: number } | null>(null); // tap-to-measure point
+  useEffect(() => { setTarget(null); }, [hole]); // clear the measure when the hole changes
   const cur = selectable ? teeOpts[Math.min(sel, teeOpts.length - 1)] : null;
   const teePoint = cur ? cur.c : hole.tee;
   const playLine = cur ? [teePoint, ...hole.line.slice(1)] : hole.line;
@@ -82,10 +84,12 @@ export default function HoleMap({ hole, me, others }: { hole: Hole; me?: { lat: 
 
   // Place hazard carry labels, dropping any that would collide with one already placed
   // (bunkers cluster near the green, so their numbers overlap badly without this).
+  // Rangefinder distances read from where you're standing (GPS) if we have it, else from the tee.
+  const refPt = me && isFinite(me.lat) && isFinite(me.lng) ? [me.lat, me.lng] : teePoint;
   const placed: { x: number; y: number }[] = [{ x: grX, y: grY - 10 }]; // reserve the green-distance spot
   const hazLabels: { x: number; y: number; text: number; kind: string }[] = [];
   hole.hazards
-    .map((h) => ({ x: X(h.c[1]), y: Y(h.c[0]) + 3, text: yds(hav(teePoint, h.c)), kind: h.kind }))
+    .map((h) => ({ x: X(h.c[1]), y: Y(h.c[0]) + 3, text: yds(hav(refPt, h.c)), kind: h.kind }))
     .sort((a, b) => a.text - b.text)
     .forEach((L) => {
       if (placed.some((p) => Math.abs(p.x - L.x) < 22 && Math.abs(p.y - L.y) < 12)) return;
@@ -109,8 +113,25 @@ export default function HoleMap({ hole, me, others }: { hole: Hole; me?: { lat: 
     x: X(o.lng), y: Y(o.lat), name: o.name, color: o.color, yds: yds(hav([o.lat, o.lng], hole.greenC)),
   }));
 
+  // Tap-to-measure: back-project a screen tap to lat/lng, then show carry/layup distances.
+  const onMapClick = (e: any) => {
+    const svgEl = e.currentTarget; const ctm = svgEl.getScreenCTM(); if (!ctm) return;
+    const sp = svgEl.createSVGPoint(); sp.x = e.clientX; sp.y = e.clientY;
+    const loc = sp.matrixTransform(ctm.inverse());
+    const lng = lngMin + (loc.x - offX) / scale / (111320 * Math.cos((latC * Math.PI) / 180));
+    const lat = latMin + (BOXH - offY - loc.y) / scale / 110540;
+    if (isFinite(lat) && isFinite(lng)) setTarget({ lat, lng });
+  };
+  let measure: { x: number; y: number; ox: number; oy: number; toT: number; toGreen: number } | null = null;
+  if (target) {
+    measure = {
+      x: X(target.lng), y: Y(target.lat), ox: X(refPt[1]), oy: Y(refPt[0]),
+      toT: yds(hav(refPt, [target.lat, target.lng])), toGreen: yds(hav([target.lat, target.lng], hole.greenC)),
+    };
+  }
+
   const svg = (
-    <svg className="holemap" viewBox={`0 0 ${BOXW} ${BOXH}`} preserveAspectRatio="xMidYMid meet">
+    <svg className="holemap" viewBox={`0 0 ${BOXW} ${BOXH}`} preserveAspectRatio="xMidYMid meet" onClick={onMapClick} style={{ cursor: "crosshair" }}>
       {rough.map((r, i) => (
         <polygon key={"r" + i} className="hm-rough" points={poly(r)} />
       ))}
@@ -131,7 +152,7 @@ export default function HoleMap({ hole, me, others }: { hole: Hole; me?: { lat: 
             key={"t" + i}
             className={"hm-teebox" + (isSel ? " hm-teebox-sel" : "")}
             points={poly(t)}
-            onClick={selectable ? () => { const k = teeOpts.findIndex((o) => o.c[0] === ctr(t)[0] && o.c[1] === ctr(t)[1]); if (k >= 0) setSel(k); } : undefined}
+            onClick={selectable ? (e) => { e.stopPropagation(); const k = teeOpts.findIndex((o) => o.c[0] === ctr(t)[0] && o.c[1] === ctr(t)[1]); if (k >= 0) setSel(k); } : undefined}
             style={selectable ? { cursor: "pointer" } : undefined}
           />
         );
@@ -163,6 +184,16 @@ export default function HoleMap({ hole, me, others }: { hole: Hole; me?: { lat: 
         <text key={"hl" + i} className={"hm-hlabel " + (L.kind === "water" ? "hm-hlabel-w" : "hm-hlabel-b")}
           x={L.x} y={L.y} textAnchor="middle">{L.text}</text>
       ))}
+
+      {/* tap-to-measure: line from your spot (or the tee) to the tapped point */}
+      {measure && (
+        <g className="hm-measure">
+          <line className="hm-mline" x1={measure.ox} y1={measure.oy} x2={measure.x} y2={measure.y} />
+          <circle className="hm-mtarget-o" cx={measure.x} cy={measure.y} r={8} />
+          <circle className="hm-mtarget" cx={measure.x} cy={measure.y} r={4} />
+          <text className="hm-mlabel" x={measure.x} y={measure.y - 11} textAnchor="middle">{measure.toT}</text>
+        </g>
+      )}
     </svg>
   );
 
@@ -184,6 +215,16 @@ export default function HoleMap({ hole, me, others }: { hole: Hole; me?: { lat: 
           <span className="hm-range-v big"><b>{meInfo.center}</b><i>center</i></span>
           <span className="hm-range-v"><b>{meInfo.back}</b><i>back</i></span>
         </div>
+      )}
+      {measure ? (
+        <div className="hm-measure-bar">
+          <span className="hm-mb-v"><b>{measure.toT}</b><i>{me && isFinite(me.lat) ? "to point" : "tee→point"}</i></span>
+          <span className="hm-mb-sep" />
+          <span className="hm-mb-v"><b>{measure.toGreen}</b><i>point→green</i></span>
+          <button className="hm-mb-clear" onClick={() => setTarget(null)}>Clear</button>
+        </div>
+      ) : (
+        <div className="hm-tip">Tap the hole to measure a carry or layup{me && isFinite(me.lat) ? "" : " from the tee"}</div>
       )}
     </>
   );

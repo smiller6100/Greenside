@@ -568,6 +568,18 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 /* Group GPS — other players */
 .hm-them { stroke: #fff; stroke-width: 2; }
 .hm-themlabel { font-size: 10.5px; font-weight: 800; fill: #1c3322; paint-order: stroke; stroke: #fff; stroke-width: 3px; }
+/* tap-to-measure (rangefinder) */
+.hm-mline { stroke: #c2410c; stroke-width: 1.8; stroke-dasharray: 4 3; opacity: .9; }
+.hm-mtarget { fill: #c2410c; stroke: #fff; stroke-width: 1.5; }
+.hm-mtarget-o { fill: rgba(194,65,12,.18); stroke: rgba(194,65,12,.45); stroke-width: 1; }
+.hm-mlabel { fill: #c2410c; font-size: 12px; font-weight: 800; paint-order: stroke; stroke: #fff; stroke-width: 3px; }
+.hm-measure-bar { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 10px; }
+.hm-mb-v { display: flex; flex-direction: column; align-items: center; line-height: 1.05; }
+.hm-mb-v b { font-size: 22px; color: #c2410c; }
+.hm-mb-v i { font-size: 10px; font-style: normal; text-transform: uppercase; letter-spacing: .04em; color: var(--ink); opacity: .55; }
+.hm-mb-sep { width: 1px; height: 26px; background: var(--line); }
+.hm-mb-clear { margin-left: 4px; border: 1px solid var(--line); background: var(--card); color: var(--mut); font: inherit; font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: 999px; cursor: pointer; }
+.hm-tip { text-align: center; font-size: 11.5px; color: var(--ink); opacity: .5; margin-top: 8px; }
 .sharebtn { display: inline-flex; align-items: center; gap: 7px; margin: 8px auto 0; padding: 9px 16px; border: 1.5px solid #1f9d6b; background: rgba(31,157,107,.08); color: #14794f; font: inherit; font-size: 14px; font-weight: 700; border-radius: 999px; cursor: pointer; }
 .sharebtn.on { background: #1f9d6b; color: #fff; border-color: #1f9d6b; }
 
