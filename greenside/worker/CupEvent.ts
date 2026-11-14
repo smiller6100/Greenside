@@ -125,12 +125,6 @@ export class CupEvent implements DurableObject {
         return this.save(state);
       }
       case "course": { if (!isAdmin) return; state.course = data.course || null; return this.save(state); }
-      case "rosterAdd": {
-        if (!isAdmin) return;
-        const name = String(data.name || "").trim().slice(0, 40); if (!name) return;
-        state.roster.push({ id: rid(), name, hcp: Number.isFinite(data.hcp) ? Math.round(data.hcp) : 0, team: data.team === "A" || data.team === "B" ? data.team : null });
-        return this.save(state);
-      }
       case "rosterUpdate": {
         // Commissioner edit (name/hcp/team). The manual team assignment path.
         if (!isAdmin) return;

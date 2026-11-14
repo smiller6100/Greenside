@@ -428,8 +428,6 @@ function CaptainSetup({ state, send, captainTeam, meId }: any) {
 
 // What the commissioner sees: everything.
 function CommissionerSetup({ state, send, meId }: any) {
-  const [pname, setPname] = useState(""); const [phcp, setPhcp] = useState("");
-  const addPlayer = () => { const n = pname.trim(); if (!n) return; send({ type: "rosterAdd", name: n, hcp: parseInt(phcp) || 0, team: null }); setPname(""); setPhcp(""); };
   const unassigned = state.roster.filter((p: any) => !p.team);
   const draftMode = state.teamMode === "draft";
   // Manual A/B buttons are available except while a draft is actively on the clock — so the
@@ -481,11 +479,7 @@ function CommissionerSetup({ state, send, meId }: any) {
           ))}
         </div>
       )}
-      <div className="pf-coderow" style={{ marginTop: 8 }}>
-        <input className="dash-pw" style={{ margin: 0, flex: 2 }} value={pname} onChange={(e) => setPname(e.target.value)} placeholder="Add a player (or let them join by code)" />
-        <input className="dash-pw" style={{ margin: 0, width: 56, flex: "none", textAlign: "center" }} value={phcp} onChange={(e) => setPhcp(e.target.value.replace(/[^0-9]/g, ""))} placeholder="hcp" />
-        <button className="primary pf-codebtn" disabled={!pname.trim()} onClick={addPlayer}><Plus size={16} /></button>
-      </div>
+      {state.roster.length === 0 && <p className="hint" style={{ marginTop: 8 }}>Share the Cup code (below) — everyone joins on their own phone and their names appear here automatically, each set to their own handicap.</p>}
 
       {/* Sessions */}
       <div className="cup-sub" style={{ marginTop: 20 }}><Flag size={14} /> Sessions</div>
