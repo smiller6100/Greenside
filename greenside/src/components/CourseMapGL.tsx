@@ -58,40 +58,44 @@ export default function CourseMapGL({ center, greens, groups, holes }: {
   useEffect(() => {
     const map = mapRef.current; if (!map) return;
     const build = () => {
-      ["cmh-fw-fill", "cmh-fw-line", "cmh-gr-fill", "cmh-gr-line"].forEach((id) => { if (map.getLayer(id)) map.removeLayer(id); });
-      if (map.getSource("holes")) map.removeSource("holes");
-      const feats: any[] = [];
-      (holes || []).forEach((h: any) => {
-        (h.fairways || []).forEach((poly: number[][]) => feats.push({ type: "Feature", properties: { k: "fw" }, geometry: { type: "Polygon", coordinates: [ring(poly)] } }));
-        if (h.green) feats.push({ type: "Feature", properties: { k: "gr" }, geometry: { type: "Polygon", coordinates: [ring(h.green)] } });
-      });
-      if (!feats.length) return;
-      map.addSource("holes", { type: "geojson", data: { type: "FeatureCollection", features: feats } });
-      map.addLayer({ id: "cmh-fw-fill", type: "fill", source: "holes", filter: ["==", ["get", "k"], "fw"], paint: { "fill-color": "#8ed081", "fill-opacity": 0.32 } });
-      map.addLayer({ id: "cmh-fw-line", type: "line", source: "holes", filter: ["==", ["get", "k"], "fw"], paint: { "line-color": "#eafff0", "line-width": 1.4, "line-opacity": 0.85 } });
-      map.addLayer({ id: "cmh-gr-fill", type: "fill", source: "holes", filter: ["==", ["get", "k"], "gr"], paint: { "fill-color": "#2ecc71", "fill-opacity": 0.5 } });
-      map.addLayer({ id: "cmh-gr-line", type: "line", source: "holes", filter: ["==", ["get", "k"], "gr"], paint: { "line-color": "#eafff0", "line-width": 1.2, "line-opacity": 0.9 } });
+      try {
+        ["cmh-fw-fill", "cmh-fw-line", "cmh-gr-fill", "cmh-gr-line"].forEach((id) => { if (map.getLayer(id)) map.removeLayer(id); });
+        if (map.getSource("holes")) map.removeSource("holes");
+        const feats: any[] = [];
+        (holes || []).forEach((h: any) => {
+          (Array.isArray(h.fairways) ? h.fairways : []).forEach((poly: number[][]) => { if (Array.isArray(poly) && poly.length >= 3) feats.push({ type: "Feature", properties: { k: "fw" }, geometry: { type: "Polygon", coordinates: [ring(poly)] } }); });
+          if (Array.isArray(h.green) && h.green.length >= 3) feats.push({ type: "Feature", properties: { k: "gr" }, geometry: { type: "Polygon", coordinates: [ring(h.green)] } });
+        });
+        if (!feats.length) return;
+        map.addSource("holes", { type: "geojson", data: { type: "FeatureCollection", features: feats } });
+        map.addLayer({ id: "cmh-fw-fill", type: "fill", source: "holes", filter: ["==", ["get", "k"], "fw"], paint: { "fill-color": "#8ed081", "fill-opacity": 0.32 } });
+        map.addLayer({ id: "cmh-fw-line", type: "line", source: "holes", filter: ["==", ["get", "k"], "fw"], paint: { "line-color": "#eafff0", "line-width": 1.4, "line-opacity": 0.85 } });
+        map.addLayer({ id: "cmh-gr-fill", type: "fill", source: "holes", filter: ["==", ["get", "k"], "gr"], paint: { "fill-color": "#2ecc71", "fill-opacity": 0.5 } });
+        map.addLayer({ id: "cmh-gr-line", type: "line", source: "holes", filter: ["==", ["get", "k"], "gr"], paint: { "line-color": "#eafff0", "line-width": 1.2, "line-opacity": 0.9 } });
+      } catch (e) { console.warn("[coursemap] outlines", e); }
     };
-    if (map.loaded()) build(); else map.once("load", build);
+    if (map.isStyleLoaded()) build(); else map.once("load", build);
   }, [holes]);
 
   // Green markers + frame the course once the hole map arrives.
   useEffect(() => {
     const map = mapRef.current; if (!map) return;
     const place = () => {
-      greenMarks.current.forEach((m) => m.remove());
-      greenMarks.current = [];
-      greens.forEach((g) => {
-        const el = document.createElement("div");
-        el.className = "cm-gl-green";
-        el.textContent = g.num ? String(g.num) : "";
-        greenMarks.current.push(new maplibregl.Marker({ element: el }).setLngLat([g.lng, g.lat]).addTo(map));
-      });
-      if (!framed.current && greens.length >= 2) {
-        const b = greens.reduce((bb, g) => bb.extend([g.lng, g.lat]), new maplibregl.LngLatBounds([greens[0].lng, greens[0].lat], [greens[0].lng, greens[0].lat]));
-        map.fitBounds(b, { padding: 46, maxZoom: 17, animate: false });
-        framed.current = true;
-      }
+      try {
+        greenMarks.current.forEach((m) => m.remove());
+        greenMarks.current = [];
+        greens.forEach((g) => {
+          const el = document.createElement("div");
+          el.className = "cm-gl-green";
+          el.textContent = g.num ? String(g.num) : "";
+          greenMarks.current.push(new maplibregl.Marker({ element: el }).setLngLat([g.lng, g.lat]).addTo(map));
+        });
+        if (!framed.current && greens.length >= 2) {
+          const b = greens.reduce((bb, g) => bb.extend([g.lng, g.lat]), new maplibregl.LngLatBounds([greens[0].lng, greens[0].lat], [greens[0].lng, greens[0].lat]));
+          map.fitBounds(b, { padding: 46, maxZoom: 17, animate: false });
+          framed.current = true;
+        }
+      } catch (e) { console.warn("[coursemap] greens", e); }
     };
     if (map.loaded()) place(); else map.once("load", place);
   }, [greens]);
@@ -100,6 +104,7 @@ export default function CourseMapGL({ center, greens, groups, holes }: {
   useEffect(() => {
     const map = mapRef.current; if (!map) return;
     const sync = () => {
+      try {
       const seen = new Set<string>();
       groups.forEach((d) => {
         seen.add(d.key);
@@ -119,6 +124,7 @@ export default function CourseMapGL({ center, greens, groups, holes }: {
         entry.el.innerHTML = `<span>${d.label}</span>${d.hole ? `<em>${d.hole}</em>` : ""}`;
       });
       for (const [k, v] of groupMarks.current) if (!seen.has(k)) { v.mk.remove(); groupMarks.current.delete(k); }
+      } catch (e) { console.warn("[coursemap] dots", e); }
     };
     if (map.loaded()) sync(); else map.once("load", sync);
   }, [groups]);
