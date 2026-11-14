@@ -1180,7 +1180,6 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
               const myStats = me ? (state.stats?.[me]?.[hole.num] || {}) : {};
               return (
                 <div className="holemap-wrap">
-                  <button className="hm-toggle-float" onClick={() => setSatView((v) => !v)}>{satView ? "Diagram" : "Satellite"}</button>
                   {satView
                     ? <Suspense fallback={<div className="holemap-empty"><span className="spin sm" /> Loading satellite…</div>}><HoleMapGL key={hole.num} hole={hm} me={gps}
                         nav={{ num: hole.num, par: hole.par, yards: hole.yards, si: hole.si, onPrev: () => setHoleIdx((i) => Math.max(0, i - 1)), onNext: () => setHoleIdx((i) => Math.min(course.length - 1, i + 1)), canPrev: holeIdx > 0, canNext: holeIdx < course.length - 1 }}

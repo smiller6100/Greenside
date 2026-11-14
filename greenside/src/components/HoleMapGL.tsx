@@ -197,7 +197,7 @@ export default function HoleMapGL({ hole, me, nav, track, players, onAdjust, onS
             )}
             <div className="gm-trow"><span>Putts</span>
               <button className="pbtn" onClick={() => { if (track.putts == null) return; const n = (track.putts as number) - 1; track.onPutts(n < 0 ? null : n); }} aria-label="putts minus"><Minus size={14} strokeWidth={2.6} /></button>
-              <span className="pnum">{track.putts ?? "–"}</span>
+              <span className="pnum">{track.putts ?? ""}</span>
               <button className="pbtn" onClick={() => track.onPutts(Math.min(10, (track.putts ?? 0) + 1))} aria-label="putts plus"><Plus size={14} strokeWidth={2.6} /></button>
             </div>
           </div>
