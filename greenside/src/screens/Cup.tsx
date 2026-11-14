@@ -432,6 +432,9 @@ function CommissionerSetup({ state, send, meId }: any) {
   const addPlayer = () => { const n = pname.trim(); if (!n) return; send({ type: "rosterAdd", name: n, hcp: parseInt(phcp) || 0, team: null }); setPname(""); setPhcp(""); };
   const unassigned = state.roster.filter((p: any) => !p.team);
   const draftMode = state.teamMode === "draft";
+  // Manual A/B buttons are available except while a draft is actively on the clock — so the
+  // commissioner can still place a late joiner before the draft starts or after it finishes.
+  const canManualAssign = !draftMode || !state.draft.turn;
 
   return (
     <div className="panel cup-panel">
@@ -457,8 +460,12 @@ function CommissionerSetup({ state, send, meId }: any) {
       <TeamColumns state={state} send={send} />
       {unassigned.length > 0 && (
         <div className="cup-unassigned">
-          {draftMode ? (
-            <span className="cu-lbl">{state.draft.started ? "Still in the draft pool:" : "Waiting in the pool — start the draft above, or switch to “I assign teams.”"}</span>
+          {draftMode && state.draft.turn ? (
+            <span className="cu-lbl">Still in the draft pool — captains are picking above.</span>
+          ) : draftMode && state.draft.started ? (
+            <span className="cu-lbl">Joined after the draft — drop them on a team:</span>
+          ) : draftMode ? (
+            <span className="cu-lbl">Waiting in the pool — start the draft above, or drop them on a team:</span>
           ) : (
             <span className="cu-lbl">Tap to assign a team:</span>
           )}
@@ -466,8 +473,8 @@ function CommissionerSetup({ state, send, meId }: any) {
             <div key={p.id} className="cu-p">
               <span>{p.name} <em>{p.hcp}</em></span>
               <div className="cu-btns">
-                {!draftMode && <button style={{ background: state.teams.A.color }} onClick={() => send({ type: "rosterUpdate", id: p.id, team: "A" })}>{state.teams.A.name.split(" ")[0]}</button>}
-                {!draftMode && <button style={{ background: state.teams.B.color }} onClick={() => send({ type: "rosterUpdate", id: p.id, team: "B" })}>{state.teams.B.name.split(" ")[0]}</button>}
+                {canManualAssign && <button style={{ background: state.teams.A.color }} onClick={() => send({ type: "rosterUpdate", id: p.id, team: "A" })}>{state.teams.A.name.split(" ")[0]}</button>}
+                {canManualAssign && <button style={{ background: state.teams.B.color }} onClick={() => send({ type: "rosterUpdate", id: p.id, team: "B" })}>{state.teams.B.name.split(" ")[0]}</button>}
                 <button className="cu-x" onClick={() => send({ type: "rosterRemove", id: p.id })}><X size={13} /></button>
               </div>
             </div>
