@@ -5,7 +5,7 @@ import { computeStandings, fmtToPar, roundDiffs, estimateHandicap } from "../lib
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, GAME_HELP, composeNines, ninesFromHoles } from "../lib/golf";
 
-const VERSION = "v141";
+const VERSION = "v142";
 
 
 
@@ -197,8 +197,15 @@ export default function Home() {
   async function pickCourse(hit: CourseHit) {
     setSearching(true); setMsg(""); setResults([]); setQuery("");
     try {
-      const r = await fetch(`/api/courses/${hit.id}`);
-      if (!r.ok) throw new Error();
+      let r = await fetch(`/api/courses/${hit.id}`);
+      if (!r.ok && (r.status === 429 || r.status >= 500)) { await new Promise((res) => setTimeout(res, 700)); r = await fetch(`/api/courses/${hit.id}`); }
+      if (!r.ok) {
+        let status = r.status; try { const e = await r.json(); if (e && e.status) status = e.status; } catch { /* */ }
+        if (status === 429) setMsg(`"${hit.name}" couldn't load — the course database is at its daily limit. Scan the scorecard and it'll save permanently for everyone.`);
+        else if (status === 404) setMsg(`No scorecard on file for "${hit.name}" yet. Scan it once and it saves for everyone.`);
+        else setMsg("Couldn't load that course. Try again in a moment, or scan it.");
+        setSearching(false); return;
+      }
       const data = await r.json();
       const rawHoles: any[] = (data.holes || []).map((h: any) => ({ num: h.num, par: h.par, yards: h.yards, si: h.si, nine: h.nine }));
       if (!rawHoles.length) { setMsg("That course had no scorecard data. Try another or scan it."); setSearching(false); return; }

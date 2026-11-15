@@ -9,7 +9,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog, UserProfile, League, CupEvent, AccountCred };
 
-const BUILD = "v105";
+const BUILD = "v106";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -701,11 +701,26 @@ export default {
       }
       if (/^\d+$/.test(id)) {
         if (!env.GOLF_API_KEY) return new Response("Not configured", { status: 503 });
-        return cachedJson(`https://cache/course/v2/${id}`, 604800, async () => {
-          const r = await fetch(`${GOLF_API}/courses/${id}`, { headers: { Authorization: `Key ${env.GOLF_API_KEY}` } });
-          if (!r.ok) return new Response("Course not found", { status: r.status });
-          const d: any = await r.json();
-          return Response.json(courseToHoles(d.course));
+        return cachedJson(`https://cache/course/v3/${id}`, 31536000, async () => {
+          let status = 0;
+          for (let attempt = 0; attempt < 3; attempt++) {
+            const r = await fetch(`${GOLF_API}/courses/${id}`, { headers: { Authorization: `Key ${env.GOLF_API_KEY}` } });
+            if (r.ok) {
+              const d: any = await r.json();
+              const course = courseToHoles(d.course);
+              // Bank it into the catalog so it's served from there forever after — no more API calls
+              // for this course, for anyone. This is what keeps the daily API quota from blocking people.
+              if (Array.isArray(course.holes) && course.holes.length) {
+                ctx.waitUntil(catalog(env).fetch("https://do/upsert", { method: "POST", headers: { "content-type": "application/json" },
+                  body: JSON.stringify({ name: course.name, where: course.where || "", lat: course.lat ?? null, lng: course.lng ?? null, holes: course.holes, tees: course.tees || null, defaultTee: course.defaultTee || null }) }).catch(() => {}));
+              }
+              return Response.json(course);
+            }
+            status = r.status;
+            if (r.status !== 429 && r.status < 500) break; // 404/400 is a real miss — don't retry
+            await sleep(400 * (attempt + 1)); // transient (rate-limit blip / 5xx): back off and retry
+          }
+          return Response.json({ error: "upstream", status }, { status: status || 502 });
         });
       }
       return new Response("Not found", { status: 404 });
