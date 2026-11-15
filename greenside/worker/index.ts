@@ -9,7 +9,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog, UserProfile, League, CupEvent, AccountCred };
 
-const BUILD = "v112";
+const BUILD = "v113";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -317,9 +317,26 @@ function mapperToHoleMap(exp: any): any {
   return { available: out.length > 0, holes: out, counts: { found: out.length, greens: out.length, bunkers: 0, water: 0 }, source: "mapped" };
 }
 
+// Club + course into one label. Collapses the common case where a course's club
+// and course names are identical ("Westmoor Country Club — Westmoor Country Club"),
+// or one already contains the other, while keeping genuinely distinct pairs
+// ("Marquette Gc — Greywalls").
+function courseName(club: any, course: any): string {
+  const a = String(club || "").trim();
+  const b = String(course || "").trim();
+  if (!a) return b || "Course";
+  if (!b) return a;
+  const na = a.toLowerCase().replace(/\s+/g, " ");
+  const nb = b.toLowerCase().replace(/\s+/g, " ");
+  if (na === nb) return a;
+  if (nb.includes(na)) return b; // course label already carries the club name
+  if (na.includes(nb)) return a; // club label already carries the course name
+  return `${a} — ${b}`;
+}
+
 function simplifyCourse(c: any) {
   const loc = c.location || {};
-  const name = [c.club_name, c.course_name].filter(Boolean).join(" — ") || c.course_name || c.club_name || "Course";
+  const name = courseName(c.club_name, c.course_name);
   return { id: c.id, name, where: [loc.city, loc.state].filter(Boolean).join(", "), lat: loc.latitude ?? null, lng: loc.longitude ?? null, saved: false };
 }
 
@@ -348,7 +365,7 @@ function courseToHoles(course: any) {
   const holes = def ? def.holes : [];
 
   return {
-    name: [course.club_name, course.course_name].filter(Boolean).join(" — "),
+    name: courseName(course.club_name, course.course_name),
     where: [loc.city, loc.state].filter(Boolean).join(", "),
     lat: loc.latitude ?? null, lng: loc.longitude ?? null,
     holes, tees: teeData, defaultTee: def ? def.name : "", siEstimated,
