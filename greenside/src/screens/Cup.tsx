@@ -772,7 +772,8 @@ function MatchView({ state, mt, course, rosterById, result, onBack, send, meId }
     if (lat == null || lng == null) { setHoleMap({ available: false }); return; }
     setHoleMap(null);
     const ctrl = new AbortController();
-    fetch(`/api/holemap?lat=${lat}&lng=${lng}&holes=${course.holes.length}`, { cache: "no-store", signal: ctrl.signal })
+    const card = course.holes.map((h: any) => ({ num: h.num, par: h.par, yards: h.yards }));
+    fetch(`/api/holemap`, { method: "POST", headers: { "content-type": "application/json" }, cache: "no-store", signal: ctrl.signal, body: JSON.stringify({ lat, lng, holes: course.holes.length, card }) })
       .then((r) => r.json()).then(setHoleMap).catch(() => setHoleMap({ available: false, retry: true }));
     return () => ctrl.abort();
   }, [lat, lng, course.holes.length, reload]);

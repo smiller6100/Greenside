@@ -244,7 +244,9 @@ export default function Round({ code, joinGroup }: { code: string; joinGroup?: s
     let done = false;
     const ctrl = new AbortController();
     const timer = setTimeout(() => { if (!done) ctrl.abort(); }, 60000);
-    fetch(`/api/holemap?lat=${hmLat}&lng=${hmLng}&holes=${hmN}`, { cache: "no-store", signal: ctrl.signal })
+    // Send the scorecard so the worker can number any unlabeled OSM holes from it.
+    const card = Array.isArray((state as any).course) ? (state as any).course.map((h: any) => ({ num: h.num, par: h.par, yards: h.yards })) : [];
+    fetch(`/api/holemap`, { method: "POST", headers: { "content-type": "application/json" }, cache: "no-store", signal: ctrl.signal, body: JSON.stringify({ lat: hmLat, lng: hmLng, holes: hmN, card }) })
       .then((r) => r.json())
       .then((d) => { done = true; setHoleMap(d); })
       .catch(() => { done = true; setHoleMap({ available: false, error: "timeout", retry: true }); })

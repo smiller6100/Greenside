@@ -9,7 +9,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog, UserProfile, League, CupEvent, AccountCred };
 
-const BUILD = "v110";
+const BUILD = "v111";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -420,6 +420,73 @@ function hmHav(a: number[], b: number[]): number { // meters between [lat,lng]
 function hmRing(geom: any[]): number[][] { return geom.map((g) => [g.lat, g.lon]); }
 function hmCentroid(geom: any[]): number[] { let la = 0, lo = 0; geom.forEach((g) => { la += g.lat; lo += g.lon; }); return [la / geom.length, lo / geom.length]; }
 function hmYds(m: number): number { return Math.round(m * 1.09361); }
+
+// ---- Number unlabeled OSM holes from the scorecard (no guessing) ----
+// Signals: physical routing (a hole's green sits beside the next hole's tee) gives the ORDER; the
+// scorecard's par sequence + yardages pin that order to actual numbers. Only forced assignments are
+// committed; anything ambiguous is left null (for a tap later). Straight-line tee→green (what OSM
+// gives) is <= the card's playing yardage, so the length window is asymmetric.
+function hmLenOk(len: number, yards: number, par: number): boolean {
+  const lo = par <= 3 ? 30 : par === 4 ? 70 : 90, hi = 35;
+  return len >= yards - lo && len <= yards + hi;
+}
+function hmFits(h: any, c: any): boolean { return (h.par == null || h.par === c.par) && hmLenOk(h.len, c.yards, c.par); }
+function hmRouteChains(osm: any[], dist: (a: number[], b: number[]) => number, thresh: number): number[][] {
+  const n = osm.length, next = new Array(n).fill(-1), prev = new Array(n).fill(-1);
+  for (let i = 0; i < n; i++) {
+    if (!osm[i].greenC) continue;
+    let bj = -1, bd = Infinity;
+    for (let j = 0; j < n; j++) { if (j === i || !osm[j].teeC) continue; const d = dist(osm[i].greenC, osm[j].teeC); if (d < bd) { bd = d; bj = j; } }
+    if (bj >= 0 && bd <= thresh) next[i] = bj;
+  }
+  for (let i = 0; i < n; i++) if (next[i] >= 0) prev[next[i]] = i;
+  const chains: number[][] = [], used = new Set<number>();
+  for (let s = 0; s < n; s++) {
+    if (prev[s] !== -1 || used.has(s)) continue;
+    const chain: number[] = []; let c = s, guard = 0;
+    while (c !== -1 && !used.has(c) && guard++ < n + 1) { chain.push(c); used.add(c); c = next[c]; }
+    chains.push(chain);
+  }
+  for (let i = 0; i < n; i++) if (!used.has(i)) { chains.push([i]); used.add(i); }
+  return chains;
+}
+function matchHoleNumbers(osm: any[], card: any[], dist: (a: number[], b: number[]) => number, thresh = 80): { refs: (number | null)[]; newlyNumbered: number } {
+  const refs: (number | null)[] = osm.map((h) => (Number.isFinite(h.ref) && h.ref >= 1 ? h.ref : null));
+  const taken = new Set<number>(refs.filter((r): r is number => r != null));
+  for (const chain of hmRouteChains(osm, dist, thresh)) {
+    const offsets: number[] = [];
+    for (let off = 0; off + chain.length <= card.length; off++) {
+      let good = true;
+      for (let k = 0; k < chain.length; k++) {
+        const slot = card[off + k], known = refs[chain[k]];
+        if (known != null) { if (slot.num !== known) { good = false; break; } }
+        else if (taken.has(slot.num) || !hmFits(osm[chain[k]], slot)) { good = false; break; }
+      }
+      if (good) offsets.push(off);
+    }
+    if (offsets.length === 1) { const off = offsets[0]; chain.forEach((i, k) => { if (refs[i] == null) { refs[i] = card[off + k].num; taken.add(card[off + k].num); } }); }
+  }
+  let progress = true;
+  while (progress) {
+    progress = false;
+    const openIdx = refs.map((r, i) => (r == null ? i : -1)).filter((i) => i >= 0);
+    const candsOf = (i: number) => card.filter((c) => !taken.has(c.num) && hmFits(osm[i], c)).map((c) => c.num);
+    for (const c of card) { if (taken.has(c.num)) continue; const hs = openIdx.filter((i) => refs[i] == null && candsOf(i).includes(c.num)); if (hs.length === 1) { refs[hs[0]] = c.num; taken.add(c.num); progress = true; } }
+    if (progress) continue;
+    for (const i of openIdx) { if (refs[i] != null) continue; const cs = candsOf(i); if (cs.length === 1) { refs[i] = cs[0]; taken.add(cs[0]); progress = true; } }
+  }
+  return { refs, newlyNumbered: refs.filter((r, i) => r != null && osm[i].ref == null).length };
+}
+// Apply the scorecard numbering to an OSM hole map in place. Returns how many holes were newly numbered.
+function numberHolesFromCard(map: any, card: any[]): number {
+  if (!map || !Array.isArray(map.holes) || !Array.isArray(card)) return 0;
+  const cardClean = card.filter((c: any) => Number.isFinite(c.num) && Number.isFinite(c.par) && Number.isFinite(c.yards) && c.yards > 0).map((c: any) => ({ num: c.num, par: c.par, yards: c.yards }));
+  if (cardClean.length < 3) return 0;
+  const osm = map.holes.map((h: any) => ({ teeC: Array.isArray(h.tee) ? h.tee : null, greenC: Array.isArray(h.greenC) ? h.greenC : null, par: Number.isFinite(h.par) ? h.par : null, len: Number.isFinite(h.teeToGreenYds) ? h.teeToGreenYds : 0, ref: Number.isFinite(h.ref) ? h.ref : null }));
+  const { refs, newlyNumbered } = matchHoleNumbers(osm, cardClean, (a, b) => hmYds(hmHav(a, b)), 80);
+  if (newlyNumbered > 0) map.holes.forEach((h: any, i: number) => { if (!Number.isFinite(h.ref) && refs[i] != null) h.ref = refs[i]; });
+  return newlyNumbered;
+}
 // Ray-casting point-in-polygon. pt and ring vertices are [lat,lng]; treat lng as x, lat as y.
 function hmInside(pt: number[], ring: number[][]): boolean {
   const x = pt[1], y = pt[0];
@@ -1280,6 +1347,31 @@ export default {
       } catch { /* fall through to OSM */ }
       // Live fetch, banked permanently on success so the next visit is instant and offline-proof.
       return holeMapPersist(env, lat, lng, wantHoles);
+    }
+
+    // Same as GET, but carries the course scorecard so unlabeled OSM holes can be numbered from it.
+    if (path === "/api/holemap" && request.method === "POST") {
+      const b = await request.json<any>().catch(() => ({}));
+      const lat = parseFloat(b.lat), lng = parseFloat(b.lng);
+      const wantHoles = parseInt(b.holes) || 0;
+      const card = Array.isArray(b.card) ? b.card : [];
+      if (!isFinite(lat) || !isFinite(lng)) return Response.json({ available: false, error: "no-location" });
+      const ck = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+      const getmap = () => catalog(env).fetch(`https://do/getmap?key=${encodeURIComponent(ck)}`).then((r) => r.json());
+      const withTimeout = (p: Promise<any>, ms: number): Promise<any> => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("do-timeout")), ms))]);
+      let map: any = null;
+      try { const sm: any = await withTimeout(getmap(), 3000); if (sm && sm.found && sm.map && sm.map.available) map = sm.map; } catch { /* */ }
+      if (!map) { const resp = await holeMapPersist(env, lat, lng, wantHoles); try { map = await resp.json(); } catch { /* */ } }
+      if (map && map.available && card.length && Array.isArray(map.holes) && map.holes.some((h: any) => !Number.isFinite(h.ref))) {
+        const added = numberHolesFromCard(map, card);
+        if (added > 0) {
+          // Re-bank the now-numbered map, but never over a hand-mapped one.
+          let handMapped = false;
+          try { const ex: any = await getmap(); handMapped = ex && ex.found && ex.name && ex.name !== "osm"; } catch { /* */ }
+          if (!handMapped) await catalog(env).fetch(`https://do/savemap`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ coordkey: ck, name: "osm", map }) }).catch(() => {});
+        }
+      }
+      return Response.json(map || { available: false });
     }
 
     // Save a Course Mapper export as a course's permanent hole map (admin only).
