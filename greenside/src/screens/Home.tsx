@@ -25,13 +25,13 @@ import { computeStandings, fmtToPar, roundDiffs, estimateHandicap } from "../lib
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, GAME_HELP, composeNines, ninesFromHoles } from "../lib/golf";
 
-const VERSION = "v144";
+const VERSION = "v145";
 
 
 
 interface CourseHit { id: string; name: string; where: string; lat: number | null; lng: number | null; saved?: boolean; }
 
-async function fileToJpeg(file: File, max = 1800, q = 0.85): Promise<Blob> {
+async function fileToJpeg(file: File, max = 2200, q = 0.85): Promise<Blob> {
   // Decode to something drawable. createImageBitmap is fastest but throws on some iPhone HEIC photos,
   // so fall back to an <img> element (Safari can render HEIC that way).
   let src: CanvasImageSource; let iw: number; let ih: number;

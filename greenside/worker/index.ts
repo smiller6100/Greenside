@@ -9,7 +9,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog, UserProfile, League, CupEvent, AccountCred };
 
-const BUILD = "v109";
+const BUILD = "v110";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -373,6 +373,41 @@ function extractJson(text: string): any {
   const end = body.lastIndexOf("}");
   if (start === -1 || end === -1) return null;
   try { return JSON.parse(body.slice(start, end + 1)); } catch { return null; }
+}
+
+// Reconcile several independent reads of the stroke-index row into one correct 1..n permutation:
+// per-column majority vote, then repair to a valid permutation, honoring the odd-front/even-back
+// convention when the reads clearly follow it. This is what makes the S.I. row read reliably — one
+// read of the whole card treats it as an afterthought, so we read it on its own and cross-check.
+function reconcileSI(cands: number[][], n: number): number[] | null {
+  const C = cands.filter((a) => Array.isArray(a) && a.length === n);
+  if (!C.length) return null;
+  const voted = new Array(n).fill(0), conf = new Array(n).fill(0);
+  for (let i = 0; i < n; i++) {
+    const counts = new Map<number, number>();
+    for (const a of C) { const v = a[i]; if (v >= 1 && v <= n) counts.set(v, (counts.get(v) || 0) + 1); }
+    let bv = 0, bc = 0;
+    for (const [v, c] of counts) { if (c > bc || (c === bc && v < bv)) { bv = v; bc = c; } }
+    voted[i] = bv; conf[i] = bc;
+  }
+  let parityFront = 0;
+  if (n === 18) {
+    let oF = 0, eF = 0, oB = 0, eB = 0;
+    for (let i = 0; i < 9; i++) if (voted[i]) (voted[i] % 2 ? oF++ : eF++);
+    for (let i = 9; i < 18; i++) if (voted[i]) (voted[i] % 2 ? oB++ : eB++);
+    if (oF >= 7 && eB >= 7) parityFront = 1; else if (eF >= 7 && oB >= 7) parityFront = -1;
+  }
+  const wantOdd = (i: number) => { if (!parityFront) return null; const front = i < 9; return parityFront === 1 ? front : !front; };
+  const okParity = (i: number, v: number) => { const w = wantOdd(i); return w === null || w === (v % 2 === 1); };
+  const assigned = new Array(n).fill(0); const taken = new Set<number>();
+  const order = [...Array(n).keys()].sort((a, b) => conf[b] - conf[a]);
+  for (const i of order) { const v = voted[i]; if (v >= 1 && v <= n && !taken.has(v) && okParity(i, v)) { assigned[i] = v; taken.add(v); } }
+  const open: number[] = []; for (let i = 0; i < n; i++) if (!assigned[i]) open.push(i);
+  const missing: number[] = []; for (let v = 1; v <= n; v++) if (!taken.has(v)) missing.push(v);
+  for (const i of open) { let idx = missing.findIndex((v) => okParity(i, v)); if (idx < 0) idx = 0; assigned[i] = missing.splice(idx, 1)[0] || 0; }
+  const set = new Set(assigned);
+  if (set.size !== n || assigned.some((v) => v < 1 || v > n)) return null;
+  return assigned;
 }
 
 // ---- OpenStreetMap hole-map parsing (vector hole diagrams + distances) ----
@@ -865,43 +900,66 @@ export default {
         const useSchema = wantNines ? ninesSchema : schema;
         const useBuild = wantNines ? buildNines : build;
         const asText = (resp: any) => (typeof resp === "string" ? resp : resp ? JSON.stringify(resp) : "");
-        // Primary: Llama 4 Scout (far stronger vision). Fallback: the small vision model.
-        const runScout = async () => {
+        // Runners take a prompt/schema so we can also use them for a focused stroke-index read.
+        const runScout = async (p: string = usePrompt, schema: any = useSchema) => {
           const out: any = await env.AI.run("@cf/meta/llama-4-scout-17b-16e-instruct", {
-            messages: [{ role: "user", content: [{ type: "text", text: usePrompt }, { type: "image_url", image_url: { url: dataUrl } }] }],
-            max_tokens: 2400, temperature: 0.1, guided_json: useSchema,
+            messages: [{ role: "user", content: [{ type: "text", text: p }, { type: "image_url", image_url: { url: dataUrl } }] }],
+            max_tokens: 2400, temperature: 0.1, guided_json: schema,
           });
           return asText(out?.response);
         };
-        const runSmall = async () => {
-          const out: any = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", { image, prompt: usePrompt, max_tokens: 2200 });
+        const runSmall = async (p: string = usePrompt) => {
+          const out: any = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", { image, prompt: p, max_tokens: 2200 });
           return asText(out?.response);
         };
-        // Moondream 3.1 is an OCR/structured-output-specialised vision model — a strong second read,
-        // especially for the fiddly stroke-index row.
-        const runMoondream = async () => {
-          const out: any = await env.AI.run("@cf/moondream/moondream3.1-9B-A2B", { task: "query", image: dataUrl, question: usePrompt, max_tokens: 2400, temperature: 0.1 });
+        // Moondream 3.1 is an OCR/structured-output-specialised vision model — a strong second read.
+        const runMoondream = async (p: string = usePrompt) => {
+          const out: any = await env.AI.run("@cf/moondream/moondream3.1-9B-A2B", { task: "query", image: dataUrl, question: p, max_tokens: 2400, temperature: 0.1 });
           return asText(out?.answer);
         };
 
+        // One solid full-card read gets par + yardages (those read reliably). SI is handled separately.
         let best: any = null;
         const early = wantNines ? 5000 : 2000;
-        // Two strong reads (generalist + OCR specialist). Stop at the first that's both solid and has a
-        // clean stroke index; otherwise keep the better of the two. Bounded so scans stay fast/cheap.
         for (const run of [runScout, runMoondream]) {
-          let text = "";
-          try { text = await run(); } catch { continue; }
+          let text = ""; try { text = await run(); } catch { continue; }
           const r = useBuild(extractJson(text));
           if (r && (!best || r.score > best.score)) best = r;
-          if (best && best.score >= early && best.siOk) break;
+          if (best && best.score >= early) break;
         }
-        // Only if neither strong model produced even a solid read, fall back to the small vision model.
         if (!best || best.score < early) {
           let text = ""; try { text = await runSmall(); } catch { /* */ }
           const r = useBuild(extractJson(text));
           if (r && (!best || r.score > best.score)) best = r;
         }
         if (!best || best.score === 0) return Response.json({ error: "unreadable" }, { status: 422 });
+
+        // ---- Dedicated stroke-index pass (single/9-18-hole cards) ----
+        // Read ONLY the handicap row a couple more times and reconcile all reads into one correct
+        // 1..N permutation. This is the part a whole-card read gets wrong most often.
+        if (!wantNines && best.payload?.holes?.length) {
+          const nH = best.payload.holes.length;
+          const siPrompt =
+            `Look ONLY at the single row on this golf scorecard labelled Handicap, Hcp, HDCP, H.C.P, S.I., SI, Index or Stroke. ` +
+            `Return STRICT JSON only: {"handicap":[${nH} numbers]} — the stroke-index rank for holes 1 to ${nH} in order, left to right. ` +
+            `It is a difficulty ranking where the numbers 1 to ${nH} EACH APPEAR EXACTLY ONCE. Read each cell carefully, column by column. ` +
+            `Ignore the Par row, every yardage row, the course name and the OUT / IN / TOTAL columns. Return only the JSON.`;
+          const siSchema = { type: "object", properties: { handicap: { type: "array", items: { type: "number" } } }, required: ["handicap"] };
+          const readHcp = async (runner: (p: string, s?: any) => Promise<string>) => {
+            try { const j = extractJson(await runner(siPrompt, siSchema)); const a = numArr(j?.handicap).map((v) => Math.round(v)).slice(0, nH); return a.length === nH ? a : null; }
+            catch { return null; }
+          };
+          const cands: number[][] = [];
+          if (best.siOk) cands.push(best.payload.holes.map((h: any) => h.si || 0)); // trust the full-card SI only if it was already clean
+          const f1 = await readHcp(runScout); if (f1) cands.push(f1);
+          const f2 = await readHcp(runMoondream); if (f2) cands.push(f2);
+          const si = reconcileSI(cands, nH);
+          if (si) {
+            best.payload.holes.forEach((h: any, i: number) => { h.si = si[i]; });
+            (best.payload.tees || []).forEach((t: any) => (t.holes || []).forEach((h: any, i: number) => { if (i < nH) h.si = si[i]; }));
+            best.payload.siEstimated = false;
+          }
+        }
         return Response.json(best.payload);
       } catch (e: any) {
         return Response.json({ error: "failed", detail: String(e?.message || e).slice(0, 300) }, { status: 500 });
