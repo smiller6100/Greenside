@@ -9,7 +9,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog, UserProfile, League, CupEvent, AccountCred };
 
-const BUILD = "v113";
+const BUILD = "v114";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -815,11 +815,24 @@ export default {
         } catch { /* */ }
       }
 
-      const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
-      const seen = new Set(saved.map((c) => norm(c.name)));
-      const merged = [...saved];
-      for (const c of [...gc, ...online]) { const k = norm(c.name); if (!seen.has(k)) { seen.add(k); merged.push(c); } } // GolfCore first, then fallback source
-      return Response.json({ courses: merged.slice(0, 12), unconfigured: !env.GOLF_API_KEY && !env.GOLFCORE_KEY && saved.length === 0 });
+      // Pool all sources, dedup by normalized name (saved first, then GolfCore, then GolfCourseAPI —
+      // so a banked or higher-quality card wins a tie).
+      const norm = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const nq = norm(q);
+      const seen = new Set<string>();
+      const pool: any[] = [];
+      for (const c of [...saved, ...gc, ...online]) {
+        const k = norm(c.name);
+        if (!k || seen.has(k)) continue;
+        seen.add(k);
+        pool.push(c);
+      }
+      // Rank by how well the name matches what was typed, so the course the user searched for always
+      // surfaces regardless of source and is never cut off by the result limit. Stable within a score,
+      // so source order (saved > GolfCore > GolfCourseAPI) breaks ties.
+      const score = (c: any) => { const n = norm(c.name); return n === nq ? 4 : n.startsWith(nq) ? 3 : n.includes(nq) ? 2 : 1; };
+      const ranked = pool.map((c, i) => ({ c, i, s: score(c) })).sort((a, b) => b.s - a.s || a.i - b.i).map((x) => x.c);
+      return Response.json({ courses: ranked.slice(0, 12), unconfigured: !env.GOLF_API_KEY && !env.GOLFCORE_KEY && saved.length === 0 });
     }
 
     // ---- Nearest saved course to a GPS fix (Quick round) ----
