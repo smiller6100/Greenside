@@ -1,11 +1,31 @@
 import { useState, useEffect, useRef } from "react";
-import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw, Trash2, ChevronLeft, ChevronRight, Menu, BarChart3, Flag, Building2, Settings, ListChecks, User, Trophy, Lock } from "lucide-react";
+import { Plus, X, Search, Camera, MapPin, ChevronDown, Bookmark, RotateCcw, Trash2, ChevronLeft, ChevronRight, Menu, BarChart3, Flag, Building2, Settings, ListChecks, User, Trophy, Lock, Check, AlertTriangle } from "lucide-react";
+
+// Stroke index must be a complete 1..N set (1..18 for 18 holes, 1..9 per nine). Report any gaps or
+// repeats so a bad scan is obvious and quick to correct.
+function siReport(course: any[]): { label: string; missing: number[]; dups: number[] }[] {
+  const labeled = course.some((h: any) => h.nine);
+  const groups: any[][] = [];
+  if (labeled) { let s = 0; for (let i = 1; i <= course.length; i++) { if (i === course.length || course[i].nine !== course[s].nine) { groups.push(course.slice(s, i)); s = i; } } }
+  else groups.push(course);
+  const out: { label: string; missing: number[]; dups: number[] }[] = [];
+  for (const g of groups) {
+    const len = g.length;
+    const vals = g.map((h: any) => Number(h.si) || 0);
+    const counts: Record<number, number> = {};
+    vals.forEach((v) => { if (v >= 1) counts[v] = (counts[v] || 0) + 1; });
+    const dups = Object.keys(counts).map(Number).filter((k) => counts[k] > 1 || k > len).sort((a, b) => a - b);
+    const missing: number[] = []; for (let n = 1; n <= len; n++) if (!vals.includes(n)) missing.push(n);
+    if (dups.length || missing.length) out.push({ label: labeled ? (g[0].nine || "") : "", missing, dups });
+  }
+  return out;
+}
 import { getAccount, syncDown, deleteRound } from "../lib/account";
 import { computeStandings, fmtToPar, roundDiffs, estimateHandicap } from "../lib/golf";
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, GAME_HELP, composeNines, ninesFromHoles } from "../lib/golf";
 
-const VERSION = "v142";
+const VERSION = "v143";
 
 
 
@@ -302,6 +322,7 @@ export default function Home() {
     const n = Math.max(0, Math.min(18, parseInt(v) || 0));
     setTees((ts) => ts.map((t) => ({ ...t, holes: t.holes.map((h, k) => (k === i ? { ...h, si: n } : h)) })));
   };
+  const clearSI = () => setTees((ts) => ts.map((t) => ({ ...t, holes: t.holes.map((h) => ({ ...h, si: 0 })) })));
   const editYards = (teeIdx: number, i: number, v: string) => {
     const n = Math.max(0, Math.min(999, parseInt(v) || 0));
     setTees((ts) => ts.map((t, ti) => {
@@ -658,6 +679,19 @@ export default function Home() {
                   </button>
                   {editing && (
                     <div className="cardgrid">
+                      {(() => {
+                        const issues = siReport(course);
+                        if (!issues.length) return <div className="si-check ok"><Check size={14} /> Stroke index complete — every rank is there once.</div>;
+                        return (
+                          <div className="si-check bad">
+                            <div className="si-check-h"><AlertTriangle size={14} /> Stroke index needs a fix</div>
+                            {issues.map((is, i) => (
+                              <div key={i} className="si-check-line">{is.label ? <b>{is.label}: </b> : null}{is.missing.length ? `missing ${is.missing.join(", ")}` : ""}{is.missing.length && is.dups.length ? " · " : ""}{is.dups.length ? `repeated ${is.dups.join(", ")}` : ""}</div>
+                            ))}
+                            <button className="si-clear" onClick={clearSI}>Clear S.I. &amp; re-enter</button>
+                          </div>
+                        );
+                      })()}
                       {(() => {
                         const labeled = course.some((h) => (h as any).nine);
                         let segs: { label: string; from: number; to: number }[];

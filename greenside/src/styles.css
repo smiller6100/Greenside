@@ -368,6 +368,12 @@ body { font-family: 'Libre Franklin', sans-serif; }
 
 /* Editable scorecard grid (course setup) */
 .cardgrid { display: flex; flex-direction: column; gap: 14px; margin-top: 10px; }
+.si-check { border-radius: 11px; padding: 10px 12px; font-size: 13px; }
+.si-check.ok { display: flex; align-items: center; gap: 7px; background: rgba(21,57,42,.06); color: var(--pine); font-weight: 600; }
+.si-check.bad { background: #fff7ed; border: 1px solid rgba(184,134,11,.35); color: #7c5a12; }
+.si-check-h { display: flex; align-items: center; gap: 7px; font-weight: 800; margin-bottom: 4px; }
+.si-check-line { font-size: 12.5px; margin-left: 21px; }
+.si-clear { margin: 8px 0 0 21px; border: 1px solid rgba(184,134,11,.4); background: #fff; color: #7c5a12; font: inherit; font-size: 12px; font-weight: 700; padding: 5px 11px; border-radius: 8px; cursor: pointer; }
 .cg-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--line); border-radius: 12px; }
 table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .cg th, .cg td { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: center; padding: 0; }

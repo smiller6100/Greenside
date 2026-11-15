@@ -9,7 +9,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog, UserProfile, League, CupEvent, AccountCred };
 
-const BUILD = "v106";
+const BUILD = "v107";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -741,7 +741,7 @@ export default {
         const prompt =
           'You read golf scorecards. Look at the image and return STRICT JSON only — no prose, no code fences — in exactly this shape: ' +
           '{"name":"<course name>","par":[18 numbers],"handicap":[18 numbers],"tees":[{"name":"<tee or color name>","yards":[18 numbers]}]}. ' +
-          '"par" = the Par for holes 1 to 18 in order. "handicap" = the stroke-index / handicap rank (1 to 18) for holes 1 to 18 in order; if men and women rows both exist use the first row. ' +
+          '"par" = the Par for holes 1 to 18 in order. "handicap" = the stroke-index / handicap row, usually labelled HANDICAP, HCP, HDCP, S.I., SI, INDEX or STROKE — a ranking of hole difficulty where the numbers 1 to 18 EACH APPEAR EXACTLY ONCE across the 18 holes. Read THAT row for holes 1 to 18 in order; do not copy par or yardage into it, and if men and women handicap rows both exist use the men\'s (first) row. Return 18 distinct numbers 1 to 18. ' +
           '"tees" = ONE entry for EACH tee box / colored row on the card (for example Black, Blue, White, Gold, Red, Orange, Teal); "yards" = that row\'s yardage for holes 1 to 18 in order. ' +
           'Read left to right, front nine then back nine. Ignore the OUT, IN and TOTAL subtotal columns — give only the 18 real hole numbers. If a value is unreadable use 0. Return only the JSON.';
         const prompt9 =
