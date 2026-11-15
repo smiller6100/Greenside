@@ -9,7 +9,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog, UserProfile, League, CupEvent, AccountCred };
 
-const BUILD = "v107";
+const BUILD = "v108";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -767,20 +767,23 @@ export default {
         const buildNines = (parsed: any) => {
           const ninesIn = Array.isArray(parsed?.nines) ? parsed.nines : [];
           if (!ninesIn.length) return null;
+          let ninesRead = true; // every nine's stroke index read as a clean 1..9 (not estimated)
           const nn = ninesIn.slice(0, 4).map((nine: any, idx: number) => {
             const par = numArr(nine.par).filter((v) => v >= 3 && v <= 6).slice(0, 9);
             const hcp = numArr(nine.handicap).filter((v) => v >= 1 && v <= 9).slice(0, 9);
             const teesIn = Array.isArray(nine.tees) ? nine.tees : [];
             const tees = teesIn.map((t: any) => ({ name: String(t.name || "Tee").trim() || "Tee", yards: numArr(t.yards).filter((v) => v < 800).slice(0, 9).map((y) => Math.max(0, Math.min(899, y))) })).filter((t: any) => t.yards.some((y: number) => y > 0));
             let si = Array.from({ length: 9 }, () => 0);
-            if (hcp.length === 9 && new Set(hcp).size === 9) si = hcp.slice();
+            const hcpClean = hcp.length === 9 && new Set(hcp).size === 9;
+            if (!hcpClean) ninesRead = false;
+            if (hcpClean) si = hcp.slice();
             else if (tees.length) { const longest = [...tees].sort((a, b) => b.yards.reduce((s: number, y: number) => s + y, 0) - a.yards.reduce((s: number, y: number) => s + y, 0))[0]; longest.yards.map((y: number, i: number) => ({ y, i })).sort((a, b) => b.y - a.y).forEach((o, r) => (si[o.i] = r + 1)); }
             else si = si.map((_, i) => i + 1);
             return { name: String(nine.name || `Nine ${idx + 1}`).trim() || `Nine ${idx + 1}`, par: Array.from({ length: 9 }, (_, i) => clampPar(par[i])), si, tees };
           }).filter((n: any) => n.tees.length || n.par.length);
           if (!nn.length) return null;
           const cells = nn.reduce((s: number, n: any) => s + n.tees.reduce((a: number, t: any) => a + t.yards.filter((y: number) => y > 0).length, 0), 0);
-          return { score: 5000 + cells, payload: { multiNine: true, name: typeof parsed?.name === "string" ? parsed.name : "", nines: nn } };
+          return { score: 5000 + cells + (ninesRead ? 3000 : 0), siOk: ninesRead, payload: { multiNine: true, name: typeof parsed?.name === "string" ? parsed.name : "", nines: nn } };
         };
 
         // Turn one model JSON reply into tee data plus a quality score (or null if nothing usable).
@@ -829,8 +832,8 @@ export default {
           const def = sorted[Math.floor(sorted.length / 2)] || teeData[0];
           const teesWithYards = teeData.filter((t) => t.total > 0).length;
           const filledCells = teeData.reduce((s, t) => s + t.holes.filter((h) => h.yards > 0).length, 0);
-          const score = teesWithYards * 1000 + filledCells; // reward reads that actually have yardages
-          return { score, payload: { name: typeof parsed.name === "string" ? parsed.name : "", holes: def.holes, tees: teeData, defaultTee: def.name, siEstimated } };
+          const score = teesWithYards * 1000 + filledCells + (hUnique ? 3000 : 0); // reward yardages, and a clean 1..N stroke index read off the card
+          return { score, siOk: hUnique, payload: { name: typeof parsed.name === "string" ? parsed.name : "", holes: def.holes, tees: teeData, defaultTee: def.name, siEstimated } };
         };
 
         // The vision model is inconsistent on dense cards — read a few times and keep the best.
@@ -874,15 +877,24 @@ export default {
           const out: any = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", { image, prompt: usePrompt, max_tokens: 2200 });
           return asText(out?.response);
         };
+        // Moondream 3.1 is an OCR/structured-output-specialised vision model — a strong second read,
+        // especially for the fiddly stroke-index row.
+        const runMoondream = async () => {
+          const out: any = await env.AI.run("@cf/moondream/moondream3.1-9B-A2B", { task: "query", image: dataUrl, question: usePrompt, max_tokens: 2400, temperature: 0.1 });
+          return asText(out?.answer);
+        };
 
         let best: any = null;
-        const attempts = [runScout, runScout, runSmall]; // strong model twice, then fall back
+        const attempts = [runScout, runMoondream, runScout, runSmall]; // generalist, OCR specialist, then fallbacks
+        const early = wantNines ? 5000 : 2000;
         for (const run of attempts) {
           let text = "";
           try { text = await run(); } catch { continue; }
           const r = useBuild(extractJson(text));
           if (r && (!best || r.score > best.score)) best = r;
-          if (best && best.score >= (wantNines ? 5000 : 2000)) break;
+          // Stop early only once we have a solid read AND a clean stroke index — otherwise keep trying
+          // other models to get the SI row right (the part most often misread).
+          if (best && best.score >= early && best.siOk) break;
         }
         if (!best || best.score === 0) return Response.json({ error: "unreadable" }, { status: 422 });
         return Response.json(best.payload);
