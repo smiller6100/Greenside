@@ -1,6 +1,10 @@
-import { useState, useEffect, useRef, useMemo } from "react";
-import { ChevronLeft, ChevronRight, Plus, Minus, Trophy, Users, Flag, Settings, X, Share2, Check, MessageCircle, Send, Crown, Search, MapPin } from "lucide-react";
+import { useState, useEffect, useRef, useMemo, lazy, Suspense } from "react";
+import { ChevronLeft, ChevronRight, Plus, Minus, Trophy, Users, Flag, Settings, X, Share2, Check, MessageCircle, Send, Crown, Search, MapPin, Map as MapIcon, List, RefreshCw } from "lucide-react";
 import { computeMatch, cupTotals, clinch, type Format, type HcpMethod, type MatchResult } from "../lib/cup";
+
+const HoleMapGL = lazy(() => import("../components/HoleMapGL"));
+const fmtToPar = (n: number) => (n === 0 ? "E" : n > 0 ? `+${n}` : `${n}`);
+const toParClass = (n: number) => (n < 0 ? "under" : n > 0 ? "over" : "even");
 import { getAccount, syncDown, addAccountCup, removeAccountCup } from "../lib/account";
 
 const FORMATS: { id: Format; label: string; sub: string; team: boolean }[] = [
@@ -279,7 +283,7 @@ function CupBoard({ code }: { code: string }) {
   if (matchId) {
     const mt = state.matches.find((x: any) => x.id === matchId);
     if (!mt) { setMatchId(null); return null; }
-    return <MatchView state={state} mt={mt} course={course} rosterById={rosterById} result={resultFor(mt)} onBack={() => setMatchId(null)} send={send} />;
+    return <MatchView state={state} mt={mt} course={course} rosterById={rosterById} result={resultFor(mt)} onBack={() => setMatchId(null)} send={send} meId={meId.current} />;
   }
 
   const allResults = state.matches.map(resultFor);
@@ -322,9 +326,28 @@ function CupBoard({ code }: { code: string }) {
           <span className="cup-sn">{state.teams.B.name}</span>
         </div>
       </div>
-      {(totals.projected.A !== totals.banked.A || totals.projected.B !== totals.banked.B) && (
-        <div className="cup-proj">Projected with matches in progress: {fmtPts(totals.projected.A)} – {fmtPts(totals.projected.B)}</div>
-      )}
+      {state.matches.length > 0 && (() => {
+        const total = state.matches.length;
+        const pct = (n: number) => `${Math.max(0, (n / total) * 100)}%`;
+        const aB = totals.banked.A, bB = totals.banked.B, aP = totals.projected.A, bP = totals.projected.B;
+        return (
+          <div className="cup-track">
+            <div className="ct-bar">
+              <div className="cts" style={{ width: pct(aB), background: state.teams.A.color }} />
+              <div className="cts" style={{ width: pct(aP - aB), background: state.teams.A.color, opacity: 0.4 }} />
+              <div className="cts ct-gap" />
+              <div className="cts" style={{ width: pct(bP - bB), background: state.teams.B.color, opacity: 0.4 }} />
+              <div className="cts" style={{ width: pct(bB), background: state.teams.B.color }} />
+              <span className="ct-center" />
+            </div>
+            <div className="ct-cap">
+              <b style={{ color: state.teams.A.color }}>{fmtPts(aB)}{aP > aB ? ` → ${fmtPts(aP)}` : ""}</b>
+              <span><Trophy size={11} /> {fmtPts(need.toWin)} to win</span>
+              <b style={{ color: state.teams.B.color }}>{bP > bB ? `${fmtPts(bP)} ← ` : ""}{fmtPts(bB)}</b>
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="cup-tabs">
         <button className={view === "board" ? "on" : ""} onClick={() => setView("board")}><Flag size={15} /> Matches</button>
@@ -391,13 +414,14 @@ function MatchRow({ mt, state, result, rosterById, onOpen }: any) {
   const lead = result.leader;
   const statusCls = result.final ? "fin" : result.holesPlayed ? "live" : "idle";
   return (
-    <button className="cup-match" onClick={onOpen}>
+    <button className={`cup-match ${statusCls}`} onClick={onOpen}>
+      <span className="cm-accent" style={{ background: lead ? state.teams[lead].color : "var(--line)" }} />
       <div className="cm-sides">
         <span className={`cm-side ${lead === "A" ? "win" : result.final && lead !== "A" ? "lose" : ""}`} style={{ color: lead === "A" ? state.teams.A.color : undefined }}>{a}</span>
         <span className="cm-v">v</span>
         <span className={`cm-side ${lead === "B" ? "win" : result.final && lead !== "B" ? "lose" : ""}`} style={{ color: lead === "B" ? state.teams.B.color : undefined }}>{b}</span>
       </div>
-      <div className={`cm-status ${statusCls}`}>{result.label === "—" ? "—" : result.label}</div>
+      <div className={`cm-status ${statusCls}`}>{statusCls === "live" && <span className="cm-pulse" />}{result.label === "—" ? "—" : result.label}</div>
     </button>
   );
 }
@@ -542,7 +566,8 @@ function CoursePicker({ state, send }: any) {
       const d = await r.json();
       const holes = (d.holes || []).filter((h: any) => h.num >= 1 && h.num <= 18).map((h: any) => ({ num: h.num, par: h.par, yards: h.yards, si: h.si }));
       if (!holes.length) { setMsg("That course has no scorecard yet — scan it from the main screen first."); setBusy(false); return; }
-      send({ type: "course", course: { name: d.name || hit.name, where: d.where || hit.where || "", holes } });
+      // Keep the course coordinates so cup matches can show the satellite hole view.
+      send({ type: "course", course: { name: d.name || hit.name, where: d.where || hit.where || "", lat: d.lat ?? hit.lat ?? null, lng: d.lng ?? hit.lng ?? null, holes } });
       setEditing(false); setQ(""); setResults([]);
     } catch { setMsg("Couldn't load that course."); } finally { setBusy(false); }
   };
@@ -702,13 +727,53 @@ function SessionEditor({ s, state, send }: any) {
 }
 
 /* ------------------------------------------------------------------ Match scoring */
-function MatchView({ state, mt, course, rosterById, result, onBack, send }: any) {
+function MatchView({ state, mt, course, rosterById, result, onBack, send, meId }: any) {
   const [h, setH] = useState(() => Math.max(0, Math.min(course.holes.length - 1, result.holesPlayed)));
   const hole = course.holes[h];
   const teamBall = isTeamBall(mt.format);
   const scoreOf = (slot: string) => (mt.scores[slot]?.[h] ?? null);
   const setScore = (slot: string, v: number | null) => send({ type: "score", matchId: mt.id, slot, hole: h, value: v });
   const holeRes = result.holeResults[h];
+  const mySide: "A" | "B" | null = mt.sideA.includes(meId) ? "A" : mt.sideB.includes(meId) ? "B" : null;
+
+  // Satellite hole view, fed by the course's banked hole geometry (same source as a normal round).
+  const lat = state.course?.lat, lng = state.course?.lng;
+  const [holeMap, setHoleMap] = useState<any>(null);
+  const [satView, setSatView] = useState(true);
+  const [reload, setReload] = useState(0);
+  useEffect(() => {
+    if (lat == null || lng == null) { setHoleMap({ available: false }); return; }
+    setHoleMap(null);
+    const ctrl = new AbortController();
+    fetch(`/api/holemap?lat=${lat}&lng=${lng}&holes=${course.holes.length}`, { cache: "no-store", signal: ctrl.signal })
+      .then((r) => r.json()).then(setHoleMap).catch(() => setHoleMap({ available: false, retry: true }));
+    return () => ctrl.abort();
+  }, [lat, lng, course.holes.length, reload]);
+  const hm = holeMap?.available ? holeMap.holes.find((x: any) => x.ref === hole.num) : null;
+  const mapReady = !!hm;
+
+  // GPS for "from you" distances (optional; distances fall back to the tee without it).
+  const [gps, setGps] = useState<{ lat: number; lng: number; acc?: number } | null>(null);
+  const [gpsErr, setGpsErr] = useState("");
+  const watch = useRef<number | null>(null);
+  const toggleGps = () => {
+    if (watch.current != null) { navigator.geolocation.clearWatch(watch.current); watch.current = null; setGps(null); return; }
+    if (!navigator.geolocation) { setGpsErr("Location isn't available on this device."); return; }
+    setGpsErr("locating");
+    watch.current = navigator.geolocation.watchPosition(
+      (p) => { setGpsErr(""); setGps({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy }); },
+      () => setGpsErr("Couldn't get your location."),
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 });
+  };
+  useEffect(() => () => { if (watch.current != null) navigator.geolocation.clearWatch(watch.current); }, []);
+
+  const curVal = (slot: string) => mt.scores[slot]?.[h] ?? null;
+  const adjust = (slot: string, d: number) => setScore(slot, Math.max(1, Math.min(20, (curVal(slot) ?? hole.par) + d)));
+  const slotToPar = (slot: string) => { const arr = mt.scores[slot] || []; let tp = 0, n = 0; course.holes.forEach((hh: any, i: number) => { const v = arr[i]; if (v != null) { tp += v - hh.par; n++; } }); return { txt: n ? fmtToPar(tp) : "", cls: toParClass(tp) }; };
+  const glPlayers = (teamBall
+    ? (["A", "B"] as const).map((side) => { const s = slotToPar(side); return { id: side, name: state.teams[side].name, isMe: mySide === side, val: curVal(side), toParTxt: s.txt, toParCls: s.cls }; })
+    : [...mt.sideA, ...mt.sideB].map((id: string) => { const s = slotToPar(id); return { id, name: rosterById[id]?.name || "—", isMe: id === meId, val: curVal(id), toParTxt: s.txt, toParCls: s.cls }; })
+  ).sort((a, b) => (a.isMe ? -1 : 0) - (b.isMe ? -1 : 0));
 
   const stepper = (slot: string, label: string, color?: string) => {
     const v = scoreOf(slot);
@@ -730,26 +795,53 @@ function MatchView({ state, mt, course, rosterById, result, onBack, send }: any)
 
       <div className="mv-status">
         <div className="mv-matchup">
-          <b style={{ color: state.teams.A.color }}>{teamNames(mt.sideA, rosterById)}</b>
+          <b><span className="mv-dot" style={{ background: state.teams.A.color }} />{teamNames(mt.sideA, rosterById)}</b>
           <span>vs</span>
-          <b style={{ color: state.teams.B.color }}>{teamNames(mt.sideB, rosterById)}</b>
+          <b><span className="mv-dot" style={{ background: state.teams.B.color }} />{teamNames(mt.sideB, rosterById)}</b>
         </div>
         <div className={`mv-banner ${result.final ? "fin" : ""}`}>{result.statusShort}</div>
       </div>
 
-      <div className="mv-holebar">
-        <button className="backbtn" disabled={h === 0} onClick={() => setH((i) => Math.max(0, i - 1))}><ChevronLeft size={20} /></button>
-        <div className="mv-holemid"><b>Hole {hole.num}</b><span>Par {hole.par} · SI {hole.si}{holeRes && holeRes !== "halve" ? ` · ${state.teams[holeRes].name.split(" ")[0]} won` : holeRes === "halve" ? " · halved" : ""}</span></div>
-        <button className="backbtn" disabled={h === course.holes.length - 1} onClick={() => setH((i) => Math.min(course.holes.length - 1, i + 1))}><ChevronRight size={20} /></button>
-      </div>
+      {mapReady && (
+        <div className="mv-viewtoggle">
+          <button className={satView ? "on" : ""} onClick={() => setSatView(true)}><MapIcon size={14} /> Map</button>
+          <button className={!satView ? "on" : ""} onClick={() => setSatView(false)}><List size={14} /> Card</button>
+        </div>
+      )}
 
-      <div className="panel cup-panel">
-        <div className="mv-teamlbl" style={{ color: state.teams.A.color }}>{state.teams.A.name}</div>
-        {teamBall ? stepper("A", teamNames(mt.sideA, rosterById) + " (team ball)") : mt.sideA.map((id: string) => stepper(id, rosterById[id]?.name || "—"))}
-        <div className="mv-teamlbl" style={{ color: state.teams.B.color, marginTop: 10 }}>{state.teams.B.name}</div>
-        {teamBall ? stepper("B", teamNames(mt.sideB, rosterById) + " (team ball)") : mt.sideB.map((id: string) => stepper(id, rosterById[id]?.name || "—"))}
-        <p className="hint" style={{ marginTop: 12 }}>Each player logs their own score — your group keeps each other honest. Everyone on the Cup sees it live.</p>
-      </div>
+      {mapReady && satView ? (
+        <div className="holemap-wrap">
+          <Suspense fallback={<div className="holemap-empty"><span className="spin sm" /> Loading satellite…</div>}>
+            <HoleMapGL key={hole.num} hole={hm} me={gps}
+              nav={{ num: hole.num, par: hole.par, yards: hole.yards, si: hole.si, onPrev: () => setH((i) => Math.max(0, i - 1)), onNext: () => setH((i) => Math.min(course.holes.length - 1, i + 1)), canPrev: h > 0, canNext: h < course.holes.length - 1 }}
+              players={glPlayers}
+              onAdjust={(id, d) => adjust(id, d)}
+              onScorePar={(id) => setScore(id, hole.par)} />
+          </Suspense>
+          <button className={`locbtn ${gps ? "on" : ""}`} onClick={toggleGps}>
+            <MapPin size={15} />{gps ? "Stop tracking" : gpsErr === "locating" ? "Locating…" : "Show my distance"}
+          </button>
+          {gpsErr && gpsErr !== "locating" && <div className="loc-err">{gpsErr}</div>}
+          <p className="hint" style={{ marginTop: 8 }}>You log your own score on the hole; your group keeps each other honest. Everyone sees it live.</p>
+        </div>
+      ) : (
+        <>
+          <div className="mv-holebar">
+            <button className="backbtn" disabled={h === 0} onClick={() => setH((i) => Math.max(0, i - 1))}><ChevronLeft size={20} /></button>
+            <div className="mv-holemid"><b>Hole {hole.num}</b><span>Par {hole.par} · SI {hole.si}{holeRes && holeRes !== "halve" ? ` · ${state.teams[holeRes].name.split(" ")[0]} won` : holeRes === "halve" ? " · halved" : ""}</span></div>
+            <button className="backbtn" disabled={h === course.holes.length - 1} onClick={() => setH((i) => Math.min(course.holes.length - 1, i + 1))}><ChevronRight size={20} /></button>
+          </div>
+
+          <div className="panel cup-panel">
+            <div className="mv-teamlbl" style={{ color: state.teams.A.color }}>{state.teams.A.name}</div>
+            {teamBall ? stepper("A", teamNames(mt.sideA, rosterById) + " (team ball)") : mt.sideA.map((id: string) => stepper(id, rosterById[id]?.name || "—"))}
+            <div className="mv-teamlbl" style={{ color: state.teams.B.color, marginTop: 10 }}>{state.teams.B.name}</div>
+            {teamBall ? stepper("B", teamNames(mt.sideB, rosterById) + " (team ball)") : mt.sideB.map((id: string) => stepper(id, rosterById[id]?.name || "—"))}
+            {holeMap && !holeMap.available && state.course?.lat != null && <button className="hm-maplink" onClick={() => setReload((n) => n + 1)} style={{ marginTop: 10 }}><RefreshCw size={13} /> Try the satellite view again</button>}
+            <p className="hint" style={{ marginTop: 12 }}>Each player logs their own score — your group keeps each other honest. Everyone on the Cup sees it live.</p>
+          </div>
+        </>
+      )}
     </div></div>
   );
 }
