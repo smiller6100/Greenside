@@ -17,6 +17,7 @@ type CupState = {
   code: string;
   name: string;
   method: "low" | "full" | "gross";
+  scoring: "match" | "nassau"; // 1 point per match, or 3 (front 9 / back 9 / total 18)
   createdAt: number;
   course: any | null; // { name, where, holes: [{num,par,si,yards}] }
   teams: { A: { name: string; color: string }; B: { name: string; color: string } };
@@ -34,6 +35,7 @@ const rid = () => Math.random().toString(36).slice(2, 9);
 // Fill in fields that predate a given version so older saved Cups keep working.
 function normalize(s: any): CupState {
   if (!s.captains) s.captains = { A: null, B: null };
+  if (s.scoring !== "match" && s.scoring !== "nassau") s.scoring = "match";
   if (s.teamMode !== "assign" && s.teamMode !== "draft") s.teamMode = "assign";
   if (!s.draft) s.draft = { first: "A", turn: null, started: false };
   if (s.draft.first !== "A" && s.draft.first !== "B") s.draft.first = "A";
@@ -58,6 +60,7 @@ export class CupEvent implements DurableObject {
           code: cfg.code,
           name: String(cfg.name || "Ryder Cup").slice(0, 60),
           method: ["low", "full", "gross"].includes(cfg.method) ? cfg.method : "low",
+          scoring: cfg.scoring === "nassau" ? "nassau" : "match",
           createdAt: Date.now(),
           course: cfg.course || null,
           teams: {
@@ -116,6 +119,7 @@ export class CupEvent implements DurableObject {
         if (!isAdmin) return;
         if (typeof data.name === "string") state.name = data.name.slice(0, 60);
         if (["low", "full", "gross"].includes(data.method)) state.method = data.method;
+        if (data.scoring === "match" || data.scoring === "nassau") state.scoring = data.scoring;
         if (data.teams) {
           for (const side of ["A", "B"] as const) {
             if (data.teams[side]?.name != null) state.teams[side].name = String(data.teams[side].name).slice(0, 40);

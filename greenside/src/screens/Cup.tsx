@@ -22,6 +22,11 @@ const METHODS: { id: HcpMethod; label: string; sub: string }[] = [
   { id: "gross", label: "Gross", sub: "No handicaps — pure low score wins" },
 ];
 
+const SCORINGS: { id: "match" | "nassau"; label: string; sub: string }[] = [
+  { id: "match", label: "Match play", sub: "1 point per match — win the 18-hole match, win the point" },
+  { id: "nassau", label: "Nassau (3 points)", sub: "Front 9, back 9 and total 18 each a point; a tied nine goes to the hardest-hole winner" },
+];
+
 const COLORS = ["#15392a", "#9a2b2b", "#1e5fa8", "#b8860b", "#6b21a8", "#0f766e", "#c2410c", "#334155"];
 
 // Demo course (par 72, SI 1–18) so a Cup can be created and tested instantly.
@@ -60,7 +65,7 @@ function scoreCup(state: any): { a: number; b: number; matches: number; allDone:
     const gross: Record<string, (number | null)[]> = {};
     if (isTeamBall(mt.format)) { gross["A"] = mt.scores["A"] || []; gross["B"] = mt.scores["B"] || []; }
     else for (const id of [...mt.sideA, ...mt.sideB]) gross[id] = mt.scores[id] || [];
-    return computeMatch({ format: mt.format, method: state.method, sideA, sideB, gross, course: { pars, sis } });
+    return computeMatch({ format: mt.format, method: state.method, scoring: state.scoring || "match", sideA, sideB, gross, course: { pars, sis } });
   });
   const t = cupTotals(results);
   return { a: t.banked.A, b: t.banked.B, matches: results.length, allDone: results.length > 0 && results.every((r) => r.final) };
@@ -142,6 +147,7 @@ function CupCreate({ onBack }: { onBack?: () => void }) {
   const [colorA, setColorA] = useState(COLORS[0]);
   const [colorB, setColorB] = useState(COLORS[1]);
   const [method, setMethod] = useState<HcpMethod>("low");
+  const [scoring, setScoring] = useState<"match" | "nassau">("match");
   const [joinCode, setJoinCode] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -150,7 +156,7 @@ function CupCreate({ onBack }: { onBack?: () => void }) {
     try {
       const r = await fetch("/api/cup/create", {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: name.trim() || "Ryder Cup", method, teams: { A: { name: teamA.trim() || "Team A", color: colorA }, B: { name: teamB.trim() || "Team B", color: colorB } }, course: DEMO_COURSE }),
+        body: JSON.stringify({ name: name.trim() || "Ryder Cup", method, scoring, teams: { A: { name: teamA.trim() || "Team A", color: colorA }, B: { name: teamB.trim() || "Team B", color: colorB } }, course: DEMO_COURSE }),
       });
       const d = await r.json();
       if (d.code) { try { localStorage.setItem("gs:cup:" + d.code + ":token", d.adminToken); } catch { /* */ } addMyCup(d.code, name.trim() || "Ryder Cup"); location.hash = "#/cup/" + d.code; }
@@ -181,6 +187,16 @@ function CupCreate({ onBack }: { onBack?: () => void }) {
             {METHODS.map((m) => (
               <button key={m.id} className={`cup-method ${method === m.id ? "on" : ""}`} onClick={() => setMethod(m.id)}>
                 <b>{m.label}</b><em>{m.sub}</em>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="field"><span>Scoring</span>
+          <div className="cup-methods">
+            {SCORINGS.map((s) => (
+              <button key={s.id} className={`cup-method ${scoring === s.id ? "on" : ""}`} onClick={() => setScoring(s.id)}>
+                <b>{s.label}</b><em>{s.sub}</em>
               </button>
             ))}
           </div>
@@ -275,7 +291,7 @@ function CupBoard({ code }: { code: string }) {
     const gross: Record<string, (number | null)[]> = {};
     if (isTeamBall(mt.format)) { gross["A"] = mt.scores["A"] || []; gross["B"] = mt.scores["B"] || []; }
     else { for (const id of [...mt.sideA, ...mt.sideB]) gross[id] = mt.scores[id] || []; }
-    return computeMatch({ format: mt.format, method: state.method, sideA, sideB, gross, course: { pars, sis } });
+    return computeMatch({ format: mt.format, method: state.method, scoring: state.scoring || "match", sideA, sideB, gross, course: { pars, sis } });
   };
 
   if (!state) return <div className="gs"><div className="frame home"><div className="cup-load"><span className="spin sm" /> Loading the Cup…</div></div></div>;
@@ -288,7 +304,9 @@ function CupBoard({ code }: { code: string }) {
 
   const allResults = state.matches.map(resultFor);
   const totals = cupTotals(allResults);
-  const need = clinch(state.matches.length || 0);
+  const ptsPerMatch = state.scoring === "nassau" ? 3 : 1; // nassau = front 9 / back 9 / total 18
+  const totalPts = (state.matches.length || 0) * ptsPerMatch;
+  const need = clinch(totalPts);
 
   return (
     <div className="gs"><div className="frame home">
@@ -327,7 +345,7 @@ function CupBoard({ code }: { code: string }) {
         </div>
       </div>
       {state.matches.length > 0 && (() => {
-        const total = state.matches.length;
+        const total = totalPts;
         const pct = (n: number) => `${Math.max(0, (n / total) * 100)}%`;
         const aB = totals.banked.A, bB = totals.banked.B, aP = totals.projected.A, bP = totals.projected.B;
         return (
@@ -463,6 +481,15 @@ function CommissionerSetup({ state, send, meId }: any) {
       {/* Course */}
       <div className="cup-sub"><MapPin size={14} /> Course</div>
       <CoursePicker state={state} send={send} />
+
+      {/* Scoring */}
+      <div className="cup-sub" style={{ marginTop: 20 }}><Trophy size={14} /> Scoring</div>
+      <div className="cup-modeseg">
+        {SCORINGS.map((s) => (
+          <button key={s.id} className={(state.scoring || "match") === s.id ? "on" : ""} onClick={() => send({ type: "meta", scoring: s.id })}>{s.label}</button>
+        ))}
+      </div>
+      <p className="hint" style={{ margin: "6px 2px 0" }}>{SCORINGS.find((s) => s.id === (state.scoring || "match"))!.sub}.</p>
 
       {/* Captains */}
       <div className="cup-sub" style={{ marginTop: 20 }}><Crown size={14} /> Captains</div>
@@ -801,6 +828,22 @@ function MatchView({ state, mt, course, rosterById, result, onBack, send, meId }
         </div>
         <div className={`mv-banner ${result.final ? "fin" : ""}`}>{result.statusShort}</div>
       </div>
+
+      {result.scoring === "nassau" && result.segments && (
+        <div className="mv-nassau">
+          {result.segments.map((s: any) => {
+            const r = s.result; const lead = r.winner;
+            return (
+              <div key={s.key} className={`mvn-seg ${r.complete ? "done" : r.played ? "live" : ""}`}>
+                <span className="mvn-lbl">{s.label}</span>
+                <span className="mvn-val" style={{ color: lead ? state.teams[lead].color : undefined }}>
+                  {r.played === 0 ? "—" : lead ? state.teams[lead].name : "AS"}{r.tiedBySI && lead ? <em> ·SI</em> : null}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {mapReady && (
         <div className="mv-viewtoggle">

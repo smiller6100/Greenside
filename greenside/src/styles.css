@@ -1321,6 +1321,13 @@ table.cg { border-collapse: collapse; width: 100%; min-width: 340px; }
 .cd-chip:disabled { opacity: .55; }
 
 /* Match scoring */
+.mv-nassau { display: flex; gap: 7px; margin: 0 0 10px; }
+.mvn-seg { flex: 1; background: var(--card); border: 1px solid var(--line); border-radius: 11px; padding: 8px 6px; text-align: center; }
+.mvn-seg.done { border-color: rgba(21,57,42,.28); }
+.mvn-seg.live { background: #fffaf0; border-color: rgba(184,134,11,.3); }
+.mvn-lbl { display: block; font-size: 10px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; color: var(--mut); }
+.mvn-val { display: block; font-size: 13px; font-weight: 800; color: var(--ink); margin-top: 3px; line-height: 1.15; }
+.mvn-val em { font-style: normal; font-size: 10px; font-weight: 700; color: var(--brass); }
 .mv-viewtoggle { display: flex; gap: 6px; background: rgba(21,57,42,.06); border-radius: 11px; padding: 4px; margin: 0 0 10px; }
 .mv-viewtoggle button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: none; background: transparent; color: var(--mut); font: inherit; font-size: 13.5px; font-weight: 700; padding: 9px; border-radius: 8px; cursor: pointer; transition: .15s; }
 .mv-viewtoggle button svg { color: currentColor; }

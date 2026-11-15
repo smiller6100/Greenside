@@ -9,7 +9,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog, UserProfile, League, CupEvent, AccountCred };
 
-const BUILD = "v104";
+const BUILD = "v105";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {

@@ -37,6 +37,8 @@ export function scrambleTeamHcp(hcps: number[]): number {
   return Math.round(0.35 * sorted[0] + 0.15 * sorted[sorted.length - 1]);
 }
 
+export type Scoring = "match" | "nassau"; // 1 point per match, or 3 (front 9 / back 9 / total 18)
+
 export interface MatchInput {
   format: Format;
   method: HcpMethod;
@@ -46,6 +48,7 @@ export interface MatchInput {
   // (foursomes, scramble) key by the side letter "A"/"B".
   gross: Record<string, (number | null)[]>;
   course: CupCourse;
+  scoring?: Scoring; // default "match"
 }
 
 export interface MatchResult {
@@ -61,6 +64,32 @@ export interface MatchResult {
   points: { A: number; B: number };     // banked once the match is final
   projected: { A: number; B: number };  // live projection while in progress
   holeResults: (Side | "halve" | null)[]; // per hole
+  scoring: Scoring;
+  segments?: { key: "front" | "back" | "total"; label: string; result: SegResult }[]; // nassau only
+}
+
+// One Nassau segment (front 9 / back 9 / total 18), decided by holes won — a tie goes to whoever won
+// the hardest-handicap (lowest-SI) hole in the segment.
+export interface SegResult {
+  winner: Side | null;  // null only if every decisive hole halved
+  a: number; b: number; // holes won in the segment
+  played: number; holes: number;
+  complete: boolean;    // all holes played, or the segment can no longer be caught
+  tiedBySI: boolean;    // decided by the hardest-hole tiebreak
+}
+
+function segResult(holeResults: (Side | "halve" | null)[], sis: number[], lo: number, hi: number): SegResult {
+  let a = 0, b = 0, played = 0; const holes = hi - lo + 1;
+  for (let i = lo; i <= hi; i++) { const r = holeResults[i]; if (r == null) continue; played++; if (r === "A") a++; else if (r === "B") b++; }
+  const complete = played === holes || Math.abs(a - b) > holes - played; // all in, or can't be caught
+  let winner: Side | null = a > b ? "A" : b > a ? "B" : null, tiedBySI = false;
+  if (winner == null) { // tie on holes → hardest won hole decides
+    const won: { si: number; r: Side }[] = [];
+    for (let i = lo; i <= hi; i++) { const r = holeResults[i]; if (r === "A" || r === "B") won.push({ si: sis[i], r }); }
+    won.sort((x, y) => x.si - y.si);
+    if (won.length) { winner = won[0].r; tiedBySI = true; }
+  }
+  return { winner, a, b, played, holes, complete, tiedBySI };
 }
 
 // Net score for each side on each hole, applying the chosen handicap method and format.
@@ -143,12 +172,36 @@ export function computeMatch(m: MatchInput): MatchResult {
   else if (dormie) statusShort = `${leader} dormie · thru ${holesPlayed}`;
   else statusShort = up === 0 ? `All square · thru ${holesPlayed}` : `${leader} ${curLead} UP · thru ${holesPlayed}`;
 
+  const scoring: Scoring = m.scoring === "nassau" ? "nassau" : "match";
+
+  if (scoring === "nassau") {
+    const sis = m.course.sis;
+    const segDefs: { key: "front" | "back" | "total"; label: string; lo: number; hi: number }[] = [
+      { key: "front", label: "Front 9", lo: 0, hi: Math.min(8, n - 1) },
+    ];
+    if (n > 9) segDefs.push({ key: "back", label: "Back 9", lo: 9, hi: n - 1 });
+    segDefs.push({ key: "total", label: "Total 18", lo: 0, hi: n - 1 });
+    const segments = segDefs.map((d) => ({ key: d.key, label: d.label, result: segResult(holeResults, sis, d.lo, d.hi) }));
+    const pts = { A: 0, B: 0 }, proj = { A: 0, B: 0 };
+    for (const s of segments) {
+      const r = s.result;
+      if (r.complete) { if (r.winner === "A") pts.A += 1; else if (r.winner === "B") pts.B += 1; else { pts.A += 0.5; pts.B += 0.5; } }
+      if (r.played > 0) { if (r.winner === "A") proj.A += 1; else if (r.winner === "B") proj.B += 1; else { proj.A += 0.5; proj.B += 0.5; } }
+    }
+    const nf = (x: number) => (Number.isInteger(x) ? `${x}` : `${Math.floor(x)}½`);
+    const nLabel = !holesPlayed ? "—" : final ? `${nf(pts.A)}–${nf(pts.B)}` : `${nf(proj.A)}–${nf(proj.B)}`;
+    const nStatus = !holesPlayed ? "Not started"
+      : final ? `Final · ${nf(pts.A)}–${nf(pts.B)} pts`
+      : `${nf(proj.A)}–${nf(proj.B)} pts · thru ${holesPlayed}`;
+    return { holesPlayed, holesTotal: n, up, leader, decided, final, dormie, label: nLabel, statusShort: nStatus, points: pts, projected: proj, holeResults, scoring, segments };
+  }
+
   const points = final ? (winner === "A" ? { A: 1, B: 0 } : winner === "B" ? { A: 0, B: 1 } : { A: 0.5, B: 0.5 }) : { A: 0, B: 0 };
   // Projection reflects only matches that are actually under way: a match nobody has teed off in
   // contributes nothing (so the board doesn't read "projected 1.5–1.5" before the first tee shot).
   const projected = final ? points : !holesPlayed ? { A: 0, B: 0 } : up > 0 ? { A: 1, B: 0 } : up < 0 ? { A: 0, B: 1 } : { A: 0.5, B: 0.5 };
 
-  return { holesPlayed, holesTotal: n, up, leader, decided, final, dormie, label, statusShort, points, projected, holeResults };
+  return { holesPlayed, holesTotal: n, up, leader, decided, final, dormie, label, statusShort, points, projected, holeResults, scoring: "match" };
 }
 
 // Roll match results into the Cup scoreboard. Banked = points from finished matches; projected
