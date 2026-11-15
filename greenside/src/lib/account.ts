@@ -2,7 +2,7 @@
 // authenticate every call. Rounds sync both ways (merge by code, newest wins). Entry stays
 // account-free — nothing here runs unless the golfer chooses to create or link an account.
 
-export type Account = { id: string; secret: string; name: string };
+export type Account = { id: string; secret: string; name: string; username?: string };
 
 export function getAccount(): Account | null {
   try { const a = JSON.parse(localStorage.getItem("gs:account") || "null"); return a && a.id && a.secret ? a : null; } catch { return null; }
@@ -103,6 +103,47 @@ export async function createAccount(name: string): Promise<Account | null> {
     for (const rr of loadLocalRounds()) pushRound(rr); // seed the cloud with this device's rounds
     return acc;
   } catch { return null; }
+}
+
+// ---- Username + password ----
+export async function usernameAvailable(u: string): Promise<{ valid: boolean; available: boolean }> {
+  try { const r = await fetch("/api/account/username-available?u=" + encodeURIComponent(u)); return await r.json(); } catch { return { valid: false, available: false }; }
+}
+
+// Create a brand-new account from a unique username + password.
+export async function signup(username: string, password: string, name: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const r = await fetch("/api/account/signup", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username, password, name }) });
+    const d = await r.json();
+    if (!d.ok) return { ok: false, error: d.error || "Couldn't create that account." };
+    setAccount({ id: d.accountId, secret: d.secret, name: d.name || name || "", username: d.username });
+    for (const rr of loadLocalRounds()) pushRound(rr); // seed the cloud with this device's rounds
+    return { ok: true };
+  } catch { return { ok: false, error: "Couldn't reach the server." }; }
+}
+
+// Sign in on any device with username + password; pulls the account's data down.
+export async function login(username: string, password: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const r = await fetch("/api/account/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username, password }) });
+    const d = await r.json();
+    if (!d.ok) return { ok: false, error: d.error || "Wrong username or password." };
+    setAccount({ id: d.accountId, secret: d.secret, name: "", username: d.username });
+    await syncDown();
+    return { ok: true };
+  } catch { return { ok: false, error: "Couldn't reach the server." }; }
+}
+
+// Attach a username + password to the current (passwordless) account so it can sign in elsewhere.
+export async function setCredentials(username: string, password: string): Promise<{ ok: boolean; error?: string }> {
+  const a = getAccount(); if (!a) return { ok: false, error: "Not signed in." };
+  try {
+    const r = await fetch("/api/account/set-credentials", { method: "POST", headers: { ...authHeaders(), "content-type": "application/json" }, body: JSON.stringify({ username, password }) });
+    const d = await r.json();
+    if (!d.ok) return { ok: false, error: d.error || "Couldn't set that username." };
+    setAccount({ ...a, username: d.username });
+    return { ok: true };
+  } catch { return { ok: false, error: "Couldn't reach the server." }; }
 }
 
 export async function claimAccount(code: string): Promise<boolean> {

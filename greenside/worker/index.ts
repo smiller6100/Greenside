@@ -4,11 +4,12 @@ import { CourseCatalog } from "./CourseCatalog";
 import { UserProfile } from "./UserProfile";
 import { League } from "./League";
 import { CupEvent } from "./CupEvent";
+import { AccountCred } from "./AccountCred";
 import type { Env } from "./GolfRound";
 
-export { GolfRound, CourseCatalog, UserProfile, League, CupEvent };
+export { GolfRound, CourseCatalog, UserProfile, League, CupEvent, AccountCred };
 
-const BUILD = "v103";
+const BUILD = "v104";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -20,6 +21,28 @@ function genCode(len = 4): string {
 
 const GOLF_API = "https://api.golfcourseapi.com/v1";
 const catalog = (env: Env) => env.COURSE_CATALOG.get(env.COURSE_CATALOG.idFromName("global"));
+
+// ---- Username + password auth (login layer on top of the passwordless id/secret accounts) ----
+const USERNAME_RE = /^[a-z0-9_]{3,20}$/;
+const normUser = (u: any) => String(u || "").trim().toLowerCase();
+const credStub = (env: Env, uname: string) => env.ACCOUNT_CRED.get(env.ACCOUNT_CRED.idFromName("cred:" + uname));
+function toHex(buf: ArrayBuffer): string { return [...new Uint8Array(buf)].map((x) => x.toString(16).padStart(2, "0")).join(""); }
+function fromHex(hex: string): Uint8Array { const a = new Uint8Array(hex.length / 2); for (let i = 0; i < a.length; i++) a[i] = parseInt(hex.substr(i * 2, 2), 16); return a; }
+async function pbkdf2(password: string, salt: Uint8Array): Promise<string> {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), { name: "PBKDF2" }, false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" }, key, 256);
+  return toHex(bits);
+}
+async function hashPassword(password: string): Promise<{ hash: string; salt: string }> {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  return { hash: await pbkdf2(password, salt), salt: toHex(salt) };
+}
+async function verifyPassword(password: string, hash: string, saltHex: string): Promise<boolean> {
+  const h = await pbkdf2(password, fromHex(saltHex));
+  if (h.length !== hash.length) return false;
+  let diff = 0; for (let i = 0; i < h.length; i++) diff |= h.charCodeAt(i) ^ hash.charCodeAt(i);
+  return diff === 0; // constant-time-ish compare
+}
 
 // Validate an account by its id + secret headers; returns the DO stub or null.
 async function accountAuth(env: Env, request: Request): Promise<{ id: string; secret: string; stub: DurableObjectStub } | null> {
@@ -861,6 +884,19 @@ export default {
         return Response.json({ ok, configured: !!env.ADMIN_KEY });
       }
       if (!ok) return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
+      // Reset a user's password (the interim recovery path until self-serve email reset is wired up).
+      if (path === "/api/admin/account-reset" && request.method === "POST") {
+        const b = await request.json<any>().catch(() => ({}));
+        const uname = normUser(b.username);
+        const password = String(b.newPassword || "");
+        if (!USERNAME_RE.test(uname) || password.length < 6) return Response.json({ ok: false, error: "Need a valid username and a 6+ character password." });
+        const rec: any = await (await credStub(env, uname).fetch("https://do/record")).json();
+        if (!rec.exists) return Response.json({ ok: false, error: "No account with that username." });
+        const { hash, salt } = await hashPassword(password);
+        const r = await credStub(env, uname).fetch("https://do/setpw", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ admin: true, pwHash: hash, pwSalt: salt }) });
+        const d: any = await r.json();
+        return Response.json(d.ok ? { ok: true } : { ok: false, error: "Reset failed." });
+      }
       if (path === "/api/admin/stats" && request.method === "GET") {
         const r = await catalog(env).fetch("https://do/stats");
         return new Response(await r.text(), { headers: { "content-type": "application/json" } });
@@ -992,6 +1028,60 @@ export default {
       const id = "a_" + genCode(14), secret = genCode(24);
       await env.USER_PROFILE.get(env.USER_PROFILE.idFromName(id)).fetch("https://do/create", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ secret, name: String(b.name || "").slice(0, 40) }) });
       return Response.json({ ok: true, accountId: id, secret, name: String(b.name || "").slice(0, 40) });
+    }
+
+    // Is a username free and well-formed? (live check as the user types)
+    if (path === "/api/account/username-available" && request.method === "GET") {
+      const uname = normUser(url.searchParams.get("u"));
+      if (!USERNAME_RE.test(uname)) return Response.json({ valid: false, available: false });
+      const r = await credStub(env, uname).fetch("https://do/record");
+      const d: any = await r.json();
+      return Response.json({ valid: true, available: !d.exists });
+    }
+
+    // Sign up: pick a unique username + password, which creates a fresh account and links the two.
+    if (path === "/api/account/signup" && request.method === "POST") {
+      const b = await request.json<any>().catch(() => ({}));
+      const uname = normUser(b.username);
+      const password = String(b.password || "");
+      if (!USERNAME_RE.test(uname)) return Response.json({ ok: false, error: "Usernames are 3–20 characters: letters, numbers, or underscores." });
+      if (password.length < 6) return Response.json({ ok: false, error: "Password must be at least 6 characters." });
+      const existing: any = await (await credStub(env, uname).fetch("https://do/record")).json();
+      if (existing.exists) return Response.json({ ok: false, error: "That username is taken." });
+      const id = "a_" + genCode(14), secret = genCode(24);
+      const name = String(b.name || b.username || "").slice(0, 40);
+      await env.USER_PROFILE.get(env.USER_PROFILE.idFromName(id)).fetch("https://do/create", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ secret, name }) });
+      const { hash, salt } = await hashPassword(password);
+      const cr: any = await (await credStub(env, uname).fetch("https://do/create", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username: String(b.username).slice(0, 20), accountId: id, secret, pwHash: hash, pwSalt: salt }) })).json();
+      if (!cr.ok) return Response.json({ ok: false, error: "That username was just taken — try another." });
+      return Response.json({ ok: true, accountId: id, secret, name, username: uname });
+    }
+
+    // Log in from any device: username + password -> the account's id + secret.
+    if (path === "/api/account/login" && request.method === "POST") {
+      const b = await request.json<any>().catch(() => ({}));
+      const uname = normUser(b.username);
+      const password = String(b.password || "");
+      if (!uname || !password) return Response.json({ ok: false });
+      const rec: any = await (await credStub(env, uname).fetch("https://do/record")).json();
+      if (!rec.exists || !(await verifyPassword(password, rec.pwHash, rec.pwSalt))) return Response.json({ ok: false, error: "Wrong username or password." });
+      return Response.json({ ok: true, accountId: rec.accountId, secret: rec.secret, username: rec.username });
+    }
+
+    // Attach a username + password to an existing (passwordless) account, so it can sign in elsewhere.
+    if (path === "/api/account/set-credentials" && request.method === "POST") {
+      const a = await accountAuth(env, request); if (!a) return new Response("Unauthorized", { status: 401 });
+      const b = await request.json<any>().catch(() => ({}));
+      const uname = normUser(b.username);
+      const password = String(b.password || "");
+      if (!USERNAME_RE.test(uname)) return Response.json({ ok: false, error: "Usernames are 3–20 characters: letters, numbers, or underscores." });
+      if (password.length < 6) return Response.json({ ok: false, error: "Password must be at least 6 characters." });
+      const existing: any = await (await credStub(env, uname).fetch("https://do/record")).json();
+      if (existing.exists) return Response.json({ ok: false, error: "That username is taken." });
+      const { hash, salt } = await hashPassword(password);
+      const cr: any = await (await credStub(env, uname).fetch("https://do/create", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username: String(b.username).slice(0, 20), accountId: a.id, secret: a.secret, pwHash: hash, pwSalt: salt }) })).json();
+      if (!cr.ok) return Response.json({ ok: false, error: "That username was just taken — try another." });
+      return Response.json({ ok: true, username: uname });
     }
     if (path === "/api/account/me" && request.method === "GET") {
       const a = await accountAuth(env, request); if (!a) return new Response("Unauthorized", { status: 401 });
