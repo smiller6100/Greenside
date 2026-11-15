@@ -9,7 +9,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog, UserProfile, League, CupEvent, AccountCred };
 
-const BUILD = "v108";
+const BUILD = "v109";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -885,16 +885,21 @@ export default {
         };
 
         let best: any = null;
-        const attempts = [runScout, runMoondream, runScout, runSmall]; // generalist, OCR specialist, then fallbacks
         const early = wantNines ? 5000 : 2000;
-        for (const run of attempts) {
+        // Two strong reads (generalist + OCR specialist). Stop at the first that's both solid and has a
+        // clean stroke index; otherwise keep the better of the two. Bounded so scans stay fast/cheap.
+        for (const run of [runScout, runMoondream]) {
           let text = "";
           try { text = await run(); } catch { continue; }
           const r = useBuild(extractJson(text));
           if (r && (!best || r.score > best.score)) best = r;
-          // Stop early only once we have a solid read AND a clean stroke index — otherwise keep trying
-          // other models to get the SI row right (the part most often misread).
           if (best && best.score >= early && best.siOk) break;
+        }
+        // Only if neither strong model produced even a solid read, fall back to the small vision model.
+        if (!best || best.score < early) {
+          let text = ""; try { text = await runSmall(); } catch { /* */ }
+          const r = useBuild(extractJson(text));
+          if (r && (!best || r.score > best.score)) best = r;
         }
         if (!best || best.score === 0) return Response.json({ error: "unreadable" }, { status: 422 });
         return Response.json(best.payload);

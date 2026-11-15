@@ -25,20 +25,35 @@ import { computeStandings, fmtToPar, roundDiffs, estimateHandicap } from "../lib
 import { FullLogo } from "../components/Logo";
 import { DEFAULT_COURSE, type Hole, FORMAT_DEFS, HCP_DEFS, GAME_DEFS, GAME_HELP, composeNines, ninesFromHoles } from "../lib/golf";
 
-const VERSION = "v143";
+const VERSION = "v144";
 
 
 
 interface CourseHit { id: string; name: string; where: string; lat: number | null; lng: number | null; saved?: boolean; }
 
 async function fileToJpeg(file: File, max = 1800, q = 0.85): Promise<Blob> {
-  const img = await createImageBitmap(file);
-  const scale = Math.min(1, max / Math.max(img.width, img.height));
-  const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+  // Decode to something drawable. createImageBitmap is fastest but throws on some iPhone HEIC photos,
+  // so fall back to an <img> element (Safari can render HEIC that way).
+  let src: CanvasImageSource; let iw: number; let ih: number;
+  try {
+    const bmp = await createImageBitmap(file);
+    src = bmp; iw = bmp.width; ih = bmp.height;
+  } catch {
+    const el = await new Promise<HTMLImageElement>((res, rej) => {
+      const im = new Image(); const url = URL.createObjectURL(file);
+      im.onload = () => { URL.revokeObjectURL(url); res(im); };
+      im.onerror = () => { URL.revokeObjectURL(url); rej(new Error("decode")); };
+      im.src = url;
+    });
+    src = el; iw = el.naturalWidth; ih = el.naturalHeight;
+  }
+  if (!iw || !ih) throw new Error("empty");
+  const scale = Math.min(1, max / Math.max(iw, ih));
+  const w = Math.round(iw * scale), h = Math.round(ih * scale);
   const canvas = document.createElement("canvas");
   canvas.width = w; canvas.height = h;
-  canvas.getContext("2d")!.drawImage(img, 0, 0, w, h);
-  return await new Promise((res) => canvas.toBlob((b) => res(b!), "image/jpeg", q));
+  canvas.getContext("2d")!.drawImage(src, 0, 0, w, h);
+  return await new Promise<Blob>((res, rej) => canvas.toBlob((b) => (b ? res(b) : rej(new Error("encode"))), "image/jpeg", q));
 }
 
 export default function Home() {
@@ -264,16 +279,24 @@ export default function Home() {
   async function onScan(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]; if (!file) return;
     setScanning(true); setMsg("");
+    // Whatever goes wrong (bad photo, slow read, timeout), drop into the editable blank card so the
+    // round can still happen — the person just types the holes in.
+    const toManual = (why: string) => {
+      setMsg(why);
+      const blank = DEFAULT_COURSE.map((h) => ({ ...h, yards: 0, si: 0 }));
+      setTees([{ name: "Tees", total: 0, holes: blank }]); setTeeName("Tees");
+      setCourse(blank); setCourseName(""); setCourseWhere("");
+      setLoc({ lat: null, lng: null }); setSiEstimated(false); setScanned(true); setLoaded(true); setEditing(true);
+    };
     try {
       const blob = await fileToJpeg(file);
       const q = scanModeRef.current === "27" ? "?nines=3" : scanModeRef.current === "9" ? "?holes=9" : "";
-      const r = await fetch(`/api/courses/scan${q}`, { method: "POST", headers: { "content-type": "image/jpeg" }, body: blob });
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 90000);
+      const r = await fetch(`/api/courses/scan${q}`, { method: "POST", headers: { "content-type": "image/jpeg" }, body: blob, signal: ctrl.signal });
+      clearTimeout(timer);
       if (!r.ok) {
-        setMsg("Couldn't read that photo clearly — enter the holes by hand below, or try a flatter, brighter shot.");
-        const blank = DEFAULT_COURSE.map((h) => ({ ...h, yards: 0, si: 0 }));
-        setTees([{ name: "Tees", total: 0, holes: blank }]); setTeeName("Tees");
-        setCourse(blank); setCourseName(""); setCourseWhere("");
-        setLoc({ lat: null, lng: null }); setSiEstimated(false); setScanned(true); setLoaded(true); setEditing(true);
+        toManual("Couldn't read that photo clearly — enter the holes by hand below, or try a flatter, brighter shot.");
       } else {
         const data: any = await r.json();
         if (data.multiNine && Array.isArray(data.nines) && data.nines.length) {
@@ -294,7 +317,9 @@ export default function Home() {
         if (!nameTouched && data.name) setRoundName(data.name);
         }
       }
-    } catch { setMsg("Couldn't process that image."); }
+    } catch (err: any) {
+      toManual(err?.name === "AbortError" ? "That scan took too long — enter the holes by hand below, or try again." : "Couldn't read that photo — enter the holes by hand below, or try a clearer, flatter shot.");
+    }
     setScanning(false);
     if (fileIn.current) fileIn.current.value = "";
   }
