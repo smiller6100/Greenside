@@ -9,7 +9,7 @@ import type { Env } from "./GolfRound";
 
 export { GolfRound, CourseCatalog, UserProfile, League, CupEvent, AccountCred };
 
-const BUILD = "v111";
+const BUILD = "v112";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function genCode(len = 4): string {
@@ -20,6 +20,7 @@ function genCode(len = 4): string {
 }
 
 const GOLF_API = "https://api.golfcourseapi.com/v1";
+const GOLFCORE = "https://api.golfcore.org/v1"; // scorecards + accurate stroke index (no geometry)
 const catalog = (env: Env) => env.COURSE_CATALOG.get(env.COURSE_CATALOG.idFromName("global"));
 
 // ---- Username + password auth (login layer on top of the passwordless id/secret accounts) ----
@@ -352,6 +353,25 @@ function courseToHoles(course: any) {
     lat: loc.latitude ?? null, lng: loc.longitude ?? null,
     holes, tees: teeData, defaultTee: def ? def.name : "", siEstimated,
   };
+}
+
+// Map a GolfCore course detail into the GSS course shape (same as courseToHoles). GolfCore gives the
+// stroke index from its own database, so SI is authoritative here — no OCR, no estimate. No geometry.
+function gcToHoles(gc: any) {
+  const where = [gc.city, gc.region].filter(Boolean).join(", ");
+  const base = { name: gc.name || "Course", where, lat: gc.lat ?? null, lng: gc.lng ?? null, holes: [] as any[], tees: [] as any[], defaultTee: "", siEstimated: false, rating: null as number | null, slope: null as number | null, source: "golfcore" };
+  const layout = Array.isArray(gc.layouts) && gc.layouts.length ? gc.layouts[0] : null;
+  if (!layout) return base;
+  // Reference par + stroke index per hole position (tee-agnostic, from GolfCore's DB).
+  const ref: Record<number, { par: number; si: number }> = {};
+  (layout.holes || []).forEach((h: any) => { const pos = Number(h.position); if (Number.isFinite(pos)) ref[pos] = { par: Number(h.par) || 0, si: Number(h.stroke_index) || 0 }; });
+  const mkHoles = (t: any) => (Array.isArray(t.holes) ? t.holes : []).map((h: any) => { const pos = Number(h.position) || 0; const r = ref[pos] || ({} as any); return { num: pos, par: Number(h.par) || r.par || 0, yards: Number(h.yards) || 0, si: Number(h.stroke_index) || r.si || 0 }; });
+  const teeData = (Array.isArray(layout.tees) ? layout.tees : []).map((t: any) => ({ name: String(t.name || "Tee"), total: Number(t.yards) || 0, rating: Number(t.rating) || null, slope: Number(t.slope) || null, gender: t.gender || null, holes: mkHoles(t) })).filter((t: any) => t.holes.length);
+  const sorted = [...teeData].sort((a, b) => b.total - a.total);
+  const def = sorted[Math.floor(sorted.length / 2)] || teeData[0] || null;
+  let holes = def ? def.holes.map((h: any) => ({ num: h.num, par: h.par || (ref[h.num]?.par) || 0, yards: h.yards, si: h.si || (ref[h.num]?.si) || 0 })) : [];
+  if (!holes.length && Object.keys(ref).length) holes = Object.keys(ref).map(Number).sort((a, b) => a - b).map((pos) => ({ num: pos, par: ref[pos].par, yards: 0, si: ref[pos].si }));
+  return { ...base, holes, tees: teeData, defaultTee: def ? def.name : "", rating: def?.rating ?? null, slope: def?.slope ?? null };
 }
 
 async function cachedJson(cacheUrl: string, ttl: number, produce: () => Promise<Response>): Promise<Response> {
@@ -751,6 +771,20 @@ export default {
       let saved: any[] = [];
       try { saved = (await (await catalog(env).fetch(`https://do/search?q=${encodeURIComponent(q)}`)).json() as any).courses || []; } catch { /* */ }
 
+      // GolfCore — primary online source (big coverage + accurate stroke index). Cached 1 day.
+      let gc: any[] = [];
+      if (env.GOLFCORE_KEY) {
+        try {
+          const r = await cachedJson(`https://cache/gcsearch?q=${encodeURIComponent(q.toLowerCase())}`, 86400, async () => {
+            const res = await fetch(`${GOLFCORE}/courses?q=${encodeURIComponent(q)}&limit=10`, { headers: { Authorization: `Bearer ${env.GOLFCORE_KEY}` } });
+            if (!res.ok) return Response.json({ courses: [] });
+            const d: any = await res.json();
+            return Response.json({ courses: (d.courses || []).slice(0, 10).map((c: any) => ({ id: "gc_" + c.slug, name: c.name, where: [c.city, c.region].filter(Boolean).join(", "), lat: c.lat ?? null, lng: c.lng ?? null, saved: false })) });
+          });
+          gc = ((await r.json()) as any).courses || [];
+        } catch { /* */ }
+      }
+
       let online: any[] = [];
       if (env.GOLF_API_KEY) {
         try {
@@ -764,9 +798,11 @@ export default {
         } catch { /* */ }
       }
 
-      const seen = new Set(saved.map((c) => c.name.toLowerCase().replace(/[^a-z0-9]/g, "")));
-      const merged = [...saved, ...online.filter((c) => !seen.has(c.name.toLowerCase().replace(/[^a-z0-9]/g, "")))].slice(0, 12);
-      return Response.json({ courses: merged, unconfigured: !env.GOLF_API_KEY && saved.length === 0 });
+      const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const seen = new Set(saved.map((c) => norm(c.name)));
+      const merged = [...saved];
+      for (const c of [...gc, ...online]) { const k = norm(c.name); if (!seen.has(k)) { seen.add(k); merged.push(c); } } // GolfCore first, then fallback source
+      return Response.json({ courses: merged.slice(0, 12), unconfigured: !env.GOLF_API_KEY && !env.GOLFCORE_KEY && saved.length === 0 });
     }
 
     // ---- Nearest saved course to a GPS fix (Quick round) ----
@@ -784,9 +820,34 @@ export default {
     }
 
     // ---- Course detail ----
-    const cm = path.match(/^\/api\/courses\/([A-Za-z0-9_]+)$/);
+    const cm = path.match(/^\/api\/courses\/([A-Za-z0-9_-]+)$/);
     if (cm && request.method === "GET") {
       const id = cm[1];
+      if (id.startsWith("gc_")) {
+        // GolfCore scorecard course. Slug is everything after the gc_ prefix.
+        const slug = id.slice(3);
+        if (!env.GOLFCORE_KEY) return new Response("Not configured", { status: 503 });
+        return cachedJson(`https://cache/gc/v1/${slug}`, 31536000, async () => {
+          let status = 0;
+          for (let attempt = 0; attempt < 3; attempt++) {
+            const r = await fetch(`${GOLFCORE}/courses/${encodeURIComponent(slug)}`, { headers: { Authorization: `Bearer ${env.GOLFCORE_KEY}` } });
+            if (r.ok) {
+              const d: any = await r.json();
+              const course = gcToHoles(d.course || d);
+              // Bank it into the catalog so it's served from there forever after — no more API calls.
+              if (Array.isArray(course.holes) && course.holes.length) {
+                ctx.waitUntil(catalog(env).fetch("https://do/upsert", { method: "POST", headers: { "content-type": "application/json" },
+                  body: JSON.stringify({ name: course.name, where: course.where || "", lat: course.lat ?? null, lng: course.lng ?? null, holes: course.holes, tees: course.tees || null, defaultTee: course.defaultTee || null }) }).catch(() => {}));
+              }
+              return Response.json(course);
+            }
+            status = r.status;
+            if (r.status !== 429 && r.status < 500) break; // 404/400 is a real miss — don't retry
+            await sleep(400 * (attempt + 1)); // transient: back off and retry
+          }
+          return Response.json({ error: "upstream", status }, { status: status || 502 });
+        });
+      }
       if (id.startsWith("c_")) {
         const r = await catalog(env).fetch(`https://do/get?id=${encodeURIComponent(id)}`);
         if (!r.ok) return new Response(r.body, { status: r.status, headers: { "content-type": "application/json" } });

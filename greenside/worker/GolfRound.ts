@@ -7,6 +7,7 @@ export interface Env {
   LEAGUE: DurableObjectNamespace;
   CUP_EVENT: DurableObjectNamespace;
   ACCOUNT_CRED: DurableObjectNamespace;
+  GOLFCORE_KEY?: string;
   ASSETS: Fetcher;
   GOLF_API_KEY?: string;
   ADMIN_KEY?: string;
